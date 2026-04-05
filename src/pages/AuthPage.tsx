@@ -26,6 +26,9 @@ export const AuthPage = () => {
     const [error, setError] = useState('');
 
     /* ── form data ── */
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showConfirmPass, setShowConfirmPass] = useState(false);
+
     const [form, setForm] = useState({
         email: '', password: '', firstName: '', lastName: '', phone: '',
         // seller extras
@@ -49,6 +52,10 @@ export const AuthPage = () => {
         e.preventDefault();
         if (!isLogin && accountType === 'seller' && step < 2) {
             setStep(s => s + 1);
+            return;
+        }
+        if (!isLogin && form.password !== confirmPassword) {
+            setError('كلمة المرور وتأكيدها غير متطابقتين');
             return;
         }
         if (!isLogin && !form.agreeTerms) {
@@ -167,6 +174,31 @@ export const AuthPage = () => {
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600">
                         {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
+                </div>
+
+                {/* تأكيد كلمة المرور */}
+                <div className="relative">
+                    <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 pointer-events-none" />
+                    <input
+                        type={showConfirmPass ? 'text' : 'password'}
+                        name="regConfirmPassword"
+                        title="تأكيد كلمة المرور"
+                        placeholder="تأكيد كلمة المرور"
+                        required
+                        className={`${inp} pr-12 pl-12 ${confirmPassword && form.password !== confirmPassword ? 'border-red-400 focus:border-red-500' : confirmPassword && form.password === confirmPassword ? 'border-green-400' : ''}`}
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                    />
+                    <button type="button" aria-label="عرض تأكيد كلمة المرور" title="عرض تأكيد كلمة المرور" onClick={() => setShowConfirmPass(p => !p)}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600">
+                        {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    {confirmPassword && form.password !== confirmPassword && (
+                        <p className="text-red-500 text-xs font-bold mt-1 pr-1">كلمة المرور غير متطابقة</p>
+                    )}
+                    {confirmPassword && form.password === confirmPassword && (
+                        <p className="text-green-500 text-xs font-bold mt-1 pr-1">✓ كلمة المرور متطابقة</p>
+                    )}
                 </div>
 
                 {accountType === 'buyer' && (
