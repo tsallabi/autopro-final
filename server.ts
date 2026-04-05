@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import multer from "multer";
 import fs from "fs";
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
 const SALT_ROUNDS = 10;
@@ -34,16 +35,50 @@ const auctionTimers: Record<string, AuctionTimer> = {};
 // Global memory state for performance
 let GLOBAL_EXCHANGE_RATE = 1;
 
-// Global Email Transporter
+// Global Email Transporter (fallback SMTP)
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  secure: process.env.SMTP_SECURE === 'true',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: false,
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS?.replace(/"/g, '') // remove quotes if any
-  }
+    pass: process.env.SMTP_PASS?.replace(/"/g, '')
+  },
+  tls: { rejectUnauthorized: false }
 });
+
+// Resend API (primary — works on Render free tier)
+const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+// Unified email sender — uses Resend if API key set, falls back to SMTP
+async function sendEmail(opts: { to: string; subject: string; html: string; from?: string }) {
+  const fromAddr = opts.from || process.env.EMAIL_FROM || '"ليبيا أوتو برو" <noreply@autopro.ac>';
+  if (resendClient) {
+    try {
+      const result = await resendClient.emails.send({
+        from: fromAddr,
+        to: [opts.to],
+        subject: opts.subject,
+        html: opts.html,
+      });
+      console.log(`[RESEND] Email sent to ${opts.to} — id: ${(result.data as any)?.id || 'ok'}`);
+      return result;
+    } catch (err: any) {
+      console.error(`[RESEND ERROR] ${err?.message}. Falling back to SMTP.`);
+    }
+  }
+  // SMTP fallback
+  try {
+    await transporter.sendMail({ from: fromAddr, to: opts.to, subject: opts.subject, html: opts.html });
+    console.log(`[SMTP] Email sent to ${opts.to}`);
+  } catch (smtpErr: any) {
+    console.error(`[SMTP ERROR] ${smtpErr?.message}`);
+    throw smtpErr;
+  }
+}
+
+// Site base URL (for verification links)
+const SITE_URL = process.env.SITE_URL || 'https://autopro-final.onrender.com';
 
 
 // Initialize Database
@@ -1993,7 +2028,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       db.prepare(`INSERT OR REPLACE INTO verification_codes(email, code, expiresAt) VALUES(?, ?, ?)`).run(email, token, expiresAt);
 
-      const verifyLink = `https://autopro.ac/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+      const verifyLink = `${SITE_URL}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
       // Return user data IMMEDIATELY — don't wait for email
       const newUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
@@ -2002,24 +2037,31 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Send email & notifications in background (non-blocking)
       setImmediate(async () => {
         try {
-          await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
+          await sendEmail({
             to: email,
-            subject: 'يرجى توثيق بريدك الإلكتروني - AUTOPRO',
+            subject: 'يرجى توثيق بريدك الإلكتروني - ليبيا أوتو برو',
             html: `
-              <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
-                <h2 style="color: #ea580c;">أهلاً ${firstName} 👋</h2>
-                <p>شكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.</p>
-                <p>لتأكيد حسابك واستكمال إجراءات التسجيل، يرجى النقر على الزر أدناه:</p>
-                <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0;">توثيق الحساب الآن</a>
-                <p style="font-size: 12px; color: #64748b;">هذا الرابط صالح لمدة 24 ساعة.</p>
+              <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; background: #f8fafc; border-radius: 16px; color: #0f172a;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                  <h1 style="color: #ea580c; font-size: 28px; margin: 0;">AUTOPRO AUCTIONS</h1>
+                  <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">ليبيا أوتو برو للمزادات</p>
+                </div>
+                <h2 style="color: #1e293b;">أهلاً ${firstName} 👋</h2>
+                <p style="line-height: 1.7; color: #475569;">شكراً لتسجيلك في منصة <strong>ليبيا أوتو برو</strong> للمزادات. نحن سعداء بانضمامك!</p>
+                <p style="line-height: 1.7; color: #475569;">لتأكيد بريدك الإلكتروني واستكمال إنشاء حسابك، يرجى النقر على الزر أدناه:</p>
+                <div style="text-align: center; margin: 32px 0;">
+                  <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 16px;">✅ توثيق البريد الإلكتروني</a>
+                </div>
+                <p style="font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px;">
+                  هذا الرابط صالح لمدة 24 ساعة فقط. إذا لم تقم بالتسجيل، يمكنك تجاهل هذا البريد.<br/>
+                  <a href="${verifyLink}" style="color: #ea580c; font-size: 11px; word-break: break-all;">${verifyLink}</a>
+                </p>
               </div>
             `
           });
-          console.log(`[SMTP] Verification email dispatched to ${email}`);
-          console.log(`[WHATSAPP DISPATCH] From: 00353894435368 | To: ${phone} | MSG: مرحباً بك ${firstName}! يرجى مراجعة بريدك الإلكتروني لتوثيق الحساب.`);
+          console.log(`[EMAIL] Verification email sent to ${email}`);
         } catch (mailErr) {
-          console.error(`[SMTP ERROR] Failed to send verification to ${email}:`, mailErr);
+          console.error(`[EMAIL ERROR] Failed to send verification to ${email}:`, mailErr);
         }
 
         // Notify all admins about new registration
@@ -2062,6 +2104,80 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
     } catch (e) {
       res.status(500).send("<h1 style='color:red; text-align:center; padding-top: 50px;'>Verification Failed</h1>");
+    }
+  });
+
+  // ─── Google OAuth ───────────────────────────────────────────────────────────
+  app.post("/api/auth/google", async (req, res) => {
+    const { credential } = req.body; // ID token from Google Identity Services
+    if (!credential) return res.status(400).json({ error: 'credential مطلوب' });
+    try {
+      const { OAuth2Client } = await import('google-auth-library');
+      const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+      if (!GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth غير مُفعّل على الخادم — يرجى إضافة GOOGLE_CLIENT_ID' });
+
+      const gClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+      const ticket = await gClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+      const payload = ticket.getPayload();
+      if (!payload) return res.status(401).json({ error: 'token غير صالح' });
+
+      const { sub: googleId, email, name, given_name, family_name, picture } = payload;
+      if (!email) return res.status(400).json({ error: 'لم يتم استلام البريد الإلكتروني من Google' });
+
+      // Check if user exists by googleId or email
+      let user: any = db.prepare("SELECT * FROM users WHERE googleId = ? OR email = ?").get(googleId, email);
+
+      if (user) {
+        // Link googleId if not already linked
+        if (!user.googleId) {
+          db.prepare("UPDATE users SET googleId = ?, profilePic = COALESCE(profilePic, ?) WHERE id = ?")
+            .run(googleId, picture || null, user.id);
+        }
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+      } else {
+        // Register new user via Google
+        const id = `user-g-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const joinDate = new Date().toISOString();
+        const buyingPower = 0;
+        db.prepare(`
+          INSERT INTO users(id, firstName, lastName, email, role, status, googleId, profilePic,
+            joinDate, buyingPower, commission, country, isEmailVerified)
+          VALUES(?, ?, ?, ?, 'buyer', 'pending_approval', ?, ?, ?, ?, 0, 'ليبيا', 1)
+        `).run(id, given_name || name || 'مستخدم', family_name || 'جوجل', email,
+               googleId, picture || null, joinDate, buyingPower);
+
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+
+        // Welcome notification
+        sendNotification(id, '🎉 مرحباً بك في أوتو برو!', 'تم تسجيلك عبر حساب Google. حسابك قيد المراجعة.', 'success', 'registration_success');
+
+        // Admin notification
+        const admins: any[] = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
+        admins.forEach((admin: any) => {
+          sendInternalMessage(id, admin.id, `📩 تسجيل جديد عبر Google: ${given_name} ${family_name}`,
+            `مستخدم جديد سجّل عبر Google:\nالاسم: ${given_name} ${family_name}\nالبريد: ${email}`);
+        });
+
+        // Send welcome email (non-blocking)
+        setImmediate(async () => {
+          try {
+            await sendEmail({
+              to: email,
+              subject: 'مرحباً بك في ليبيا أوتو برو 🎉',
+              html: `<div dir="rtl" style="font-family:Arial,sans-serif;padding:24px;background:#f8fafc;border-radius:12px;">
+                <h2 style="color:#ea580c;">أهلاً ${given_name} 👋</h2>
+                <p>تم تسجيلك بنجاح عبر حساب Google. حسابك قيد المراجعة من فريق الإدارة.</p>
+                <p style="font-size:12px;color:#94a3b8;">ليبيا أوتو برو للمزادات</p>
+              </div>`
+            });
+          } catch (_) {}
+        });
+      }
+
+      res.json(user);
+    } catch (err: any) {
+      console.error('[GOOGLE AUTH ERROR]', err?.message);
+      res.status(401).json({ error: 'فشل التحقق من حساب Google: ' + (err?.message || 'خطأ غير معروف') });
     }
   });
 
