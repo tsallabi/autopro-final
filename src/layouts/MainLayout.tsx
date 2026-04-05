@@ -12,7 +12,7 @@ export const MainLayout = () => {
     location.pathname.startsWith('/dashboard');
 
   // Pages that show navbar but not the footer
-  const hideFooter = location.pathname.startsWith('/car-details');
+  const hideFooter = location.pathname.startsWith('/car-details') || location.pathname === '/deposit';
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-orange-500/30">

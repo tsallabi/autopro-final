@@ -87,6 +87,11 @@ export interface User {
   commercialRegister?: string;
   showroomLicense?: string;
   iban?: string;
+  token?: string;
+  walletBalance?: number;
+  avatar?: string;
+  googleId?: string;
+  facebookId?: string;
 }
 
 export interface Invoice {

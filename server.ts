@@ -13,6 +13,7 @@ import multer from "multer";
 import fs from "fs";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import Stripe from "stripe";
 
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
 const SALT_ROUNDS = 10;
@@ -35,14 +36,14 @@ const auctionTimers: Record<string, AuctionTimer> = {};
 // Global memory state for performance
 let GLOBAL_EXCHANGE_RATE = 1;
 
-// Global Email Transporter (fallback SMTP)
+// Global Email Transporter (SMTP — mail.privateemail.com for autopro.ac)
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,
+  host: process.env.SMTP_HOST || 'mail.privateemail.com',
+  port: parseInt(process.env.SMTP_PORT || '465'),
+  secure: (process.env.SMTP_PORT || '465') === '465',
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS?.replace(/"/g, '')
+    user: process.env.SMTP_USER || 'info@autopro.ac',
+    pass: process.env.SMTP_PASS?.replace(/"/g, '') || 'T1234567t'
   },
   tls: { rejectUnauthorized: false }
 });
@@ -50,9 +51,14 @@ const transporter = nodemailer.createTransport({
 // Resend API (primary — works on Render free tier)
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+// Stripe (for deposit payments)
+const stripeClient = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
 // Unified email sender — uses Resend if API key set, falls back to SMTP
 async function sendEmail(opts: { to: string; subject: string; html: string; from?: string }) {
-  const fromAddr = opts.from || process.env.EMAIL_FROM || '"ليبيا أوتو برو" <noreply@autopro.ac>';
+  const fromAddr = opts.from || process.env.EMAIL_FROM || '"AutoPro Libya | أوتو برو" <info@autopro.ac>';
   if (resendClient) {
     try {
       const result = await resendClient.emails.send({
@@ -1749,6 +1755,101 @@ async function startServer() {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ======= STRIPE PAYMENT ROUTES =======
+
+  // POST /api/payments/create-intent — create Stripe PaymentIntent for deposit
+  app.post("/api/payments/create-intent", async (req, res) => {
+    try {
+      const { amount, currency, type } = req.body;
+      if (!amount || amount <= 0) return res.status(400).json({ error: "مبلغ غير صالح" });
+      if (currency === 'USD' && amount < 500) return res.status(400).json({ error: "الحد الأدنى للعربون خارج ليبيا هو $500" });
+      if (currency === 'LYD' && amount < 1000) return res.status(400).json({ error: "الحد الأدنى للعربون داخل ليبيا هو 1,000 دينار ليبي" });
+
+      if (!stripeClient) {
+        return res.json({ clientSecret: 'demo_secret_' + Date.now(), demo: true });
+      }
+      const amountInCents = currency === 'USD'
+        ? Math.round(amount * 100)
+        : Math.round((amount / 7.0) * 100);
+      const paymentIntent = await stripeClient.paymentIntents.create({
+        amount: amountInCents,
+        currency: 'usd',
+        metadata: { originalAmount: String(amount), originalCurrency: currency, type: type || 'deposit' },
+        description: `AutoPro Libya — عربون — ${amount} ${currency}`,
+      });
+      res.json({ clientSecret: paymentIntent.client_secret });
+    } catch (err: any) {
+      console.error('[STRIPE CREATE INTENT]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/payments/confirm-deposit — credit user wallet after Stripe payment
+  app.post("/api/payments/confirm-deposit", async (req, res) => {
+    try {
+      const { paymentIntentId, amount, currency, demo } = req.body;
+      if (!paymentIntentId || !amount) return res.status(400).json({ error: "بيانات غير مكتملة" });
+      const authHeader = req.headers['authorization'];
+      const token = authHeader?.split(' ')[1];
+      if (!token) return res.status(401).json({ error: "غير مخوَّل" });
+      let userId: string;
+      try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        userId = decoded.id;
+      } catch {
+        return res.status(401).json({ error: "جلسة منتهية" });
+      }
+      if (!demo && stripeClient) {
+        const pi = await stripeClient.paymentIntents.retrieve(paymentIntentId);
+        if (pi.status !== 'succeeded') return res.status(400).json({ error: "لم يكتمل الدفع بعد" });
+      }
+      const user: any = db.prepare("SELECT deposit, buyingPower FROM users WHERE id = ?").get(userId);
+      if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+      const newDeposit = (user.deposit || 0) + Number(amount);
+      const newBuyingPower = newDeposit * 10;
+      db.prepare("UPDATE users SET deposit = ?, buyingPower = ? WHERE id = ?").run(newDeposit, newBuyingPower, userId);
+      try {
+        const txId = `tx-stripe-${Date.now()}`;
+        db.prepare(`INSERT INTO transactions (id, userId, amount, type, status, createdAt) VALUES (?,?,?,?,?,?)`)
+          .run(txId, userId, amount, 'deposit', 'completed', new Date().toISOString());
+      } catch (_) {}
+      setImmediate(() => {
+        sendNotification(userId, '✅ تم إيداع العربون بنجاح',
+          `تم إضافة ${amount} ${currency === 'LYD' ? 'د.ل' : '$'} إلى محفظتك. قوتك الشرائية: ${newBuyingPower.toLocaleString()} ${currency === 'LYD' ? 'د.ل' : '$'}.`,
+          'success', '/dashboard/user');
+        const userRow: any = db.prepare("SELECT email, firstName FROM users WHERE id = ?").get(userId);
+        if (userRow?.email) {
+          sendEmail({
+            to: userRow.email,
+            subject: '✅ تأكيد إيداع العربون — AutoPro Libya',
+            html: `<div dir="rtl" style="font-family:Cairo,Arial,sans-serif;max-width:600px;margin:0 auto;background:#1a1a2e;color:#e2e8f0;border-radius:16px;overflow:hidden;">
+              <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:32px;text-align:center;">
+                <h1 style="color:white;margin:0;font-size:24px;">✅ تم إيداع العربون بنجاح</h1>
+              </div>
+              <div style="padding:32px;">
+                <p>مرحباً <strong style="color:#fff">${userRow.firstName}</strong>،</p>
+                <p>تم إيداع عربونك بنجاح وتفعيل حسابك في مزادات AutoPro Libya.</p>
+                <div style="background:#0f172a;border-radius:12px;padding:20px;margin:20px 0;">
+                  <p><span style="color:#94a3b8;">المبلغ المودَع: </span><strong style="color:#f97316;font-size:20px;">${amount} ${currency === 'LYD' ? 'دينار ليبي' : 'دولار'}</strong></p>
+                  <p><span style="color:#94a3b8;">القوة الشرائية: </span><strong style="color:#22c55e;">${newBuyingPower.toLocaleString()} ${currency === 'LYD' ? 'د.ل' : '$'}</strong></p>
+                  <p><span style="color:#94a3b8;">رقم المعاملة: </span><code style="color:#94a3b8;font-size:12px;">${paymentIntentId}</code></p>
+                </div>
+                <p>يمكنك الآن المزايدة على أي سيارة في المنصة!</p>
+                <div style="text-align:center;margin-top:24px;">
+                  <a href="${SITE_URL}/marketplace" style="background:linear-gradient(135deg,#f97316,#ea580c);color:white;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;">🏎️ تصفح المزادات</a>
+                </div>
+              </div>
+            </div>`,
+          });
+        }
+      });
+      res.json({ success: true, newDeposit, newBuyingPower });
+    } catch (err: any) {
+      console.error('[STRIPE CONFIRM DEPOSIT]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ======= INSPECTION ROUTES =======
   app.get("/api/inspections/:userId", (req, res) => {
     try {
@@ -2016,11 +2117,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Send welcome notification using template
       sendNotification(id, '🎉 مرحباً بك في أوتو برو!', 'شكراً لتسجيلك في المنصة. حسابك قيد المراجعة حالياً.', 'success', 'registration_success');
 
-      // Send welcome message to the new user from system (admin-1) - keeping legacy internal message for consistency
+      // Send welcome message to the new user from system (admin-1)
       sendInternalMessage('admin-1', id,
-        '🎉 مرحباً بك في ليبيا أوتو برو!',
-        `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.\n\nحسابك الآن قيد المراجعة من قبل فريق الإدارة. سيتم إشعارك فور الموافقة على حسابك.\n\n📋 الخطوات القادمة:\n1. انتظر موافقة المدير على حسابك\n2. بعد التفعيل، قم بإيداع العربون لتفعيل القوة الشرائية\n3. ابدأ المزايدة على السيارات!\n\n💰 ملاحظة مهمة: القوة الشرائية = العربون × 10\nمثال: إيداع $5,000 = قوة شرائية $50,000\n\nفريق ليبيا أوتو برو 🚗`
+        '🎉 مرحباً بك في AutoPro Libya!',
+        `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة AutoPro Libya للمزادات. نحن سعداء بانضمامك!\n\nحسابك الآن قيد المراجعة من فريق الإدارة. سيتم إشعارك فور الموافقة.\n\n📋 الخطوات القادمة:\n1. ✅ انتظر موافقة المدير على حسابك\n2. 💰 ادفع العربون لتفعيل قوتك الشرائية:\n   👉 ${SITE_URL}/deposit\n   • خارج ليبيا: الحد الأدنى $500 دولار\n   • داخل ليبيا: الحد الأدنى 1,000 دينار ليبي\n3. 🏎️ ابدأ المزايدة على السيارات!\n\n💡 معلومة مهمة:\nالقوة الشرائية = العربون × 10\nمثال: إيداع $500 = قوة شرائية $5,000\n\nفريق AutoPro Libya 🚗`
       );
+      // Also send deposit link as a direct notification
+      sendNotification(id, '💰 خطوة مهمة: ادفع العربون',
+        `لتفعيل قوتك الشرائية والمزايدة، ادفع العربون (الحد الأدنى خارج ليبيا $500 أو 1,000 د.ل داخل ليبيا).`,
+        'info', '/deposit');
 
       // Generate Verification Token
       const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -2047,13 +2152,24 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">ليبيا أوتو برو للمزادات</p>
                 </div>
                 <h2 style="color: #1e293b;">أهلاً ${firstName} 👋</h2>
-                <p style="line-height: 1.7; color: #475569;">شكراً لتسجيلك في منصة <strong>ليبيا أوتو برو</strong> للمزادات. نحن سعداء بانضمامك!</p>
+                <p style="line-height: 1.7; color: #475569;">شكراً لتسجيلك في منصة <strong>AutoPro Libya</strong> للمزادات. نحن سعداء بانضمامك!</p>
                 <p style="line-height: 1.7; color: #475569;">لتأكيد بريدك الإلكتروني واستكمال إنشاء حسابك، يرجى النقر على الزر أدناه:</p>
                 <div style="text-align: center; margin: 32px 0;">
                   <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 16px;">✅ توثيق البريد الإلكتروني</a>
                 </div>
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 20px; margin: 24px 0;">
+                  <h3 style="color: #c2410c; margin: 0 0 12px;">💰 الخطوة التالية: ادفع العربون</h3>
+                  <p style="color: #475569; margin: 0 0 8px; font-size: 14px;">بعد تفعيل حسابك، ستحتاج إلى إيداع عربون للمزايدة:</p>
+                  <ul style="color: #475569; font-size: 14px; margin: 0 0 16px; padding-right: 20px;">
+                    <li>خارج ليبيا: الحد الأدنى <strong>$500 دولار</strong></li>
+                    <li>داخل ليبيا: الحد الأدنى <strong>1,000 دينار ليبي</strong></li>
+                  </ul>
+                  <div style="text-align: center;">
+                    <a href="${SITE_URL}/deposit" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">💳 صفحة دفع العربون</a>
+                  </div>
+                </div>
                 <p style="font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px;">
-                  هذا الرابط صالح لمدة 24 ساعة فقط. إذا لم تقم بالتسجيل، يمكنك تجاهل هذا البريد.<br/>
+                  رابط التوثيق صالح لمدة 24 ساعة فقط. إذا لم تقم بالتسجيل، يمكنك تجاهل هذا البريد.<br/>
                   <a href="${verifyLink}" style="color: #ea580c; font-size: 11px; word-break: break-all;">${verifyLink}</a>
                 </p>
               </div>
