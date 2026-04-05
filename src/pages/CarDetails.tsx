@@ -251,7 +251,7 @@ export const CarDetails = () => {
 
   if (!car) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-500">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-500 pt-24">
         <h2 className="text-2xl font-bold mb-4">البيانات غير متوفرة</h2>
         <button onClick={() => navigate(-1)} className="bg-orange-500 text-white px-6 py-2 rounded-xl font-bold">
           العودة للخلف
@@ -283,7 +283,7 @@ export const CarDetails = () => {
   // 📋 STATIC VIEW: upcoming / offer_market / closed
   // ============================================================
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir="rtl">
+    <div className="max-w-7xl mx-auto px-4 pt-24 pb-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir="rtl">
       {/* Back Button */}
       <button
         onClick={() => navigate(-1)}

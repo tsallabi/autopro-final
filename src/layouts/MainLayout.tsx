@@ -9,8 +9,10 @@ export const MainLayout = () => {
   // Pages that have their own complete custom layout
   const hideLayout =
     ['/marketplace', '/auth'].includes(location.pathname) ||
-    location.pathname.startsWith('/dashboard') ||
-    location.pathname.startsWith('/car-details');
+    location.pathname.startsWith('/dashboard');
+
+  // Pages that show navbar but not the footer
+  const hideFooter = location.pathname.startsWith('/car-details');
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-orange-500/30">
@@ -19,7 +21,7 @@ export const MainLayout = () => {
       <main className="flex-grow pb-24 md:pb-0">
         <Outlet />
       </main>
-      {!hideLayout && <SiteFooter />}
+      {!hideLayout && !hideFooter && <SiteFooter />}
     </div>
   );
 };
