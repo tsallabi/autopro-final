@@ -1994,42 +1994,42 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       const verifyLink = `https://autopro.ac/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
-      // Dispatch Email via Transporter
-      try {
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
-          to: email,
-          subject: 'يرجى توثيق بريدك الإلكتروني - AUTOPRO',
-          html: `
-            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
-              <h2 style="color: #ea580c;">أهلاً ${firstName} 👋</h2>
-              <p>شكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.</p>
-              <p>لتأكيد حسابك واستكمال إجراءات التسجيل، يرجى النقر على الزر أدناه:</p>
-              <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0;">توثيق الحساب الآن</a>
-              <p style="font-size: 12px; color: #64748b;">هذا الرابط صالح لمدة 24 ساعة.</p>
-            </div>
-          `
-        });
-        console.log(`[SMTP] Verification email dispatched to ${email}`);
-
-        // WhatsApp Registration Welcome
-        console.log(`[WHATSAPP DISPATCH] From: 00353894435368 | To: ${phone} | MSG: مرحباً بك ${firstName}! يرجى مراجعة بريدك الإلكتروني لتوثيق الحساب.`);
-      } catch (mailErr) {
-        console.error(`[SMTP ERROR] Failed to send verification to ${email}:`, mailErr);
-      }
-
-      // Notify all admins about new registration
-      const admins: any[] = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
-      admins.forEach((admin: any) => {
-        sendInternalMessage(id, admin.id,
-          `📩 طلب انضمام جديد: ${firstName} ${lastName}`,
-          `طلب انضمام جديد بانتظار الموافقة:\n\nالاسم: ${firstName} ${lastName}\nالبريد: ${email}\nالهاتف: ${phone}\nنوع الحساب: ${role || 'buyer'}\nالبلد: ${country || 'غير محدد'}\nالهوية: ${nationalId || 'غير مرفقة'}\n\nيرجى مراجعة الطلب من لوحة الإدارة → طلبات الانضمام.`
-        );
-      });
-
-      // Return user data (but with pending status)
+      // Return user data IMMEDIATELY — don't wait for email
       const newUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       res.json(newUser);
+
+      // Send email & notifications in background (non-blocking)
+      setImmediate(async () => {
+        try {
+          await transporter.sendMail({
+            from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
+            to: email,
+            subject: 'يرجى توثيق بريدك الإلكتروني - AUTOPRO',
+            html: `
+              <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
+                <h2 style="color: #ea580c;">أهلاً ${firstName} 👋</h2>
+                <p>شكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.</p>
+                <p>لتأكيد حسابك واستكمال إجراءات التسجيل، يرجى النقر على الزر أدناه:</p>
+                <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0;">توثيق الحساب الآن</a>
+                <p style="font-size: 12px; color: #64748b;">هذا الرابط صالح لمدة 24 ساعة.</p>
+              </div>
+            `
+          });
+          console.log(`[SMTP] Verification email dispatched to ${email}`);
+          console.log(`[WHATSAPP DISPATCH] From: 00353894435368 | To: ${phone} | MSG: مرحباً بك ${firstName}! يرجى مراجعة بريدك الإلكتروني لتوثيق الحساب.`);
+        } catch (mailErr) {
+          console.error(`[SMTP ERROR] Failed to send verification to ${email}:`, mailErr);
+        }
+
+        // Notify all admins about new registration
+        const admins: any[] = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
+        admins.forEach((admin: any) => {
+          sendInternalMessage(id, admin.id,
+            `📩 طلب انضمام جديد: ${firstName} ${lastName}`,
+            `طلب انضمام جديد بانتظار الموافقة:\n\nالاسم: ${firstName} ${lastName}\nالبريد: ${email}\nالهاتف: ${phone}\nنوع الحساب: ${role || 'buyer'}\nالبلد: ${country || 'غير محدد'}\nالهوية: ${nationalId || 'غير مرفقة'}\n\nيرجى مراجعة الطلب من لوحة الإدارة → طلبات الانضمام.`
+          );
+        });
+      });
     } catch (e) {
       console.error(e);
       res.status(400).json({ error: "البريد الإلكتروني مسجل مسبقاً أو بيانات غير صالحة" });

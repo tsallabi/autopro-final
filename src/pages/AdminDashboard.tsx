@@ -5400,15 +5400,15 @@ export const AdminDashboard = () => {
         overflow-y-auto border-l border-slate-800 pb-32 lg:pb-6
       `}>
         <div className="flex items-center justify-between mb-10 px-2 mt-2">
-          <div className="flex items-center gap-3">
-            <img 
-              src="/logo_on_dark.png?v=3" 
-              alt="Logo" 
-              className="h-12 w-auto object-contain rounded-xl shadow-lg bg-white/10" 
+          <div className="flex flex-col items-center gap-1.5 w-full">
+            <img
+              src="/logo_on_dark.png?v=3"
+              alt="Logo"
+              className="h-14 w-auto object-contain rounded-xl shadow-lg"
             />
-            <div>
-              <h1 className="text-xl font-black tracking-tight leading-none text-white">ليبيا AUTO PRO</h1>
-              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (Admin)</span>
+            <div className="text-center">
+              <h1 className="text-sm font-black tracking-tight leading-tight text-white">ليبيا اوتو برو</h1>
+              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (ADMIN)</span>
             </div>
           </div>
           <button 
