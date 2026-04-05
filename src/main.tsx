@@ -5,6 +5,17 @@ import './index.css';
 import './i18n';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
+/* ── Force orange theme-color on all pages (Android Chrome) ── */
+const themeColorMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+if (themeColorMeta) {
+  themeColorMeta.content = '#f97316';
+} else {
+  const m = document.createElement('meta');
+  m.name = 'theme-color';
+  m.content = '#f97316';
+  document.head.appendChild(m);
+}
+
 /* ── Ensure Service Workers are Unregistered in Dev ── */
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {

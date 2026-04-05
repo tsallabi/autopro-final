@@ -299,8 +299,8 @@ export const Home = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Action Buttons */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl">
+            {/* Action Buttons — hidden on mobile to avoid crowding navbar */}
+            <div className="hidden sm:flex items-center gap-1 bg-slate-100 p-1 rounded-2xl">
               <div className="relative" ref={messagesRef}>
                 <button
                   title="الرسائل"
@@ -392,7 +392,7 @@ export const Home = () => {
                 </button>
               </div>
             ) : (
-              <button onClick={() => navigate('/auth')} className="bg-orange-600 text-white px-6 py-2.5 rounded-2xl font-black text-sm hover:bg-orange-700 transition-all shadow-lg shadow-orange-500/20 active:scale-95">
+              <button onClick={() => navigate('/auth')} className="hidden sm:block bg-orange-600 text-white px-6 py-2.5 rounded-2xl font-black text-sm hover:bg-orange-700 transition-all shadow-lg shadow-orange-500/20 active:scale-95">
                 {t('nav.loginRegister')}
               </button>
             )}
