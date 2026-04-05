@@ -1757,6 +1757,18 @@ async function startServer() {
 
   // ======= STRIPE PAYMENT ROUTES =======
 
+  // GET /api/payments/stripe-status — check if Stripe card payments are enabled
+  app.get("/api/payments/stripe-status", async (_req, res) => {
+    try {
+      if (!stripeClient) return res.json({ available: false, reason: 'no_key' });
+      const account = await stripeClient.accounts.retrieve();
+      const available = account.charges_enabled === true;
+      res.json({ available, chargesEnabled: account.charges_enabled, detailsSubmitted: account.details_submitted });
+    } catch (err: any) {
+      res.json({ available: false, reason: err.message });
+    }
+  });
+
   // POST /api/payments/create-intent — create Stripe PaymentIntent for deposit
   app.post("/api/payments/create-intent", async (req, res) => {
     try {
