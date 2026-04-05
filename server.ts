@@ -617,10 +617,12 @@ db.exec("PRAGMA foreign_keys = ON;");
   } catch (e) { /* Column already exists */ }
 });
 
-// 3b. Ensure 'method' column exists in transactions
-try {
-  db.exec(`ALTER TABLE transactions ADD COLUMN method TEXT DEFAULT 'bank_transfer'`);
-} catch (e) { /* Column already exists */ }
+// 3b. Ensure extra columns exist in transactions
+try { db.exec(`ALTER TABLE transactions ADD COLUMN method TEXT DEFAULT 'bank_transfer'`); } catch (_) { }
+try { db.exec(`ALTER TABLE transactions ADD COLUMN referenceNo TEXT`); } catch (_) { }
+try { db.exec(`ALTER TABLE transactions ADD COLUMN notes TEXT`); } catch (_) { }
+try { db.exec(`ALTER TABLE transactions ADD COLUMN currency TEXT DEFAULT 'USD'`); } catch (_) { }
+try { db.exec(`ALTER TABLE transactions ADD COLUMN adminNote TEXT`); } catch (_) { }
 
 // ======= PHASE 4: SELLER WALLET TABLES =======
 const initLibyanMarketPrices = () => {
@@ -3896,27 +3898,43 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   app.post("/api/deposit", (req, res) => {
-    const { userId, amount, method = 'bank_transfer' } = req.body;
+    const { userId, amount, method = 'bank_transfer', referenceNo, currency = 'USD', notes } = req.body;
     const now = new Date().toISOString();
-    const txId = `tx - ${Date.now()} `;
+    const txId = `tx-dep-${Date.now()}`;
 
     try {
-      // 1. Record transaction as PENDING first
-      // Note: We don't update user balance yet!
-      db.prepare(`
-        INSERT INTO transactions(id, userId, amount, type, status, timestamp, method)
-      VALUES(?, ?, ?, 'deposit', 'pending', ?, ?)
-      `).run(txId, userId, amount, now, method);
+      if (!userId || !amount || Number(amount) <= 0) {
+        return res.status(400).json({ error: "بيانات غير مكتملة" });
+      }
 
-      // 2. Notify Admin about new deposit request
+      // Get user info for notification
+      const userRow: any = db.prepare("SELECT firstName, lastName, email from users WHERE id = ?").get(userId);
+      const userName = userRow ? `${userRow.firstName} ${userRow.lastName}` : `ID: ${userId}`;
+
+      // Record transaction as PENDING (no balance update until admin approves)
+      db.prepare(`
+        INSERT INTO transactions(id, userId, amount, type, status, timestamp, method, referenceNo, currency, notes)
+        VALUES(?,?,?,'deposit','pending',?,?,?,?,?)
+      `).run(txId, userId, Number(amount), now, method, referenceNo || null, currency, notes || null);
+
+      // Notify admin about new deposit request
+      const methodLabel = method === 'wise' ? 'Wise (تحويل دولي)' :
+                          method === 'bank_lyd' ? 'تحويل بنكي ليبي (دينار)' :
+                          method === 'sadad' ? 'سداد (مدار)' :
+                          method === 'tadawul' ? 'تداول (نوماك)' : 'تحويل بنكي';
+      sendNotification('admin-1',
+        '🆕 طلب عربون جديد',
+        `${userName} يطلب إيداع ${currency === 'LYD' ? amount.toLocaleString() + ' د.ل' : '$' + Number(amount).toLocaleString()} عبر ${methodLabel}${referenceNo ? '. المرجع: ' + referenceNo : ''}`,
+        'info'
+      );
       sendInternalMessage(userId, 'admin-1',
         '🆕 طلب إيداع عربون جديد',
-        `قام العميل(ID: ${userId}) بطلب إيداع مبلغ $${amount.toLocaleString()} عبر ${method}.\nيرجى مراجعة التحويل وتأكيده.`
+        `قام العميل ${userName} (${userRow?.email || userId}) بطلب إيداع مبلغ ${currency === 'LYD' ? amount.toLocaleString() + ' د.ل' : '$' + Number(amount).toLocaleString()} عبر ${methodLabel}.\n${referenceNo ? 'رقم المرجع: ' + referenceNo + '\n' : ''}يرجى مراجعة التحويل وتأكيده في لوحة تحكم الإدارة.`
       );
 
       res.json({ success: true, message: "تم إرسال طلب الإيداع بنجاح. سيتم تحديث رصيدك بعد مراجعة الإدارة.", txId });
     } catch (err) {
-      console.error(err);
+      console.error('[DEPOSIT]', err);
       res.status(500).json({ error: "فشل إرسال طلب الإيداع" });
     }
   });
@@ -3928,24 +3946,111 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       const tx: any = db.prepare("SELECT * FROM transactions WHERE id = ? AND status = 'pending'").get(txId);
       if (!tx) return res.status(404).json({ error: "المعاملة غير موجودة أو تم معالجتها مسبقاً" });
 
+      const amtLabel = tx.currency === 'LYD'
+        ? `${Number(tx.amount).toLocaleString()} دينار ليبي`
+        : `$${Number(tx.amount).toLocaleString()}`;
+
       db.transaction(() => {
         // 1. Confirm transaction
         db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ?").run(txId);
 
-        // 2. Update user balance and buying power
-        db.prepare("UPDATE users SET deposit = deposit + ?, buyingPower = (deposit + ?) * 10 WHERE id = ?").run(tx.amount, tx.amount, tx.userId);
-
-        // 3. Notify user
-        sendInternalMessage('admin-1', tx.userId,
-          '✅ تم تأكيد استلام العربون',
-          `تم تأكيد إيداع مبلغ $${tx.amount.toLocaleString()}. قوتك الشرائية الآن هي $${((tx.amount * 10)).toLocaleString()} إضافية.`
-        );
+        // 2. Update user deposit and buying power (deposit × 10)
+        db.prepare("UPDATE users SET deposit = deposit + ?, buyingPower = (deposit + ?) * 10 WHERE id = ?")
+          .run(tx.amount, tx.amount, tx.userId);
       })();
+
+      // 3. Notify user (outside transaction so DB is already committed)
+      sendNotification(tx.userId,
+        '✅ تم تأكيد العربون!',
+        `تم قبول إيداع ${amtLabel}. القوة الشرائية الجديدة: ${(Number(tx.amount) * 10).toLocaleString()} ${tx.currency === 'LYD' ? 'د.ل' : '$'}. يمكنك المزايدة الآن!`,
+        'success', '/marketplace'
+      );
+      sendInternalMessage('admin-1', tx.userId,
+        '✅ تم تأكيد استلام العربون',
+        `تم تأكيد إيداع ${amtLabel}.\nقوتك الشرائية الآن تجاوزت ${(Number(tx.amount) * 10).toLocaleString()} ${tx.currency === 'LYD' ? 'د.ل' : '$'}.\nيمكنك المشاركة في أي مزاد على المنصة — حظ سعيد!`
+      );
 
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "فشل تأكيد الإيداع" });
     }
+  });
+
+  // POST /api/admin/reject-deposit/:txId — Admin rejects a bank transfer deposit
+  app.post("/api/admin/reject-deposit/:txId", (req, res) => {
+    const { txId } = req.params;
+    const { reason } = req.body;
+    try {
+      const tx: any = db.prepare("SELECT * FROM transactions WHERE id = ? AND status = 'pending'").get(txId);
+      if (!tx) return res.status(404).json({ error: "المعاملة غير موجودة أو تم معالجتها مسبقاً" });
+
+      db.prepare("UPDATE transactions SET status = 'rejected', adminNote = ? WHERE id = ?")
+        .run(reason || 'رُفض من قِبل الإدارة', txId);
+
+      sendNotification(tx.userId,
+        '❌ تم رفض طلب العربون',
+        `للأسف تم رفض طلب إيداع العربون بمبلغ $${Number(tx.amount).toLocaleString()}. السبب: ${reason || 'يرجى التواصل مع الإدارة'}.`,
+        'alert', '/deposit'
+      );
+      sendInternalMessage('admin-1', tx.userId,
+        '❌ تم رفض طلب إيداع العربون',
+        `عزيزي العميل، تم رفض طلب إيداع مبلغ $${Number(tx.amount).toLocaleString()}.\nالسبب: ${reason || 'يرجى التواصل مع الإدارة'}\nيمكنك المحاولة مرة أخرى عبر صفحة الإيداع.`
+      );
+
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "فشل رفض الإيداع" });
+    }
+  });
+
+  // POST /api/payments/stripe-webhook — handle Stripe events
+  app.post("/api/payments/stripe-webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig = req.headers['stripe-signature'] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!stripeClient || !webhookSecret) {
+      return res.status(400).json({ error: 'Stripe not configured' });
+    }
+
+    let event: any;
+    try {
+      event = (stripeClient as any).webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err: any) {
+      console.error('Stripe webhook signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'payment_intent.succeeded') {
+      const pi = event.data.object;
+      const userId = pi.metadata?.userId;
+      const amount = Math.round(pi.amount_received / 100); // Stripe uses cents
+
+      if (userId) {
+        try {
+          const txId = `stripe-${pi.id}`;
+          const existing = db.prepare("SELECT id FROM transactions WHERE id = ?").get(txId);
+          if (!existing) {
+            db.transaction(() => {
+              db.prepare(`INSERT INTO transactions(id, userId, amount, type, status, method, referenceNo, timestamp)
+                VALUES(?,?,?,'deposit','completed','stripe',?,?)`
+              ).run(txId, userId, amount, pi.id, new Date().toISOString());
+
+              db.prepare("UPDATE users SET deposit = deposit + ?, buyingPower = (deposit + ?) * 10 WHERE id = ?")
+                .run(amount, amount, userId);
+            })();
+
+            sendNotification(userId, '✅ تم استلام العربون عبر Stripe',
+              `تم إضافة $${amount.toLocaleString()} كعربون مزايدة. القوة الشرائية محدّثة!`, 'success', '/deposit');
+            sendInternalMessage('admin-1', userId, '✅ إيداع Stripe مؤكد',
+              `تم استلام دفعة Stripe بمبلغ $${amount.toLocaleString()} للمستخدم ${userId}. تمت إضافة القوة الشرائية تلقائياً.`);
+          }
+        } catch (err) {
+          console.error('Failed to process Stripe webhook payment:', err);
+        }
+      }
+    }
+
+    res.json({ received: true });
   });
 
   app.delete("/api/users/:id", (req, res) => {
@@ -4777,9 +4882,21 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { console.error(e); res.status(500).json({ error: "Failed to update settings" }); }
   });
 
-  // Start Vite last
-  if (process.env.NODE_ENV !== "production") {
-    console.log("📦 Initializing Vite Middleware...");
+  // Detect production: NODE_ENV=production OR RENDER env var OR dist folder exists
+  const distPath = path.join(__dirname, "dist");
+  const isProduction = process.env.NODE_ENV === "production"
+    || !!process.env.RENDER
+    || fs.existsSync(distPath);
+
+  if (isProduction) {
+    console.log("🚀 Production mode — serving dist/");
+    app.use(express.static(distPath));
+    // Catch-all: serve React SPA (must be AFTER all /api routes)
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    console.log("📦 Dev mode — initializing Vite Middleware...");
     try {
       const vite = await createViteServer({
         server: { middlewareMode: true },
@@ -4790,13 +4907,6 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (ve) {
       console.error("❌ Vite Initialization Failed:", ve);
     }
-  } else if (process.env.NODE_ENV === "production" || process.env.RENDER) {
-    app.use(express.static(path.join(__dirname, "dist")));
-
-    // Catch-all route to serve React app for client-side routing
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    });
   }
 }
 

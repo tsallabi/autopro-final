@@ -3453,69 +3453,113 @@ export const AdminDashboard = () => {
 
             <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-right min-w-[1000px]">
+                <table className="w-full text-right min-w-[1100px]">
                 <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
                   <tr>
-                    <th className="p-6">المزايد</th>
-                    <th className="p-6">المبلغ المطللوب</th>
-                    <th className="p-6">طريقة الدفع</th>
-                    <th className="p-6">التاريخ</th>
-                    <th className="p-6 text-center">القرار المالي</th>
+                    <th className="p-5">المزايد</th>
+                    <th className="p-5">المبلغ</th>
+                    <th className="p-5">طريقة الدفع</th>
+                    <th className="p-5">رقم المرجع</th>
+                    <th className="p-5">التاريخ</th>
+                    <th className="p-5 text-center">القرار المالي</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pendingDeposits.length > 0 ? pendingDeposits.map(tx => (
-                    <tr key={tx.id} className="hover:bg-slate-50 transition-all group">
-                      <td className="p-6">
+                  {pendingDeposits.length > 0 ? pendingDeposits.map((tx: any) => {
+                    const methodLabels: Record<string,string> = {
+                      bank_transfer: '🏦 تحويل بنكي',
+                      bank_lyd: '🏦 تحويل ليبي (LYD)',
+                      wise: '💸 Wise دولي',
+                      sadad: '📱 سداد (مدار)',
+                      tadawul: '💳 تداول (نوماك)',
+                      stripe: '💳 Stripe',
+                    };
+                    const amtLabel = tx.currency === 'LYD'
+                      ? `${Number(tx.amount).toLocaleString()} د.ل`
+                      : `$${Number(tx.amount).toLocaleString()}`;
+                    const userName = [tx.firstName, tx.lastName].filter(Boolean).join(' ') || `مستخدم #${tx.userId}`;
+                    return (
+                    <tr key={tx.id} className="hover:bg-orange-50/40 transition-all group">
+                      <td className="p-5">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black">
-                            {tx.userId.slice(-2)}
+                          <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-sm">
+                            {(tx.firstName || 'U').charAt(0)}
                           </div>
                           <div>
-                            <div className="font-black text-slate-900">مستخدم #{tx.userId}</div>
-                            <div className="text-[10px] text-slate-400 font-bold">معرّف المعاملة: {tx.id}</div>
+                            <div className="font-black text-slate-900 text-sm">{userName}</div>
+                            <div className="text-[10px] text-slate-400 font-bold">{tx.id}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="p-6">
-                        <span className="text-xl font-black text-emerald-600 font-mono">${tx.amount.toLocaleString()}</span>
+                      <td className="p-5">
+                        <span className="text-lg font-black text-emerald-600 font-mono">{amtLabel}</span>
                       </td>
-                      <td className="p-6">
-                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase">
-                          {tx.method === 'bank_transfer' ? 'تحويل بنكي' : tx.method}
+                      <td className="p-5">
+                        <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-black">
+                          {methodLabels[tx.method] || tx.method || 'تحويل بنكي'}
                         </span>
                       </td>
-                      <td className="p-6 text-slate-500 font-bold text-xs">
+                      <td className="p-5">
+                        {tx.referenceNo ? (
+                          <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded-lg text-[11px] font-mono select-all">{tx.referenceNo}</code>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="p-5 text-slate-500 font-bold text-xs">
                         {new Date(tx.timestamp).toLocaleString('ar-EG')}
                       </td>
-                      <td className="p-6">
+                      <td className="p-5">
                         <div className="flex justify-center gap-2">
                           <button
                             onClick={() => {
-                              showConfirm(`هل تؤكد استلام مبلغ $${tx.amount}؟ سيتم تفعيل القوة الشرائية فوراً.`, async () => {
-                                const res = await fetch(`/api/admin/approve-deposit/${tx.id}`, { method: 'POST' });
-                                if (res.ok) {
-                                  setPendingDeposits(prev => prev.filter(p => p.id !== tx.id));
-                                  showAlert('تم تأكيد الإيداع وتفعيل القوة الشرائية للمستخدم', 'success');
+                              showConfirm(
+                                `هل تؤكد استلام ${amtLabel} من ${userName}؟\nسيتم تفعيل القوة الشرائية فوراً.`,
+                                async () => {
+                                  const res = await fetch(`/api/admin/approve-deposit/${tx.id}`, { method: 'POST' });
+                                  if (res.ok) {
+                                    setPendingDeposits((prev: any[]) => prev.filter(p => p.id !== tx.id));
+                                    showAlert(`✅ تم تأكيد إيداع ${userName} وتفعيل القوة الشرائية`, 'success');
+                                  } else {
+                                    const d = await res.json().catch(() => ({}));
+                                    showAlert(d.error || 'فشل تأكيد الإيداع');
+                                  }
                                 }
-                              });
+                              );
                             }}
-                            className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-black text-xs hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/10 active:scale-95"
+                            className="bg-emerald-600 text-white px-5 py-2 rounded-xl font-black text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 active:scale-95 flex items-center gap-1.5"
                           >
-                            تأكيد الاستلام ✅
+                            <CheckCircle2 className="w-4 h-4" />
+                            قبول
                           </button>
-                          <button aria-label="زر" title="زر"
-                            className="bg-red-50 text-red-500 p-2.5 rounded-xl hover:bg-red-500 hover:text-white transition-all"
-                            onClick={() => window.prompt('سبب رفض الإيداع:')}
+                          <button
+                            className="bg-red-50 text-red-500 px-4 py-2 rounded-xl font-black text-xs hover:bg-red-500 hover:text-white transition-all flex items-center gap-1.5"
+                            onClick={() => {
+                              const reason = window.prompt(`سبب رفض إيداع ${userName}:`);
+                              if (reason !== null) {
+                                fetch(`/api/admin/reject-deposit/${tx.id}`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ reason }),
+                                }).then(res => {
+                                  if (res.ok) {
+                                    setPendingDeposits((prev: any[]) => prev.filter(p => p.id !== tx.id));
+                                    showAlert(`تم رفض طلب الإيداع وإشعار ${userName}`, 'success');
+                                  }
+                                });
+                              }
+                            }}
                           >
                             <Trash2 className="w-4 h-4" />
+                            رفض
                           </button>
                         </div>
                       </td>
                     </tr>
-                  )) : (
+                    );
+                  }) : (
                     <tr>
-                      <td colSpan={5} className="p-20 text-center">
+                      <td colSpan={6} className="p-20 text-center">
                         <div className="flex flex-col items-center opacity-20">
                           <Wallet className="w-16 h-16 mb-4" />
                           <p className="font-black text-xl text-slate-400">لا توجد طلبات إيداع معلقة</p>
