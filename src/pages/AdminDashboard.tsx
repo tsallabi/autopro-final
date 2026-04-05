@@ -8,7 +8,7 @@ import {
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -2167,7 +2167,7 @@ export const AdminDashboard = () => {
     extra_service: 'خدمة إضافية'
   };
 
-  const { cars, addCar, updateCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate, currentUser } = useStore();
+  const { cars, addCar, updateCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate, currentUser, setCurrentUser } = useStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -2188,15 +2188,18 @@ export const AdminDashboard = () => {
   const [filter, setFilter] = useState('all');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
 
   // Click Outside Refs
   const notificationsRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  const adminMenuRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(notificationsRef, () => setShowNotifications(false));
   useClickOutside(messagesRef, () => setShowMessages(false));
   useClickOutside(sidebarRef, () => setMobileSidebarOpen(false));
+  useClickOutside(adminMenuRef, () => setShowAdminMenu(false));
 
   // Accordion state for sidebar categories
   const [openGroup, setOpenGroup] = useState<string>('INITIAL');
@@ -5635,15 +5638,55 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
-            <Link to="/dashboard/seller" className="flex items-center gap-3 bg-slate-900 text-white p-1.5 pr-4 rounded-2xl shadow-xl shadow-slate-900/20 shrink-0 hover:bg-slate-800 transition-all group">
-              <div className="text-right hidden sm:block">
-                <div className="text-xs font-black">{currentUser?.firstName || 'Admin'}</div>
-                <div className="text-[9px] text-orange-500 font-black uppercase tracking-widest">Administrator (بائع)</div>
-              </div>
-              <div className="w-8 h-8 lg:w-9 lg:h-9 bg-orange-500 rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition-transform">
-                {currentUser?.firstName?.[0] || 'A'}
-              </div>
-            </Link>
+            <div className="relative" ref={adminMenuRef}>
+              <button
+                onClick={() => setShowAdminMenu(!showAdminMenu)}
+                className="flex items-center gap-3 bg-slate-900 text-white p-1.5 pr-4 rounded-2xl shadow-xl shadow-slate-900/20 shrink-0 hover:bg-slate-800 transition-all group"
+              >
+                <div className="text-right hidden sm:block">
+                  <div className="text-xs font-black">{currentUser?.firstName || 'Admin'}</div>
+                  <div className="text-[9px] text-orange-500 font-black uppercase tracking-widest">Administrator</div>
+                </div>
+                <div className="w-8 h-8 lg:w-9 lg:h-9 bg-orange-500 rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition-transform">
+                  {currentUser?.firstName?.[0] || 'A'}
+                </div>
+              </button>
+              {showAdminMenu && (
+                <div className="absolute top-full mt-2 left-0 w-52 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50" dir="rtl">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                    <div className="text-sm font-black text-slate-800">{currentUser?.firstName} {currentUser?.lastName}</div>
+                    <div className="text-xs text-orange-500 font-bold">مدير النظام</div>
+                  </div>
+                  <button
+                    onClick={() => { setView('profile'); setShowAdminMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <User className="w-4 h-4 text-slate-400" />
+                    الملف الشخصي
+                  </button>
+                  <button
+                    onClick={() => { setView('platform_settings'); setShowAdminMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Settings className="w-4 h-4 text-slate-400" />
+                    إعدادات المنصة
+                  </button>
+                  <div className="h-px bg-slate-100 my-1" />
+                  <button
+                    onClick={() => {
+                      setCurrentUser(null);
+                      localStorage.removeItem('currentUser');
+                      localStorage.removeItem('token');
+                      window.location.href = '/';
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    تسجيل الخروج
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
