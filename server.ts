@@ -742,6 +742,18 @@ db.exec(`
 // Safe column additions (ignore if already exist)
 try { db.exec("ALTER TABLE seller_wallets ADD COLUMN bankName TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN kycDocUrl TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN lastLogin TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN loginCount INTEGER DEFAULT 0"); } catch (_) { }
+try { db.exec("ALTER TABLE seller_wallets ADD COLUMN iban TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE seller_wallets ADD COLUMN bankName TEXT DEFAULT NULL"); } catch (_) { }
+try { db.exec("ALTER TABLE seller_transactions ADD COLUMN createdAt TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE offices ADD COLUMN phone TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE offices ADD COLUMN email TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE offices ADD COLUMN address TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE offices ADD COLUMN city TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE offices ADD COLUMN country TEXT DEFAULT 'ليبيا'"); } catch (_) { }
+// Backfill createdAt for seller_transactions
+try { db.exec("UPDATE seller_transactions SET createdAt = timestamp WHERE createdAt IS NULL"); } catch (_) { }
 
 // ======= PHASE 10: BUYER WALLET & PAYMENT SYSTEM =======
 db.exec(`
@@ -925,7 +937,40 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3005;
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // ── Security headers ──
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
+  // ── In-memory rate limiter (login & sensitive endpoints) ──
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const rateLimit = (maxRequests: number, windowMs: number) => (req: any, res: any, next: any) => {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const entry = rateLimitMap.get(key);
+    if (!entry || entry.resetAt < now) {
+      rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    entry.count++;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'طلبات كثيرة جداً، يرجى الانتظار قليلاً' });
+    }
+    next();
+  };
+
+  // Apply rate limiting to sensitive routes
+  app.use('/api/auth/login', rateLimit(10, 60_000));       // 10 per minute
+  app.use('/api/auth/register', rateLimit(5, 60_000));     // 5 per minute
+  app.use('/api/payments/', rateLimit(30, 60_000));        // 30 per minute
+  app.use('/api/deposit', rateLimit(10, 60_000));          // 10 per minute
 
   // Register health check IMMEDIATELY
   app.get("/api/health", (req, res) => {
@@ -2354,6 +2399,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       );
 
       console.log(`Login success for: ${email}`);
+      // Update last login
+      db.prepare("UPDATE users SET lastLogin = ?, loginCount = COALESCE(loginCount, 0) + 1 WHERE id = ?")
+        .run(new Date().toISOString(), user.id);
       // Return user data + token (exclude password from response)
       const { password: _pass, ...userWithoutPassword } = user;
       res.json({ ...userWithoutPassword, token });
@@ -4854,6 +4902,557 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // =====================================================================
+  // MISSING & ALIAS ROUTES — fix broken endpoints
+  // =====================================================================
+
+  // Alias: /api/libyan-market-prices → /api/libyan-market
+  app.get("/api/libyan-market-prices", (req, res) => {
+    try {
+      const { make, model, year, condition } = req.query;
+      let q = "SELECT * FROM libyan_market_prices WHERE 1=1";
+      const params: any[] = [];
+      if (make) { q += " AND (make LIKE ? OR makeEn LIKE ?)"; params.push(`%${make}%`, `%${make}%`); }
+      if (model) { q += " AND (model LIKE ? OR modelEn LIKE ?)"; params.push(`%${model}%`, `%${model}%`); }
+      if (year) { q += " AND year = ?"; params.push(Number(year)); }
+      if (condition) { q += " AND condition = ?"; params.push(condition); }
+      q += " ORDER BY priceLYD DESC LIMIT 200";
+      const rows = db.prepare(q).all(...params);
+      res.json(rows);
+    } catch (e) { res.status(500).json({ error: "فشل جلب أسعار السوق" }); }
+  });
+
+  // GET /api/cars/:id — single car details
+  app.get("/api/cars/:id", (req, res) => {
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(req.params.id);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+      // Attach bids
+      const bids: any[] = db.prepare(`
+        SELECT b.*, u.firstName, u.lastName FROM bids b
+        JOIN users u ON b.userId = u.id
+        WHERE b.carId = ? ORDER BY b.amount DESC`).all(req.params.id);
+      try { car.images = JSON.parse(car.images || '[]'); } catch { car.images = []; }
+      res.json({ ...car, bids });
+    } catch (e) { res.status(500).json({ error: "فشل جلب تفاصيل السيارة" }); }
+  });
+
+  // GET /api/bids/:carId — bids for a car
+  app.get("/api/bids/:carId", (req, res) => {
+    try {
+      const bids: any[] = db.prepare(`
+        SELECT b.*, u.firstName, u.lastName, u.avatar
+        FROM bids b JOIN users u ON b.userId = u.id
+        WHERE b.carId = ? ORDER BY b.amount DESC`).all(req.params.carId);
+      res.json(bids);
+    } catch (e) { res.status(500).json({ error: "فشل جلب المزايدات" }); }
+  });
+
+  // GET /api/offices — list all offices
+  app.get("/api/offices", (req, res) => {
+    try {
+      const offices: any[] = db.prepare("SELECT * FROM offices ORDER BY name ASC").all();
+      res.json(offices);
+    } catch (e) { res.status(500).json({ error: "فشل جلب المكاتب" }); }
+  });
+
+  // GET /api/offices/:id — single office
+  app.get("/api/offices/:id", (req, res) => {
+    try {
+      const office: any = db.prepare("SELECT * FROM offices WHERE id = ?").get(req.params.id);
+      if (!office) return res.status(404).json({ error: "المكتب غير موجود" });
+      res.json(office);
+    } catch (e) { res.status(500).json({ error: "فشل جلب المكتب" }); }
+  });
+
+  // POST /api/offices — create office (admin)
+  app.post("/api/offices", (req, res) => {
+    try {
+      const { name, branchId, manager, phone, email, address, city, country, status } = req.body;
+      const id = `office-${Date.now()}`;
+      db.prepare(`INSERT INTO offices (id, name, branchId, manager, phone, email, address, city, country, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(id, name, branchId||null, manager||null, phone||null, email||null, address||null, city||null, country||'ليبيا', status||'active');
+      res.json({ success: true, id });
+    } catch (e) { res.status(500).json({ error: "فشل إنشاء المكتب" }); }
+  });
+
+  // GET /api/sellers — list all seller users
+  app.get("/api/sellers", (req, res) => {
+    try {
+      const sellers: any[] = db.prepare(`
+        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.status, u.kycStatus,
+               u.companyName, u.country, u.joinDate,
+               sw.availableBalance, sw.pendingBalance, sw.totalEarned, sw.totalWithdrawn,
+               COUNT(c.id) as totalCars,
+               SUM(CASE WHEN c.status = 'sold' THEN 1 ELSE 0 END) as soldCars
+        FROM users u
+        LEFT JOIN seller_wallets sw ON sw.sellerId = u.id
+        LEFT JOIN cars c ON c.sellerId = u.id
+        WHERE u.role IN ('seller','admin')
+        GROUP BY u.id
+        ORDER BY u.joinDate DESC`).all();
+      res.json(sellers);
+    } catch (e) { res.status(500).json({ error: "فشل جلب البائعين" }); }
+  });
+
+  // Alias: /api/seller-wallet/:id → /api/seller/wallet/:id
+  app.get("/api/seller-wallet/:id", (req, res) => {
+    try {
+      let wallet: any = db.prepare("SELECT * FROM seller_wallets WHERE sellerId = ?").get(req.params.id);
+      if (!wallet) {
+        db.prepare(`INSERT INTO seller_wallets (sellerId, availableBalance, pendingBalance, totalEarned, totalWithdrawn, lastUpdated)
+          VALUES (?,0,0,0,0,?)`).run(req.params.id, new Date().toISOString());
+        wallet = db.prepare("SELECT * FROM seller_wallets WHERE sellerId = ?").get(req.params.id);
+      }
+      const txs: any[] = db.prepare("SELECT * FROM seller_transactions WHERE sellerId = ? ORDER BY createdAt DESC LIMIT 20").all(req.params.id);
+      res.json({ ...wallet, transactions: txs });
+    } catch (e) { res.status(500).json({ error: "فشل جلب محفظة البائع" }); }
+  });
+
+  // GET /api/shipments/:userId — alias for /api/shipments/user/:userId
+  app.get("/api/shipments/:userId", (req, res) => {
+    try {
+      const shipments: any[] = db.prepare(`
+        SELECT s.*, c.make, c.model, c.year, c.lotNumber, c.vin
+        FROM shipments s JOIN cars c ON s.carId = c.id
+        WHERE s.userId = ? ORDER BY s.createdAt DESC`).all(req.params.userId);
+      res.json(shipments);
+    } catch (e) { res.status(500).json({ error: "فشل جلب الشحنات" }); }
+  });
+
+  // =====================================================================
+  // SELLER JOURNEY ROUTES
+  // =====================================================================
+
+  // POST /api/seller/register — seller KYC application
+  app.post("/api/seller/register", (req, res) => {
+    try {
+      const { userId, companyName, tradeLicense, address, city, bankName, iban, phone } = req.body;
+      if (!userId) return res.status(400).json({ error: "بيانات غير مكتملة" });
+      db.prepare(`UPDATE users SET role='seller', kycStatus='pending', companyName=?, address1=?, phone=?
+        WHERE id=?`).run(companyName||null, address||null, phone||null, userId);
+      // Store IBAN for seller wallet
+      db.prepare(`INSERT INTO seller_wallets (sellerId, availableBalance, pendingBalance, totalEarned, totalWithdrawn, lastUpdated, iban, bankName)
+        VALUES (?,0,0,0,0,?,?,?) ON CONFLICT(sellerId) DO UPDATE SET iban=excluded.iban, bankName=excluded.bankName`
+      ).run(userId, new Date().toISOString(), iban||null, bankName||null);
+      sendNotification('admin-1', '🆕 طلب تسجيل بائع جديد',
+        `${companyName || userId} يطلب التسجيل كبائع. يرجى مراجعة طلب KYC.`, 'info');
+      sendNotification(userId, '✅ تم استلام طلب التسجيل كبائع',
+        'جاري مراجعة طلبك. سنُعلمك خلال 24-48 ساعة.', 'info');
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cars/seller — seller uploads a new car for auction
+  app.post("/api/cars/seller", (req, res) => {
+    try {
+      const { sellerId, make, model, year, vin, mileage, condition, description,
+              startingBid, reservePrice, auctionStart, auctionEnd, images, city } = req.body;
+      if (!sellerId || !make || !model) return res.status(400).json({ error: "بيانات السيارة غير مكتملة" });
+
+      const seller: any = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'seller'").get(sellerId);
+      if (!seller) return res.status(403).json({ error: "غير مصرح — يجب أن تكون بائعاً معتمداً" });
+      if (seller.kycStatus !== 'approved') return res.status(403).json({ error: "يجب إكمال التحقق من الهوية أولاً" });
+
+      const lotNumber = `LY-${Date.now().toString(36).toUpperCase()}`;
+      const carId = `car-${Date.now()}`;
+      const imagesJson = JSON.stringify(images || []);
+
+      db.prepare(`INSERT INTO cars (id, sellerId, lotNumber, make, model, year, vin, mileage, condition,
+        description, startingBid, reservePrice, currentBid, auctionStart, auctionEnd, status, images, city, createdAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`
+      ).run(carId, sellerId, lotNumber, make, model, year, vin||null, mileage||0, condition||'used',
+        description||null, startingBid||0, reservePrice||0, startingBid||0,
+        auctionStart||null, auctionEnd||null, imagesJson, city||null, new Date().toISOString());
+
+      sendNotification('admin-1', '🚗 سيارة جديدة بانتظار الموافقة',
+        `${seller.firstName} أضاف ${make} ${model} ${year} للمزاد. لوت: ${lotNumber}`, 'info');
+      sendNotification(sellerId, '✅ تم رفع السيارة بنجاح',
+        `${make} ${model} ${year} (${lotNumber}) تحت المراجعة. سنُعلمك عند الموافقة.`, 'success');
+
+      res.json({ success: true, carId, lotNumber });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/cars/seller/:sellerId — seller's own cars
+  app.get("/api/cars/seller/:sellerId", (req, res) => {
+    try {
+      const cars: any[] = db.prepare(`
+        SELECT c.*,
+          (SELECT COUNT(*) FROM bids WHERE carId = c.id) as bidCount,
+          (SELECT MAX(amount) FROM bids WHERE carId = c.id) as highestBid
+        FROM cars c WHERE c.sellerId = ? ORDER BY c.createdAt DESC`).all(req.params.sellerId);
+      cars.forEach(c => { try { c.images = JSON.parse(c.images || '[]'); } catch { c.images = []; } });
+      res.json(cars);
+    } catch (e) { res.status(500).json({ error: "فشل جلب سيارات البائع" }); }
+  });
+
+  // POST /api/seller/payout-request — seller requests withdrawal
+  app.post("/api/seller/payout-request", (req, res) => {
+    try {
+      const { sellerId, amount } = req.body;
+      if (!sellerId || !amount || amount <= 0) return res.status(400).json({ error: "بيانات غير مكتملة" });
+      const wallet: any = db.prepare("SELECT * FROM seller_wallets WHERE sellerId = ?").get(sellerId);
+      if (!wallet) return res.status(404).json({ error: "محفظة البائع غير موجودة" });
+      if (wallet.availableBalance < amount) return res.status(400).json({ error: `الرصيد المتاح $${wallet.availableBalance} غير كافٍ` });
+
+      const reqId = `pr-seller-${Date.now()}`;
+      db.prepare(`INSERT INTO payment_requests (id, userId, type, amount, method, status, requestedAt)
+        VALUES (?,?,?,?,'bank_transfer','pending',?)`).run(reqId, sellerId, 'withdrawal', amount, new Date().toISOString());
+      db.prepare("UPDATE seller_wallets SET availableBalance = availableBalance - ?, pendingBalance = pendingBalance + ? WHERE sellerId = ?")
+        .run(amount, amount, sellerId);
+
+      sendNotification('admin-1', '💰 طلب سحب رصيد بائع',
+        `البائع ${sellerId} يطلب سحب $${Number(amount).toLocaleString()}`, 'info');
+      sendNotification(sellerId, '✅ تم إرسال طلب السحب',
+        `طلب سحب $${Number(amount).toLocaleString()} قيد المراجعة. سيُحوَّل خلال 3-5 أيام عمل.`, 'info');
+
+      res.json({ success: true, requestId: reqId });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // MARKETING & CRM ROUTES
+  // =====================================================================
+
+  // GET /api/marketing/leads — all captured leads
+  app.get("/api/marketing/leads", (req, res) => {
+    try {
+      const leads: any[] = db.prepare(`
+        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.country, u.joinDate,
+               u.status, u.kycStatus, u.role,
+               (SELECT COUNT(*) FROM bids WHERE userId = u.id) as totalBids,
+               (SELECT COUNT(*) FROM bids WHERE userId = u.id AND amount > 0) as activeBids,
+               u.deposit,
+               COALESCE(bw.balance, 0) as walletBalance,
+               CASE
+                 WHEN u.deposit > 0 THEN 'hot'
+                 WHEN (SELECT COUNT(*) FROM bids WHERE userId = u.id) > 0 THEN 'warm'
+                 ELSE 'cold'
+               END as leadStatus
+        FROM users u
+        LEFT JOIN buyer_wallets bw ON bw.userId = u.id
+        WHERE u.role NOT IN ('admin')
+        ORDER BY u.joinDate DESC`).all();
+      res.json(leads);
+    } catch (e) { res.status(500).json({ error: "فشل جلب العملاء المحتملين" }); }
+  });
+
+  // GET /api/crm/customers — full CRM customer list
+  app.get("/api/crm/customers", (req, res) => {
+    try {
+      const customers: any[] = db.prepare(`
+        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.country, u.joinDate,
+               u.status, u.kycStatus, u.role, u.deposit, u.buyingPower,
+               COALESCE(bw.balance, 0) as walletBalance,
+               COALESCE(bw.totalDeposited, 0) as totalDeposited,
+               COALESCE(bw.totalSpent, 0) as totalSpent,
+               (SELECT COUNT(*) FROM bids WHERE userId = u.id) as totalBids,
+               (SELECT MAX(amount) FROM bids WHERE userId = u.id) as highestBid,
+               (SELECT COUNT(*) FROM bids b2 JOIN cars c ON b2.carId = c.id WHERE b2.userId = u.id AND c.status = 'sold') as wonAuctions
+        FROM users u
+        LEFT JOIN buyer_wallets bw ON bw.userId = u.id
+        ORDER BY totalDeposited DESC`).all();
+      res.json(customers);
+    } catch (e) { res.status(500).json({ error: "فشل جلب بيانات CRM" }); }
+  });
+
+  // POST /api/crm/send-message — broadcast message to customer segment
+  app.post("/api/crm/send-message", (req, res) => {
+    try {
+      const { segment, subject, content, adminId } = req.body;
+      if (!subject || !content) return res.status(400).json({ error: "الموضوع والمحتوى مطلوبان" });
+
+      let userQuery = "SELECT id, firstName, email FROM users WHERE role NOT IN ('admin')";
+      if (segment === 'hot') userQuery += " AND deposit > 0";
+      else if (segment === 'warm') userQuery += " AND id IN (SELECT DISTINCT userId FROM bids)";
+      else if (segment === 'cold') userQuery += " AND deposit = 0 AND id NOT IN (SELECT DISTINCT userId FROM bids)";
+      else if (segment === 'kyc_pending') userQuery += " AND kycStatus = 'pending'";
+      else if (segment === 'no_deposit') userQuery += " AND deposit = 0";
+
+      const users: any[] = db.prepare(userQuery).all();
+      let sent = 0;
+      users.forEach((u: any) => {
+        sendInternalMessage(adminId || 'admin-1', u.id, subject, content);
+        sent++;
+      });
+
+      res.json({ success: true, sent, segment });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/crm/send-notification — broadcast notification
+  app.post("/api/crm/send-notification", (req, res) => {
+    try {
+      const { segment, title, message, type, link } = req.body;
+      if (!title || !message) return res.status(400).json({ error: "العنوان والمحتوى مطلوبان" });
+
+      let userQuery = "SELECT id FROM users WHERE role NOT IN ('admin')";
+      if (segment === 'hot') userQuery += " AND deposit > 0";
+      else if (segment === 'warm') userQuery += " AND id IN (SELECT DISTINCT userId FROM bids)";
+      else if (segment === 'cold') userQuery += " AND deposit = 0";
+      else if (segment === 'all_buyers') userQuery += "";
+
+      const users: any[] = db.prepare(userQuery).all();
+      users.forEach((u: any) => sendNotification(u.id, title, message, type || 'info', link));
+
+      res.json({ success: true, sent: users.length });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // ADMIN REPORTS & ACCOUNTING
+  // =====================================================================
+
+  // GET /api/admin/reports — comprehensive financial report
+  app.get("/api/admin/reports", (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const dateFilter = from && to ? `AND timestamp BETWEEN '${from}' AND '${to}'` : '';
+
+      const totalRevenue = (db.prepare(`SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' ${dateFilter}`).get() as any)?.v || 0;
+      const totalCommission = (db.prepare(`SELECT SUM(amount * 0.05) as v FROM transactions WHERE type='commission' AND status='completed' ${dateFilter}`).get() as any)?.v || 0;
+      const totalDeposits = (db.prepare(`SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' ${dateFilter}`).get() as any);
+      const pendingDeposits = (db.prepare(`SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='pending'`).get() as any);
+      const totalUsers = (db.prepare("SELECT COUNT(*) as c FROM users WHERE role NOT IN ('admin')").get() as any)?.c || 0;
+      const newUsers = (db.prepare(`SELECT COUNT(*) as c FROM users WHERE role NOT IN ('admin') ${from ? `AND joinDate >= '${from}'` : ''}`).get() as any)?.c || 0;
+      const totalBids = (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM bids").get() as any);
+      const activeCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'live'").get() as any)?.c || 0;
+      const soldCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'sold'").get() as any)?.c || 0;
+      const pendingCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'pending'").get() as any)?.c || 0;
+      const totalSellers = (db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'seller'").get() as any)?.c || 0;
+      const sellerPayouts = (db.prepare("SELECT SUM(amount) as v FROM payment_requests WHERE type='withdrawal' AND status='approved'").get() as any)?.v || 0;
+
+      // Monthly breakdown (last 6 months)
+      const monthly = db.prepare(`
+        SELECT strftime('%Y-%m', timestamp) as month,
+               COUNT(*) as count, SUM(amount) as total
+        FROM transactions WHERE type='deposit' AND status='completed'
+        GROUP BY month ORDER BY month DESC LIMIT 6`).all();
+
+      // Top buyers
+      const topBuyers = db.prepare(`
+        SELECT u.firstName, u.lastName, u.email,
+               COUNT(b.id) as bidCount, MAX(b.amount) as maxBid, u.deposit
+        FROM users u JOIN bids b ON b.userId = u.id
+        GROUP BY u.id ORDER BY bidCount DESC LIMIT 10`).all();
+
+      // Top cars by bids
+      const topCars = db.prepare(`
+        SELECT c.make, c.model, c.year, c.lotNumber,
+               COUNT(b.id) as bidCount, MAX(b.amount) as currentBid, c.status
+        FROM cars c JOIN bids b ON b.carId = c.id
+        GROUP BY c.id ORDER BY bidCount DESC LIMIT 10`).all();
+
+      res.json({
+        summary: {
+          totalRevenue, totalCommission, sellerPayouts,
+          totalDeposits: totalDeposits?.v || 0, depositCount: totalDeposits?.c || 0,
+          pendingDepositAmount: pendingDeposits?.v || 0, pendingDepositCount: pendingDeposits?.c || 0,
+          totalUsers, newUsers, totalSellers,
+          totalBidVolume: totalBids?.v || 0, totalBidCount: totalBids?.c || 0,
+          activeCars, soldCars, pendingCars,
+        },
+        monthly,
+        topBuyers,
+        topCars,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/admin/audit-log — security & action audit trail
+  app.get("/api/admin/audit-log", (req, res) => {
+    try {
+      // Synthesize audit log from existing data
+      const bids: any[] = db.prepare(`
+        SELECT 'bid' as action, b.timestamp, u.firstName || ' ' || u.lastName as actor,
+               u.email, 'مزايدة بمبلغ $' || b.amount as detail, b.carId as ref
+        FROM bids b JOIN users u ON b.userId = u.id
+        ORDER BY b.timestamp DESC LIMIT 50`).all();
+
+      const deposits: any[] = db.prepare(`
+        SELECT 'deposit' as action, t.timestamp, u.firstName || ' ' || u.lastName as actor,
+               u.email, 'إيداع عربون $' || t.amount || ' (' || t.status || ')' as detail, t.id as ref
+        FROM transactions t JOIN users u ON t.userId = u.id
+        WHERE t.type = 'deposit'
+        ORDER BY t.timestamp DESC LIMIT 50`).all();
+
+      const registrations: any[] = db.prepare(`
+        SELECT 'register' as action, joinDate as timestamp,
+               firstName || ' ' || lastName as actor, email,
+               'تسجيل حساب جديد' as detail, id as ref
+        FROM users ORDER BY joinDate DESC LIMIT 30`).all();
+
+      const combined = [...bids, ...deposits, ...registrations]
+        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 100);
+
+      res.json(combined);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // ACCOUNTING — Commissions & Payouts
+  // =====================================================================
+
+  // POST /api/admin/commission — record commission on sold car
+  app.post("/api/admin/commission", (req, res) => {
+    try {
+      const { carId, sellerId, saleAmount, commissionRate } = req.body;
+      const rate = commissionRate || 0.05;
+      const commission = saleAmount * rate;
+      const sellerNet = saleAmount - commission;
+
+      const txId = `comm-${Date.now()}`;
+      db.prepare(`INSERT INTO transactions (id, userId, amount, type, status, method, notes, timestamp)
+        VALUES (?,'admin-1',?,'commission','completed','system',?,?)`
+      ).run(txId, commission, `عمولة بيع ${carId} — ${(rate * 100).toFixed(1)}%`, new Date().toISOString());
+
+      // Credit seller wallet (net amount)
+      db.prepare(`INSERT INTO seller_wallets (sellerId, availableBalance, pendingBalance, totalEarned, totalWithdrawn, lastUpdated)
+        VALUES (?,?,0,?,0,?) ON CONFLICT(sellerId) DO UPDATE SET
+        availableBalance = availableBalance + ?,
+        totalEarned = totalEarned + ?,
+        lastUpdated = ?`).run(sellerId, sellerNet, sellerNet, new Date().toISOString(), sellerNet, sellerNet, new Date().toISOString());
+
+      // Record seller transaction
+      const stxId = `stx-${Date.now()}`;
+      db.prepare(`INSERT INTO seller_transactions (id, sellerId, type, amount, description, createdAt)
+        VALUES (?,?,'credit',?,?,?)`).run(stxId, sellerId, sellerNet, `مستحقات بيع السيارة ${carId} (بعد خصم ${(rate*100).toFixed(1)}% عمولة)`, new Date().toISOString());
+
+      sendNotification(sellerId, '💰 تم إضافة مستحقات البيع',
+        `تم إضافة $${sellerNet.toLocaleString()} لمحفظتك (بعد خصم عمولة ${(rate*100).toFixed(1)}%). يمكنك طلب السحب الآن.`, 'success', '/dashboard/seller');
+
+      res.json({ success: true, commission, sellerNet, txId });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/admin/approve-seller-withdrawal/:reqId
+  app.post("/api/admin/approve-seller-withdrawal/:reqId", (req, res) => {
+    try {
+      const pr: any = db.prepare("SELECT * FROM payment_requests WHERE id = ? AND status = 'pending'").get(req.params.reqId);
+      if (!pr) return res.status(404).json({ error: "الطلب غير موجود" });
+
+      db.transaction(() => {
+        db.prepare("UPDATE payment_requests SET status='approved', processedAt=? WHERE id=?").run(new Date().toISOString(), req.params.reqId);
+        db.prepare("UPDATE seller_wallets SET pendingBalance = pendingBalance - ?, totalWithdrawn = totalWithdrawn + ? WHERE sellerId=?").run(pr.amount, pr.amount, pr.userId);
+        const stxId = `stx-out-${Date.now()}`;
+        db.prepare(`INSERT INTO seller_transactions (id, sellerId, type, amount, description, createdAt)
+          VALUES (?,?,'debit',?,?,?)`).run(stxId, pr.userId, pr.amount, `سحب رصيد — تحويل بنكي`, new Date().toISOString());
+      })();
+
+      sendNotification(pr.userId, '✅ تمت الموافقة على طلب السحب',
+        `تمت الموافقة على سحب $${Number(pr.amount).toLocaleString()}. سيصل التحويل خلال 3-5 أيام عمل.`, 'success');
+
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/admin/seller-payouts — pending seller withdrawal requests
+  app.get("/api/admin/seller-payouts", (req, res) => {
+    try {
+      const payouts: any[] = db.prepare(`
+        SELECT pr.*, u.firstName, u.lastName, u.email, u.companyName,
+               sw.availableBalance, sw.totalEarned, sw.iban, sw.bankName
+        FROM payment_requests pr
+        JOIN users u ON pr.userId = u.id
+        LEFT JOIN seller_wallets sw ON sw.sellerId = pr.userId
+        WHERE pr.type = 'withdrawal'
+        ORDER BY CASE pr.status WHEN 'pending' THEN 0 ELSE 1 END, pr.requestedAt DESC`).all();
+      res.json(payouts);
+    } catch (e) { res.status(500).json({ error: "فشل جلب طلبات السحب" }); }
+  });
+
+  // GET /api/admin/financial-summary — balance sheet for admin
+  app.get("/api/admin/financial-summary", (req, res) => {
+    try {
+      const buyerDeposits = (db.prepare("SELECT SUM(balance) as v FROM buyer_wallets").get() as any)?.v || 0;
+      const sellerAvailable = (db.prepare("SELECT SUM(availableBalance) as v FROM seller_wallets").get() as any)?.v || 0;
+      const sellerPending = (db.prepare("SELECT SUM(pendingBalance) as v FROM seller_wallets").get() as any)?.v || 0;
+      const totalCommission = (db.prepare("SELECT SUM(amount) as v FROM transactions WHERE type='commission' AND status='completed'").get() as any)?.v || 0;
+      const totalDepositIn = (db.prepare("SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed'").get() as any)?.v || 0;
+      const pendingWithdrawals = (db.prepare("SELECT SUM(amount) as v FROM payment_requests WHERE type='withdrawal' AND status='pending'").get() as any)?.v || 0;
+      const approvedWithdrawals = (db.prepare("SELECT SUM(amount) as v FROM payment_requests WHERE type='withdrawal' AND status='approved'").get() as any)?.v || 0;
+      const unpaidInvoices = (db.prepare("SELECT SUM(amount) as v FROM invoices WHERE status='unpaid'").get() as any)?.v || 0;
+      const paidInvoices = (db.prepare("SELECT SUM(amount) as v FROM invoices WHERE status='paid'").get() as any)?.v || 0;
+
+      res.json({
+        assets: { buyerDeposits, totalDepositIn },
+        liabilities: { sellerAvailable, sellerPending, pendingWithdrawals },
+        revenue: { totalCommission, paidInvoices },
+        pending: { pendingWithdrawals, unpaidInvoices },
+        paid: { approvedWithdrawals },
+        netPosition: totalDepositIn - sellerAvailable - sellerPending - approvedWithdrawals,
+      });
+    } catch (e) { res.status(500).json({ error: "فشل جلب الملخص المالي" }); }
+  });
+
+  // =====================================================================
+  // SECURITY: Auth guard helper & rate limiting tracking
+  // =====================================================================
+
+  // GET /api/admin/security-log — failed logins & suspicious activity
+  app.get("/api/admin/security-log", (req, res) => {
+    try {
+      // Return recent user activity synthesized from DB
+      const recentLogins: any[] = db.prepare(`
+        SELECT id, firstName, lastName, email, lastLogin, status, country
+        FROM users ORDER BY lastLogin DESC LIMIT 50`).all();
+      const suspiciousUsers = recentLogins.filter((u: any) => u.status === 'suspended' || u.status === 'blocked');
+      res.json({ recentLogins, suspiciousUsers, total: recentLogins.length });
+    } catch (e) { res.status(500).json({ error: "فشل جلب سجل الأمان" }); }
+  });
+
+  // =====================================================================
+  // CALCULATOR & SHIPPING RATES
+  // =====================================================================
+
+  // GET /api/shipping-rates — shipping cost estimates by destination
+  app.get("/api/shipping-rates", (req, res) => {
+    const rates = [
+      { destination: 'طرابلس (ميناء)', port: 'TIP', usd: 1800, estimatedDays: 21 },
+      { destination: 'بنغازي (ميناء)', port: 'BEN', usd: 1950, estimatedDays: 25 },
+      { destination: 'مصراتة (ميناء)', port: 'MIS', usd: 1750, estimatedDays: 20 },
+      { destination: 'درنة (ميناء)', port: 'DRN', usd: 2100, estimatedDays: 28 },
+      { destination: 'الزاوية (ميناء)', port: 'ZAW', usd: 1820, estimatedDays: 22 },
+    ];
+    res.json(rates);
+  });
+
+  // POST /api/calculator/estimate — full landed cost
+  app.post("/api/calculator/estimate", (req, res) => {
+    try {
+      const { carPrice, year, destination, exchangeRate } = req.body;
+      const rate = exchangeRate || GLOBAL_EXCHANGE_RATE || 4.85;
+      const destinationRates: Record<string, number> = {
+        TIP: 1800, BEN: 1950, MIS: 1750, DRN: 2100, ZAW: 1820
+      };
+      const shippingUSD = destinationRates[destination] || 1800;
+      const auctionFee = carPrice * 0.04;
+      const portFee = 350;
+      const insuranceFee = carPrice * 0.012;
+      const customsDuty = (carPrice + shippingUSD) * 0.05; // 5% customs
+      const totalUSD = carPrice + shippingUSD + auctionFee + portFee + insuranceFee;
+      const totalWithCustomsUSD = totalUSD + customsDuty;
+      const totalLYD = totalWithCustomsUSD * rate;
+
+      res.json({
+        carPrice, shippingUSD, auctionFee, portFee, insuranceFee,
+        customsDuty, totalUSD, totalWithCustomsUSD, totalLYD,
+        exchangeRate: rate,
+        breakdown: [
+          { label: 'سعر السيارة', usd: carPrice },
+          { label: 'تكلفة الشحن', usd: shippingUSD },
+          { label: 'رسوم المزاد (4%)', usd: auctionFee },
+          { label: 'رسوم الميناء', usd: portFee },
+          { label: 'تأمين (1.2%)', usd: insuranceFee },
+          { label: 'جمارك (5%)', usd: customsDuty },
+        ]
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
   // ====== SETTINGS ======
   app.get("/api/settings", (req, res) => {
     try {

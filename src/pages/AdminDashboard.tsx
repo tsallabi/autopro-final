@@ -2141,6 +2141,624 @@ const MarketingPanel: React.FC = () => {
   );
 };
 
+// ============================================================
+// CRM Panel — Customer Relationship Management
+// ============================================================
+const CRMPanel: React.FC = () => {
+  const [customers, setCustomers] = React.useState<any[]>([]);
+  const [leads, setLeads] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'hot' | 'warm' | 'cold' | 'broadcast'>('overview');
+  const [broadcastForm, setBroadcastForm] = React.useState({ segment: 'all', subject: '', content: '' });
+  const [sending, setSending] = React.useState(false);
+  const { showAlert } = useStore();
+
+  React.useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch('/api/crm/customers').then(r => r.ok ? r.json() : []),
+      fetch('/api/marketing/leads').then(r => r.ok ? r.json() : []),
+    ]).then(([c, l]) => {
+      setCustomers(Array.isArray(c) ? c : []);
+      setLeads(Array.isArray(l) ? l : []);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const hot = leads.filter((l: any) => l.leadStatus === 'hot');
+  const warm = leads.filter((l: any) => l.leadStatus === 'warm');
+  const cold = leads.filter((l: any) => l.leadStatus === 'cold');
+  const totalRevenue = customers.reduce((s: number, c: any) => s + (c.totalDeposited || 0), 0);
+  const avgDeposit = customers.length ? totalRevenue / customers.filter((c: any) => c.totalDeposited > 0).length || 0 : 0;
+
+  const sendBroadcast = async () => {
+    if (!broadcastForm.subject || !broadcastForm.content) { showAlert('الموضوع والمحتوى مطلوبان'); return; }
+    setSending(true);
+    try {
+      const r = await fetch('/api/crm/send-message', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(broadcastForm),
+      });
+      const d = await r.json();
+      if (r.ok) showAlert(`✅ تم الإرسال إلى ${d.sent} عميل`, 'success');
+      else showAlert(d.error || 'فشل الإرسال');
+    } finally { setSending(false); }
+  };
+
+  const listByTab = activeTab === 'hot' ? hot : activeTab === 'warm' ? warm : activeTab === 'cold' ? cold : leads;
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300 p-6" dir="rtl">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-11 h-11 bg-purple-500 rounded-2xl flex items-center justify-center shadow-lg">
+          <Users className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">CRM — إدارة العلاقات مع العملاء</h2>
+          <p className="text-slate-500 text-sm">تتبع كل عميل من التسجيل حتى الشراء وما بعده</p>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: 'إجمالي العملاء', val: leads.length, color: 'text-slate-700', bg: 'bg-slate-100' },
+          { label: '🔥 عملاء ساخنون', val: hot.length, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: '🌡️ عملاء دافئون', val: warm.length, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: '❄️ عملاء باردون', val: cold.length, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'إجمالي الإيداعات', val: `$${totalRevenue.toLocaleString()}`, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        ].map(k => (
+          <div key={k.label} className={`${k.bg} rounded-2xl p-4 text-center`}>
+            <div className={`text-2xl font-black ${k.color}`}>{k.val}</div>
+            <div className="text-xs text-slate-500 font-bold mt-1">{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit flex-wrap">
+        {([['overview','كل العملاء'],['hot','🔥 ساخنون'],['warm','🌡️ دافئون'],['cold','❄️ باردون'],['broadcast','📢 رسالة جماعية']] as const).map(([k,l]) => (
+          <button key={k} onClick={() => setActiveTab(k as any)}
+            className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${activeTab === k ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Broadcast Form */}
+      {activeTab === 'broadcast' ? (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 space-y-4 max-w-2xl">
+          <h3 className="text-lg font-black text-slate-800">إرسال رسالة جماعية</h3>
+          <select value={broadcastForm.segment} onChange={e => setBroadcastForm(p => ({...p, segment: e.target.value}))}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-purple-400">
+            <option value="all">كل العملاء</option>
+            <option value="hot">العملاء الساخنون (أودعوا عرابين)</option>
+            <option value="warm">العملاء الدافئون (زايدوا لكن لم يودعوا)</option>
+            <option value="cold">العملاء الباردون (سجلوا فقط)</option>
+            <option value="no_deposit">بدون إيداع</option>
+            <option value="kyc_pending">KYC معلق</option>
+          </select>
+          <input value={broadcastForm.subject} onChange={e => setBroadcastForm(p => ({...p, subject: e.target.value}))}
+            placeholder="موضوع الرسالة" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-purple-400" />
+          <textarea value={broadcastForm.content} onChange={e => setBroadcastForm(p => ({...p, content: e.target.value}))}
+            placeholder="نص الرسالة..." rows={5}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-purple-400 resize-none" />
+          <button onClick={sendBroadcast} disabled={sending}
+            className="bg-purple-600 text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-purple-700 transition-all disabled:opacity-50 flex items-center gap-2">
+            {sending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            {sending ? 'جاري الإرسال...' : 'إرسال الرسالة'}
+          </button>
+        </div>
+      ) : loading ? (
+        <div className="flex items-center justify-center h-40 text-slate-400 font-bold">جاري التحميل...</div>
+      ) : (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right min-w-[900px]">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                <tr>
+                  <th className="p-4">العميل</th>
+                  <th className="p-4">حالة العميل</th>
+                  <th className="p-4">المزايدات</th>
+                  <th className="p-4">الإيداع</th>
+                  <th className="p-4">الرصيد</th>
+                  <th className="p-4">تاريخ التسجيل</th>
+                  <th className="p-4">الدولة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {listByTab.map((c: any) => (
+                  <tr key={c.id} className="hover:bg-slate-50 transition-all">
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center text-white font-black text-sm">
+                          {(c.firstName||'?').charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-black text-slate-900 text-sm">{c.firstName} {c.lastName}</div>
+                          <div className="text-[10px] text-slate-400">{c.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-black ${
+                        c.leadStatus === 'hot' ? 'bg-red-100 text-red-700' :
+                        c.leadStatus === 'warm' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'}`}>
+                        {c.leadStatus === 'hot' ? '🔥 ساخن' : c.leadStatus === 'warm' ? '🌡️ دافئ' : '❄️ بارد'}
+                      </span>
+                    </td>
+                    <td className="p-4 font-mono font-black text-slate-700">{c.totalBids || 0}</td>
+                    <td className="p-4 font-mono font-black text-emerald-600">${(c.deposit || 0).toLocaleString()}</td>
+                    <td className="p-4 font-mono text-sm text-slate-600">${(c.walletBalance || 0).toLocaleString()}</td>
+                    <td className="p-4 text-xs text-slate-500">{c.joinDate ? new Date(c.joinDate).toLocaleDateString('ar-EG') : '—'}</td>
+                    <td className="p-4 text-sm text-slate-600">{c.country || '—'}</td>
+                  </tr>
+                ))}
+                {listByTab.length === 0 && (
+                  <tr><td colSpan={7} className="p-12 text-center text-slate-400 font-bold">لا يوجد عملاء في هذه الفئة</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// Seller Journey Panel — KYC, Cars, Payouts
+// ============================================================
+const SellerJourneyPanel: React.FC = () => {
+  const [sellers, setSellers] = React.useState<any[]>([]);
+  const [payouts, setPayouts] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [activeTab, setActiveTab] = React.useState<'sellers' | 'payouts'>('sellers');
+  const { showAlert } = useStore();
+
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      fetch('/api/sellers').then(r => r.ok ? r.json() : []),
+      fetch('/api/admin/seller-payouts').then(r => r.ok ? r.json() : []),
+    ]).then(([s, p]) => {
+      setSellers(Array.isArray(s) ? s : []);
+      setPayouts(Array.isArray(p) ? p : []);
+    }).finally(() => setLoading(false));
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const approvePayout = async (id: string) => {
+    const r = await fetch(`/api/admin/approve-seller-withdrawal/${id}`, { method: 'POST' });
+    if (r.ok) { showAlert('تم الموافقة على طلب السحب ✅', 'success'); load(); }
+    else showAlert((await r.json()).error || 'فشل');
+  };
+
+  const kycApprove = async (userId: string) => {
+    const r = await fetch(`/api/admin/kyc/${userId}/approve`, { method: 'POST' });
+    if (r.ok) { showAlert('تم اعتماد البائع ✅', 'success'); load(); }
+  };
+
+  const STATUS_COLOR: Record<string,string> = {
+    pending: 'bg-amber-100 text-amber-700',
+    approved: 'bg-emerald-100 text-emerald-700',
+    rejected: 'bg-red-100 text-red-700',
+    active: 'bg-emerald-100 text-emerald-700',
+    suspended: 'bg-slate-100 text-slate-500',
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300 p-6" dir="rtl">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg">
+            <Car className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-slate-800">رحلة البائعين</h2>
+            <p className="text-slate-500 text-sm">KYC، إدارة السيارات، وصرف المستحقات</p>
+          </div>
+        </div>
+        <button onClick={load} className="bg-slate-100 hover:bg-slate-200 p-2 rounded-xl transition-all">
+          <RefreshCw className="w-5 h-5 text-slate-500" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'إجمالي البائعين', val: sellers.length, color: 'text-slate-700', bg: 'bg-slate-100' },
+          { label: 'طلبات KYC معلقة', val: sellers.filter((s:any) => s.kycStatus === 'pending').length, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'طلبات سحب معلقة', val: payouts.filter((p:any) => p.status === 'pending').length, color: 'text-red-600', bg: 'bg-red-50' },
+        ].map(k => (
+          <div key={k.label} className={`${k.bg} rounded-2xl p-4 text-center`}>
+            <div className={`text-2xl font-black ${k.color}`}>{k.val}</div>
+            <div className="text-xs text-slate-500 font-bold mt-1">{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+        {([['sellers','البائعون والـ KYC'],['payouts','طلبات صرف المستحقات']] as const).map(([k,l]) => (
+          <button key={k} onClick={() => setActiveTab(k as any)}
+            className={`px-5 py-2 rounded-xl text-sm font-black transition-all ${activeTab === k ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>
+            {l}
+            {k === 'payouts' && payouts.filter((p:any)=>p.status==='pending').length > 0 &&
+              <span className="mr-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{payouts.filter((p:any)=>p.status==='pending').length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-40 text-slate-400 font-bold">جاري التحميل...</div>
+      ) : activeTab === 'sellers' ? (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right min-w-[950px]">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                <tr>
+                  <th className="p-4">البائع</th>
+                  <th className="p-4">KYC</th>
+                  <th className="p-4">السيارات</th>
+                  <th className="p-4">المبيع</th>
+                  <th className="p-4">الرصيد المتاح</th>
+                  <th className="p-4">إجراء</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {sellers.map((s: any) => (
+                  <tr key={s.id} className="hover:bg-slate-50 transition-all">
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-sm">
+                          {(s.firstName||'?').charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-black text-slate-900 text-sm">{s.firstName} {s.lastName}</div>
+                          <div className="text-[10px] text-slate-400">{s.email}</div>
+                          {s.companyName && <div className="text-[10px] text-slate-500 font-bold">{s.companyName}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-black ${STATUS_COLOR[s.kycStatus] || 'bg-slate-100 text-slate-500'}`}>
+                        {s.kycStatus === 'approved' ? '✅ معتمد' : s.kycStatus === 'pending' ? '⏳ معلق' : s.kycStatus === 'rejected' ? '❌ مرفوض' : '—'}
+                      </span>
+                    </td>
+                    <td className="p-4 font-mono font-black text-slate-700">{s.totalCars || 0}</td>
+                    <td className="p-4 font-mono font-black text-emerald-600">{s.soldCars || 0}</td>
+                    <td className="p-4 font-mono font-black text-slate-700">${(s.availableBalance || 0).toLocaleString()}</td>
+                    <td className="p-4">
+                      {s.kycStatus === 'pending' && (
+                        <button onClick={() => kycApprove(s.id)}
+                          className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all">
+                          اعتماد KYC ✅
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {sellers.length === 0 && (
+                  <tr><td colSpan={6} className="p-12 text-center text-slate-400 font-bold">لا يوجد بائعون بعد</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right min-w-[900px]">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                <tr>
+                  <th className="p-4">البائع</th>
+                  <th className="p-4">المبلغ</th>
+                  <th className="p-4">IBAN / البنك</th>
+                  <th className="p-4">الحالة</th>
+                  <th className="p-4">تاريخ الطلب</th>
+                  <th className="p-4">إجراء</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {payouts.map((p: any) => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-all">
+                    <td className="p-4">
+                      <div className="font-black text-slate-900 text-sm">{p.firstName} {p.lastName}</div>
+                      <div className="text-[10px] text-slate-400">{p.email}</div>
+                    </td>
+                    <td className="p-4 font-mono font-black text-emerald-600 text-lg">${Number(p.amount).toLocaleString()}</td>
+                    <td className="p-4">
+                      {p.iban ? <code className="bg-slate-100 px-2 py-1 rounded text-xs">{p.iban}</code> : '—'}
+                      {p.bankName && <div className="text-xs text-slate-500 mt-1">{p.bankName}</div>}
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-black ${STATUS_COLOR[p.status] || 'bg-slate-100'}`}>
+                        {p.status === 'pending' ? '⏳ معلق' : p.status === 'approved' ? '✅ موافق' : '❌ مرفوض'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-xs text-slate-500">{p.requestedAt ? new Date(p.requestedAt).toLocaleDateString('ar-EG') : '—'}</td>
+                    <td className="p-4">
+                      {p.status === 'pending' && (
+                        <button onClick={() => approvePayout(p.id)}
+                          className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all">
+                          صرف ✅
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {payouts.length === 0 && (
+                  <tr><td colSpan={6} className="p-12 text-center text-slate-400 font-bold">لا توجد طلبات سحب</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// Financial Summary — Balance Sheet / P&L
+// ============================================================
+const FinancialSummaryPanel: React.FC = () => {
+  const [data, setData] = React.useState<any>(null);
+  const [report, setReport] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch('/api/admin/financial-summary').then(r => r.ok ? r.json() : {}),
+      fetch('/api/admin/reports').then(r => r.ok ? r.json() : {}),
+    ]).then(([f, r]) => { setData(f); setReport(r); }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-400 font-bold p-8">جاري تحميل البيانات المالية...</div>;
+  if (!data) return null;
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300 p-6" dir="rtl">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-11 h-11 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg">
+          <DollarSign className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">الميزانية العمومية والتقارير المالية</h2>
+          <p className="text-slate-500 text-sm">صورة مالية شاملة للمنصة</p>
+        </div>
+      </div>
+
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'إجمالي الإيداعات', val: `$${(data.assets?.totalDepositIn || 0).toLocaleString()}`, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: '💰' },
+          { label: 'عمولات المنصة', val: `$${(data.revenue?.totalCommission || 0).toLocaleString()}`, color: 'text-blue-600', bg: 'bg-blue-50', icon: '📊' },
+          { label: 'أرصدة المشترين', val: `$${(data.assets?.buyerDeposits || 0).toLocaleString()}`, color: 'text-purple-600', bg: 'bg-purple-50', icon: '👥' },
+          { label: 'صافي مركز المنصة', val: `$${(data.netPosition || 0).toLocaleString()}`, color: data.netPosition >= 0 ? 'text-emerald-600' : 'text-red-600', bg: data.netPosition >= 0 ? 'bg-emerald-50' : 'bg-red-50', icon: '⚖️' },
+        ].map(k => (
+          <div key={k.label} className={`${k.bg} rounded-2xl p-5`}>
+            <div className="text-2xl mb-2">{k.icon}</div>
+            <div className={`text-2xl font-black ${k.color} font-mono`}>{k.val}</div>
+            <div className="text-xs text-slate-500 font-bold mt-1">{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two columns: Assets vs Liabilities */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+          <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+            <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+            الأصول والإيرادات
+          </h3>
+          {[
+            { label: 'إجمالي الإيداعات الواردة', val: data.assets?.totalDepositIn || 0 },
+            { label: 'أرصدة المحافظ (مشترون)', val: data.assets?.buyerDeposits || 0 },
+            { label: 'عمولات محصّلة', val: data.revenue?.totalCommission || 0 },
+            { label: 'فواتير مدفوعة', val: data.revenue?.paidInvoices || 0 },
+          ].map(row => (
+            <div key={row.label} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+              <span className="text-sm text-slate-600 font-bold">{row.label}</span>
+              <span className="font-mono font-black text-emerald-600">${Number(row.val).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+          <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+            <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+            الالتزامات والمدفوعات
+          </h3>
+          {[
+            { label: 'أرصدة البائعين المتاحة', val: data.liabilities?.sellerAvailable || 0 },
+            { label: 'أرصدة بائعين معلقة', val: data.liabilities?.sellerPending || 0 },
+            { label: 'طلبات سحب معلقة', val: data.pending?.pendingWithdrawals || 0 },
+            { label: 'فواتير غير مدفوعة', val: data.pending?.unpaidInvoices || 0 },
+            { label: 'مدفوعات سحب معتمدة', val: data.paid?.approvedWithdrawals || 0 },
+          ].map(row => (
+            <div key={row.label} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+              <span className="text-sm text-slate-600 font-bold">{row.label}</span>
+              <span className="font-mono font-black text-red-500">${Number(row.val).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Monthly Revenue Chart (text-based) */}
+      {report?.monthly && report.monthly.length > 0 && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+          <h3 className="text-lg font-black text-slate-800 mb-4">الإيداعات الشهرية (آخر 6 أشهر)</h3>
+          <div className="space-y-3">
+            {report.monthly.map((m: any) => {
+              const pct = Math.max(5, Math.min(100, (m.total / (report.monthly[0]?.total || 1)) * 100));
+              return (
+                <div key={m.month} className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-slate-500 w-20 shrink-0">{m.month}</span>
+                  <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full flex items-center px-3 transition-all"
+                      style={{ width: `${pct}%` }}>
+                      <span className="text-white text-[10px] font-black">${Number(m.total).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-slate-400 font-bold w-16 text-left">{m.count} صفقة</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Top Buyers */}
+      {report?.topBuyers && report.topBuyers.length > 0 && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h3 className="text-lg font-black text-slate-800">🏆 أبرز المشترين</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase">
+                <tr>
+                  <th className="p-4">#</th>
+                  <th className="p-4">المزايد</th>
+                  <th className="p-4">عدد المزايدات</th>
+                  <th className="p-4">أعلى مزايدة</th>
+                  <th className="p-4">إجمالي الإيداع</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {report.topBuyers.map((b: any, i: number) => (
+                  <tr key={b.email} className="hover:bg-slate-50 transition-all">
+                    <td className="p-4 font-black text-slate-400">#{i+1}</td>
+                    <td className="p-4">
+                      <div className="font-black text-slate-900 text-sm">{b.firstName} {b.lastName}</div>
+                      <div className="text-[10px] text-slate-400">{b.email}</div>
+                    </td>
+                    <td className="p-4 font-mono font-black text-slate-700">{b.bidCount}</td>
+                    <td className="p-4 font-mono font-black text-orange-600">${Number(b.maxBid).toLocaleString()}</td>
+                    <td className="p-4 font-mono font-black text-emerald-600">${Number(b.deposit || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// Audit Log Panel — Security & Operations Trail
+// ============================================================
+const AuditLogPanel: React.FC = () => {
+  const [logs, setLogs] = React.useState<any[]>([]);
+  const [secData, setSecData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter] = React.useState<'all' | 'bid' | 'deposit' | 'register'>('all');
+
+  React.useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch('/api/admin/audit-log').then(r => r.ok ? r.json() : []),
+      fetch('/api/admin/security-log').then(r => r.ok ? r.json() : {}),
+    ]).then(([l, s]) => { setLogs(Array.isArray(l) ? l : []); setSecData(s); }).finally(() => setLoading(false));
+  }, []);
+
+  const ACTION_ICONS: Record<string, string> = { bid: '🔨', deposit: '💰', register: '👤', commission: '📊' };
+  const ACTION_COLOR: Record<string, string> = {
+    bid: 'bg-blue-100 text-blue-700',
+    deposit: 'bg-emerald-100 text-emerald-700',
+    register: 'bg-purple-100 text-purple-700',
+  };
+
+  const filtered = filter === 'all' ? logs : logs.filter((l: any) => l.action === filter);
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300 p-6" dir="rtl">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-11 h-11 bg-slate-800 rounded-2xl flex items-center justify-center shadow-lg">
+          <Shield className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">سجل الأمان والعمليات</h2>
+          <p className="text-slate-500 text-sm">كل الأنشطة الحرجة مُسجَّلة — مطابقة لمعايير ISO 27001</p>
+        </div>
+      </div>
+
+      {/* Security Stats */}
+      {secData && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="bg-slate-50 rounded-2xl p-4 text-center">
+            <div className="text-2xl font-black text-slate-700">{secData.total || 0}</div>
+            <div className="text-xs text-slate-500 font-bold mt-1">إجمالي المستخدمين</div>
+          </div>
+          <div className="bg-amber-50 rounded-2xl p-4 text-center">
+            <div className="text-2xl font-black text-amber-600">{(secData.suspiciousUsers || []).length}</div>
+            <div className="text-xs text-slate-500 font-bold mt-1">حسابات موقوفة/محظورة</div>
+          </div>
+          <div className="bg-emerald-50 rounded-2xl p-4 text-center">
+            <div className="text-2xl font-black text-emerald-600">{logs.length}</div>
+            <div className="text-xs text-slate-500 font-bold mt-1">سجلات الأنشطة</div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+        {([['all','الكل'],['bid','مزايدات'],['deposit','إيداعات'],['register','تسجيلات']] as const).map(([k,l]) => (
+          <button key={k} onClick={() => setFilter(k as any)}
+            className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${filter === k ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>
+            {ACTION_ICONS[k] || '📋'} {l}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-40 text-slate-400 font-bold">جاري التحميل...</div>
+      ) : (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right min-w-[800px]">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                <tr>
+                  <th className="p-4">النشاط</th>
+                  <th className="p-4">المستخدم</th>
+                  <th className="p-4">التفاصيل</th>
+                  <th className="p-4">التوقيت</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((log: any, i: number) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-all">
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-black ${ACTION_COLOR[log.action] || 'bg-slate-100 text-slate-600'}`}>
+                        {ACTION_ICONS[log.action] || '📋'} {log.action}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="font-black text-slate-900 text-sm">{log.actor}</div>
+                      <div className="text-[10px] text-slate-400">{log.email}</div>
+                    </td>
+                    <td className="p-4 text-sm text-slate-600 font-bold">{log.detail}</td>
+                    <td className="p-4 text-xs text-slate-400 font-mono">
+                      {log.timestamp ? new Date(log.timestamp).toLocaleString('ar-EG') : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={4} className="p-12 text-center text-slate-400 font-bold">لا توجد سجلات</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const AdminDashboard = () => {
   const INVOICE_STATUS_LABELS: any = {
     unpaid: 'بانتظار الدفع',
@@ -5544,6 +6162,22 @@ export const AdminDashboard = () => {
           </div>
         );
 
+      // ── CRM: Customer Relationship Management ──
+      case 'crm':
+        return <CRMPanel />;
+
+      // ── Seller Journey: KYC + Cars + Payouts ──
+      case 'seller_journey':
+        return <SellerJourneyPanel />;
+
+      // ── Financial Summary: Balance Sheet ──
+      case 'financial_summary':
+        return <FinancialSummaryPanel />;
+
+      // ── Audit Log: Security & Operations ──
+      case 'audit_log':
+        return <AuditLogPanel />;
+
       default:
         return null;
     }
@@ -5653,6 +6287,10 @@ export const AdminDashboard = () => {
               items: [
                 { id: 'system_global', label: 'إعدادات النظام الرئيسية ⚙️', icon: Settings },
                 { id: 'marketing', label: 'مركز التسويق 📧', icon: Mail },
+                { id: 'crm', label: 'CRM إدارة العملاء', icon: Users },
+                { id: 'seller_journey', label: 'رحلة البائعين', icon: Car },
+                { id: 'financial_summary', label: 'الميزانية العمومية', icon: DollarSign },
+                { id: 'audit_log', label: 'سجل الأمان والعمليات', icon: Shield },
                 { id: 'offices', label: 'إدارة الفروع والمكاتب', icon: Building2 },
                 { id: 'footer_settings', label: 'إعدادات الفوتر والروابط', icon: Settings },
               ]
