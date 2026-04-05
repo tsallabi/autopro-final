@@ -68,28 +68,39 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
   const estPriceValue = estimate ? parseEstPrice(estimate.price) : 0;
 
   const toggleTvMode = async () => {
+    const next = !isTvMode;
+    setIsTvMode(next);
     try {
-      if (!document.fullscreenElement) {
+      if (next) {
         if (containerRef.current?.requestFullscreen) {
           await containerRef.current.requestFullscreen();
+        } else if ((containerRef.current as any)?.webkitRequestFullscreen) {
+          await (containerRef.current as any).webkitRequestFullscreen();
         }
       } else {
-        if (document.exitFullscreen) {
+        if (document.fullscreenElement && document.exitFullscreen) {
           await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
         }
       }
     } catch (err) {
-      console.error('Error toggling fullscreen', err);
+      // fullscreen might not be supported on this device (e.g. TV browser) — TV mode still works via state
     }
   };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsTvMode(!!document.fullscreenElement);
+      const isFs = !!document.fullscreenElement || !!(document as any).webkitFullscreenElement;
+      if (!isFs && isTvMode) setIsTvMode(false);
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, [isTvMode]);
   const playVoice = React.useCallback((type: 'bid' | 'win' | 'outbid' | 'tick') => {
     const audios = {
       bid: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3', // Cashing
@@ -257,10 +268,84 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
     placeBid(car.id, nextBidAmount, currentUser!.id);
   };
 
+  // TV mode: full-screen display optimized for showroom/TV screens
+  if (isTvMode) {
+    const tvImage = (car.images && car.images.length > 0)
+      ? (car.images[selectedImageIndex] || car.images[0])
+      : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1920';
+    return (
+      <div ref={containerRef} className="fixed inset-0 z-[9999] bg-slate-950 text-white flex flex-col overflow-hidden" style={{ fontFamily: 'inherit' }}>
+        {/* Full background image */}
+        <div className="absolute inset-0">
+          <img src={tvImage} alt={car.model} onError={e => { e.currentTarget.src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=1920'; }} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-black/60" />
+        </div>
+
+        {/* Top bar */}
+        <div className="relative z-10 flex items-center justify-between px-12 pt-8">
+          <div className="flex items-center gap-4">
+            <span className="bg-red-500 w-5 h-5 rounded-full animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.9)]" />
+            <span className="text-3xl font-black text-orange-400 uppercase tracking-widest">مزاد مباشر</span>
+          </div>
+          <div className="flex items-center gap-8 text-2xl font-black">
+            <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10">
+              <Users className="w-7 h-7 text-blue-400" />
+              <span>{bidders} مزايد</span>
+            </div>
+            <div className={`flex items-center gap-3 bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 ${timeLeft <= 10 ? 'border-red-500 bg-red-500/20 animate-pulse' : ''}`}>
+              <Clock className="w-7 h-7 text-orange-400" />
+              <span className={`font-mono ${timeLeft <= 10 ? 'text-red-400' : 'text-white'}`}>
+                {(() => { const h = Math.floor(timeLeft / 3600); const m = Math.floor((timeLeft % 3600) / 60); const s = timeLeft % 60; if (h > 0) return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; })()}
+              </span>
+            </div>
+          </div>
+          <button onClick={toggleTvMode} className="opacity-20 hover:opacity-100 transition-opacity bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/10 text-lg font-bold flex items-center gap-2">
+            <MonitorPlay className="w-6 h-6 text-orange-500" /> إنهاء العرض
+          </button>
+        </div>
+
+        {/* Car name */}
+        <div className="relative z-10 px-12 mt-auto mb-2">
+          <div className="text-5xl lg:text-7xl font-black tracking-tight text-white drop-shadow-2xl" style={{ textShadow: '0 4px 30px rgba(0,0,0,0.8)' }}>
+            {car.year} {car.make} {car.model}
+          </div>
+          <div className="text-2xl text-slate-300 mt-1 font-bold">{car.location}</div>
+        </div>
+
+        {/* Bottom price bar */}
+        <div className="relative z-10 flex items-center justify-between px-12 pb-10 pt-4 bg-gradient-to-t from-black/90 to-transparent">
+          <div>
+            <div className="text-slate-400 text-2xl font-bold uppercase tracking-widest mb-1">أعلى مزايدة</div>
+            <div className="text-8xl lg:text-9xl font-black text-green-400 font-mono tracking-tighter drop-shadow-[0_0_30px_rgba(74,222,128,0.6)]">
+              ${(currentBid || 0).toLocaleString()}
+            </div>
+            <div className="text-3xl text-slate-400 font-mono mt-1">≈ {Math.round((currentBid || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</div>
+          </div>
+
+          {/* Image gallery dots */}
+          <div className="flex flex-col gap-3 items-center">
+            {(car.images || []).slice(0, 8).map((_, idx) => (
+              <button key={idx} onClick={() => setSelectedImageIndex(idx)} className={`rounded-full transition-all ${idx === selectedImageIndex ? 'w-4 h-10 bg-orange-500' : 'w-3 h-3 bg-white/30 hover:bg-white/60'}`} />
+            ))}
+          </div>
+
+          {/* Lot number */}
+          <div className="text-right">
+            <div className="text-slate-400 text-xl font-bold mb-1">رقم القطعة</div>
+            <div className="text-5xl font-black text-white font-mono">#{car.lotNumber || car.id}</div>
+            <div className="mt-4 text-slate-400 text-xl font-bold">آخر مزايد</div>
+            <div className="text-3xl font-black text-orange-300">{bidHistory[0]?.user || '---'}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
-      className={`bg-slate-950 min-h-screen text-white selection:bg-accent-500/30 transition-all duration-300 ${outbidFlash ? 'shadow-[inset_0_0_150px_rgba(239,68,68,0.3)] bg-slate-900 border-x-4 border-red-500' : ''} ${isTvMode ? 'p-6 fixed inset-0 z-[9999] overflow-hidden flex flex-col' : 'pt-20 pb-12'}`}
+      className={`bg-slate-950 min-h-screen text-white selection:bg-accent-500/30 transition-all duration-300 ${outbidFlash ? 'shadow-[inset_0_0_150px_rgba(239,68,68,0.3)] bg-slate-900 border-x-4 border-red-500' : ''} pt-16 md:pt-20 pb-24 md:pb-12`}
       dir="rtl"
     >
       <div className={`mx-auto w-full ${isTvMode ? 'max-w-[1920px] h-full flex flex-col' : 'max-w-7xl px-4 sm:px-6 lg:px-8'}`}>

@@ -5399,7 +5399,7 @@ export const AdminDashboard = () => {
         <div className="flex items-center justify-between mb-10 px-2 mt-2">
           <div className="flex items-center gap-3">
             <img 
-              src="/logo.jpg" 
+              src="/logo_on_dark.png?v=3" 
               alt="Logo" 
               className="h-12 w-auto object-contain rounded-xl shadow-lg bg-white/10" 
             />

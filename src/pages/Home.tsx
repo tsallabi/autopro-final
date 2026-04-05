@@ -1188,9 +1188,9 @@ export const Home = () => {
                   onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }}
                 />
                 <div className="flex items-center gap-4 mt-2">
-                  <input type="number" value={filterMileageMin} onChange={(e) => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                  <input type="number" value={filterMileageMin} onChange={(e) => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} placeholder="أدنى كم" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
                   <span className="text-slate-400 font-black">-</span>
-                  <input type="number" value={filterMileageMax} onChange={(e) => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                  <input type="number" value={filterMileageMax} onChange={(e) => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} placeholder="أقصى كم" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
                 </div>
               </div>
 

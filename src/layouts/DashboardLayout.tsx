@@ -175,7 +175,7 @@ export const DashboardLayout = () => {
         <div className="p-6 flex items-center justify-between border-b border-slate-800 flex-shrink-0">
           <div className="flex items-center gap-3">
             <img 
-              src="/logo.jpg" 
+              src="/logo_on_dark.png?v=3" 
               alt="Logo" 
               className="h-10 w-auto object-contain rounded-lg shadow-md bg-white/10" 
             />
