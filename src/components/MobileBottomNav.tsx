@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Gavel, Calculator, Wallet, User } from 'lucide-react';
+import { Home, Gavel, Calculator, User } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
@@ -8,7 +8,8 @@ import i18n from '../i18n';
 /**
  * MobileBottomNav — Phase 14
  * Fixed bottom navigation bar, visible only on mobile (< md).
- * Shows 5 tabs: Home / Auctions / Calculator / Wallet / Profile
+ * Shows 4 tabs: Home / Auctions / Calculator / Profile
+ * (Wallet removed — accessible from dashboard instead)
  */
 export const MobileBottomNav: React.FC = () => {
     const location = useLocation();
@@ -34,12 +35,6 @@ export const MobileBottomNav: React.FC = () => {
             icon: Home,
             match: ['/'],
             exact: true,
-        },
-        {
-            href: currentUser ? '/wallet' : '/auth',
-            label: t('nav.myWallet'),
-            icon: Wallet,
-            match: ['/wallet'],
         },
         {
             href: currentUser

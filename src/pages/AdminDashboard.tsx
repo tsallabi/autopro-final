@@ -2190,6 +2190,16 @@ export const AdminDashboard = () => {
   const [showMessages, setShowMessages] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
 
+  // Users pagination & search
+  const [userSearch, setUserSearch] = useState('');
+  const [userPage, setUserPage] = useState(1);
+  const USERS_PER_PAGE = 15;
+
+  // Cars pagination & search
+  const [carSearch, setCarSearch] = useState('');
+  const [carPage, setCarPage] = useState(1);
+  const CARS_PER_PAGE = 15;
+
   // Click Outside Refs
   const notificationsRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -3204,7 +3214,7 @@ export const AdminDashboard = () => {
               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-200 w-96">
                   <Search className="w-4 h-4 text-slate-400" />
-                  <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="text" className="bg-transparent text-sm font-bold flex-1 outline-none" />
+                  <input aria-label="بحث عن مستخدم" title="بحث" placeholder="ابحث بالاسم أو الإيميل أو الهاتف..." type="text" value={userSearch} onChange={e => { setUserSearch(e.target.value); setUserPage(1); }} className="bg-transparent text-sm font-bold flex-1 outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-400 font-bold">فرز حسب:</span>
@@ -3229,7 +3239,19 @@ export const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {(filter === 'pending' ? pendingUsers : users).map(user => (
+                    {(() => {
+                      const baseList = filter === 'pending' ? pendingUsers : users;
+                      const q = userSearch.trim().toLowerCase();
+                      const filtered = q ? baseList.filter(u =>
+                        `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                        (u.email || '').toLowerCase().includes(q) ||
+                        (u.phone || '').includes(q)
+                      ) : baseList;
+                      const totalPages = Math.max(1, Math.ceil(filtered.length / USERS_PER_PAGE));
+                      const page = Math.min(userPage, totalPages);
+                      const paged = filtered.slice((page - 1) * USERS_PER_PAGE, page * USERS_PER_PAGE);
+                      return (<>
+                        {paged.map(user => (
                       <tr key={user.id} className="hover:bg-slate-50/80 transition-all group">
                         {/* User Info */}
                         <td className="p-6">
@@ -3354,18 +3376,59 @@ export const AdminDashboard = () => {
                         </td>
                       </tr>
                     ))}
+                        {paged.length === 0 && (
+                          <tr><td colSpan={6} className="py-24 text-center">
+                            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Users className="w-10 h-10 text-slate-200" />
+                            </div>
+                            <p className="font-black text-slate-400 text-xl">لا يوجد مستخدمين لعرضهم</p>
+                            <p className="text-xs text-slate-300 mt-2">جرب تغيير الفلتر أو كلمة البحث</p>
+                          </td></tr>
+                        )}
+                      </>);
+                    })()}
                   </tbody>
                 </table>
-
-                {((filter === 'pending' ? pendingUsers : users).length === 0) && (
-                  <div className="py-24 text-center">
-                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Users className="w-10 h-10 text-slate-200" />
+                {/* Users Pagination */}
+                {(() => {
+                  const baseList = filter === 'pending' ? pendingUsers : users;
+                  const q = userSearch.trim().toLowerCase();
+                  const filtered = q ? baseList.filter(u =>
+                    `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+                    (u.email || '').toLowerCase().includes(q) ||
+                    (u.phone || '').includes(q)
+                  ) : baseList;
+                  const totalPages = Math.max(1, Math.ceil(filtered.length / USERS_PER_PAGE));
+                  if (totalPages <= 1) return null;
+                  return (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                      <span className="text-xs text-slate-400 font-bold">
+                        {filtered.length} مستخدم — صفحة {Math.min(userPage, totalPages)} من {totalPages}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                          disabled={userPage <= 1}
+                          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-slate-600 disabled:opacity-30 hover:border-orange-300 hover:text-orange-600 transition-all"
+                        >← السابق</button>
+                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                          const pg = Math.max(1, Math.min(userPage - 2, totalPages - 4)) + i;
+                          return (
+                            <button key={pg} onClick={() => setUserPage(pg)}
+                              className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${userPage === pg ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'bg-white border border-slate-200 text-slate-600 hover:border-orange-300'}`}>
+                              {pg}
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => setUserPage(p => Math.min(totalPages, p + 1))}
+                          disabled={userPage >= totalPages}
+                          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-slate-600 disabled:opacity-30 hover:border-orange-300 hover:text-orange-600 transition-all"
+                        >التالي →</button>
+                      </div>
                     </div>
-                    <p className="font-black text-slate-400 text-xl">لا يوجد مستخدمين لعرضهم</p>
-                    <p className="text-xs text-slate-300 mt-2">جرب تغيير الفلتر أو إضافة مستخدم جديد</p>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -4657,6 +4720,20 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
+            {/* Cars search bar */}
+            <div className="flex items-center gap-3 bg-white px-4 py-3 rounded-2xl border border-slate-200 shadow-sm">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="ابحث بالماركة أو الموديل أو VIN أو Lot..."
+                value={carSearch}
+                onChange={e => { setCarSearch(e.target.value); setCarPage(1); }}
+                className="bg-transparent text-sm font-bold flex-1 outline-none"
+                aria-label="بحث سيارات"
+              />
+              {carSearch && <button onClick={() => setCarSearch('')} className="text-slate-400 hover:text-slate-600 text-xs font-black">✕</button>}
+            </div>
+
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-right min-w-[1100px]">
@@ -4671,7 +4748,19 @@ export const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {cars.map(car => (
+                    {(() => {
+                      const q = carSearch.trim().toLowerCase();
+                      const filtered = q ? cars.filter(c =>
+                        `${c.make} ${c.model}`.toLowerCase().includes(q) ||
+                        (c.vin || '').toLowerCase().includes(q) ||
+                        (c.lotNumber || '').toLowerCase().includes(q) ||
+                        String(c.year || '').includes(q)
+                      ) : cars;
+                      const totalPages = Math.max(1, Math.ceil(filtered.length / CARS_PER_PAGE));
+                      const page = Math.min(carPage, totalPages);
+                      const paged = filtered.slice((page - 1) * CARS_PER_PAGE, page * CARS_PER_PAGE);
+                      return paged;
+                    })().map(car => (
                       <tr key={car.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
@@ -4723,6 +4812,40 @@ export const AdminDashboard = () => {
                     ))}
                   </tbody>
                 </table>
+                {/* Cars Pagination */}
+                {(() => {
+                  const q = carSearch.trim().toLowerCase();
+                  const filtered = q ? cars.filter(c =>
+                    `${c.make} ${c.model}`.toLowerCase().includes(q) ||
+                    (c.vin || '').toLowerCase().includes(q) ||
+                    (c.lotNumber || '').toLowerCase().includes(q) ||
+                    String(c.year || '').includes(q)
+                  ) : cars;
+                  const totalPages = Math.max(1, Math.ceil(filtered.length / CARS_PER_PAGE));
+                  if (totalPages <= 1) return null;
+                  return (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                      <span className="text-xs text-slate-400 font-bold">
+                        {filtered.length} سيارة — صفحة {Math.min(carPage, totalPages)} من {totalPages}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setCarPage(p => Math.max(1, p - 1))} disabled={carPage <= 1}
+                          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-slate-600 disabled:opacity-30 hover:border-orange-300 hover:text-orange-600 transition-all">← السابق</button>
+                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                          const pg = Math.max(1, Math.min(carPage - 2, totalPages - 4)) + i;
+                          return (
+                            <button key={pg} onClick={() => setCarPage(pg)}
+                              className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${carPage === pg ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'bg-white border border-slate-200 text-slate-600 hover:border-orange-300'}`}>
+                              {pg}
+                            </button>
+                          );
+                        })}
+                        <button onClick={() => setCarPage(p => Math.min(totalPages, p + 1))} disabled={carPage >= totalPages}
+                          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-slate-600 disabled:opacity-30 hover:border-orange-300 hover:text-orange-600 transition-all">التالي →</button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>

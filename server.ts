@@ -748,6 +748,7 @@ db.exec(`
 try { db.exec("ALTER TABLE users ADD COLUMN walletBalance REAL DEFAULT 0"); } catch (_) { }
 try { db.exec("ALTER TABLE invoices ADD COLUMN paidAt TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE invoices ADD COLUMN paidVia TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE notifications ADD COLUMN link TEXT"); } catch (_) { }
 
 // Seed buyer wallets for demo users
 db.exec("PRAGMA foreign_keys = OFF;");
@@ -1028,14 +1029,14 @@ async function startServer() {
   };
 
   // Function to send a notification and optional email/whatsapp mirror
-  function sendNotification(userId: string, title: string, message: string, type: string = 'info', templateId: string = 'general_notification', context: any = {}) {
+  function sendNotification(userId: string, title: string, message: string, type: string = 'info', templateId: string = 'general_notification', context: any = {}, link: string = '') {
     const id = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const timestamp = new Date().toISOString();
     try {
-      db.prepare(`INSERT INTO notifications(id, userId, title, message, type, timestamp) VALUES(?, ?, ?, ?, ?, ?)`)
-        .run(id, userId, title, message, type, timestamp);
+      db.prepare(`INSERT INTO notifications(id, userId, title, message, type, timestamp, link) VALUES(?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, userId, title, message, type, timestamp, link || null);
 
-      const notifData = { id, userId, title, message, type, timestamp, isRead: 0 };
+      const notifData = { id, userId, title, message, type, timestamp, isRead: 0, link };
       io.to(`user_${userId}`).emit("new_notification", notifData);
 
       // Omni-Channel External Dispatch (Email/WhatsApp)
@@ -1127,7 +1128,7 @@ async function startServer() {
       sendNotification(car.sellerId, 'تم بيع سيارة! 💰', `تم بيع سيارتك ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}`, 'success', 'car_sold', {
         carLink: `https://www.autopro.ac/cars/${carId}`,
         itemInfo: `${car.year} ${car.make} ${car.model}`
-      });
+      }, `/cars/${carId}`);
       sendInternalMessage('admin-1', car.sellerId, '✅ تأكيد بيع سيارة',
         `تهانينا! تم بيع سيارتك ${car.make} ${car.model} (${car.year}) بنجاح.\n\n` +
         `السعر النهائي: $${amount.toLocaleString()}\n` +
@@ -1145,7 +1146,7 @@ async function startServer() {
         winLink: `https://www.autopro.ac/dashboard/wins`,
         invoiceLink: `https://www.autopro.ac/dashboard/invoices`,
         itemInfo: `${car.year} ${car.make} ${car.model}`
-      });
+      }, `/cars/${carId}`);
 
       sendInternalMessage('admin-1', userId, '🏆 إشعار فوز بالمزاد وإصدار فواتير',
         `أهلاً! لقد فزت بسيارة ${car.make} ${car.model} (${car.year}).\n\n` +
@@ -1548,14 +1549,14 @@ async function startServer() {
       if (invoice.type === 'purchase') {
         db.prepare("UPDATE invoices SET status='unpaid' WHERE userId=? AND carId=? AND type='transport'").run(userId, invoice.carId);
         db.prepare("UPDATE shipments SET status='processing' WHERE carId=? AND userId=?").run(invoice.carId, userId);
-        sendNotification(userId, '✅ تم الدفع بنجاح', `تم دفع فاتورة الشراء. فاتورة النقل الداخلي أصبحت متاحة الآن.`, 'success');
+        sendNotification(userId, '✅ تم الدفع بنجاح', `تم دفع فاتورة الشراء. فاتورة النقل الداخلي أصبحت متاحة الآن.`, 'success', 'general_notification', {}, `/dashboard/invoices`);
       } else if (invoice.type === 'transport') {
         db.prepare("UPDATE invoices SET status='unpaid' WHERE userId=? AND carId=? AND type='shipping'").run(userId, invoice.carId);
         db.prepare("UPDATE shipments SET status='in_transit' WHERE carId=? AND userId=?").run(invoice.carId, userId);
-        sendNotification(userId, '🚛 النقل الداخلي مؤكد', `تم دفع فاتورة النقل — السيارة في طريقها للميناء.`, 'success');
+        sendNotification(userId, '🚛 النقل الداخلي مؤكد', `تم دفع فاتورة النقل — السيارة في طريقها للميناء.`, 'success', 'general_notification', {}, `/dashboard/invoices`);
       } else if (invoice.type === 'shipping') {
         db.prepare("UPDATE shipments SET status='at_port' WHERE carId=? AND userId=?").run(invoice.carId, userId);
-        sendNotification(userId, '⚓ الشحن البحري مؤكد', `تم دفع فاتورة الشحن — السيارة قيد الشحن البحري.`, 'success');
+        sendNotification(userId, '⚓ الشحن البحري مؤكد', `تم دفع فاتورة الشحن — السيارة قيد الشحن البحري.`, 'success', 'general_notification', {}, `/dashboard/invoices`);
       }
 
       const invoiceTypeLabels: Record<string, string> = { purchase: 'شراء', transport: 'نقل', shipping: 'شحن' };
@@ -1636,13 +1637,13 @@ async function startServer() {
       db.transaction(() => {
         if (pr.type === 'topup') {
           walletCredit(pr.userId, pr.amount, `شحن محفظة — مراجعة Admin`, id);
-          sendNotification(pr.userId, '✅ تم شحن محفظتك', `تمت الموافقة على طلبك ✔ — تم إضافة $${Number(pr.amount).toLocaleString()} لمحفظتك. يمكنك الآن المزايدة!`, 'success');
+          sendNotification(pr.userId, '✅ تم شحن محفظتك', `تمت الموافقة على طلبك ✔ — تم إضافة $${Number(pr.amount).toLocaleString()} لمحفظتك. يمكنك الآن المزايدة!`, 'success', 'general_notification', {}, `/dashboard/wallet`);
         } else if (pr.type === 'withdrawal') {
           walletDebit(pr.userId, pr.amount, `سحب رصيد — مراجعة Admin`, id);
-          sendNotification(pr.userId, '💸 تمت الموافقة على السحب', `تمت الموافقة على سحب $${Number(pr.amount).toLocaleString()} — سيُحوَّل خلال 2-3 أيام عمل.`, 'success');
+          sendNotification(pr.userId, '💸 تمت الموافقة على السحب', `تمت الموافقة على سحب $${Number(pr.amount).toLocaleString()} — سيُحوَّل خلال 2-3 أيام عمل.`, 'success', 'general_notification', {}, `/dashboard/wallet`);
         } else if (pr.type === 'invoice_payment') {
           completeInvoicePayment(pr.invoiceId, timestamp, pr.method);
-          sendNotification(pr.userId, '✅ تم تأكيد الدفع', `تمت الموافقة على تأكيد دفع الفاتورة #${pr.invoiceId} بنجاح.`, 'success');
+          sendNotification(pr.userId, '✅ تم تأكيد الدفع', `تمت الموافقة على تأكيد دفع الفاتورة #${pr.invoiceId} بنجاح.`, 'success', 'general_notification', {}, `/dashboard/invoices`);
         }
 
         db.prepare("UPDATE payment_requests SET status='approved', adminNote=?, processedAt=? WHERE id=?")
@@ -3924,7 +3925,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       // INSTANT OUTBID NOTIFICATION
       if (prevWinnerId && prevWinnerId !== userId) {
-        sendNotification(prevWinnerId, "⚠️ تم تجاوز مزايدتك!", `قام شخص آخر بالمزايدة على ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. زايد الآن لاستعادة الصدارة!`, 'warning');
+        sendNotification(prevWinnerId, "⚠️ تم تجاوز مزايدتك!", `قام شخص آخر بالمزايدة على ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. زايد الآن لاستعادة الصدارة!`, 'warning', 'general_notification', {}, `/cars/${carId}`);
         io.to(`user_${prevWinnerId} `).emit("outbid", { carId, newBid: amount, make: car.make, model: car.model });
       }
 

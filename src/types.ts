@@ -154,6 +154,7 @@ export interface Notification {
   type: 'info' | 'success' | 'alert' | 'bid';
   isRead: number;
   timestamp: string;
+  link?: string;
 }
 
 export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {

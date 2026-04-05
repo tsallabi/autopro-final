@@ -1,10 +1,12 @@
 import React from 'react';
-import { Bell, Check, Info, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+import { Bell, Check, Info, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Notification } from '../types';
+import { useNavigate } from 'react-router-dom';
 
 export const NotificationDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { notifications, markNotificationAsRead, markAllNotificationsAsRead, unreadCounts } = useStore();
+    const navigate = useNavigate();
 
     const formatTimeAgo = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -23,6 +25,14 @@ export const NotificationDropdown: React.FC<{ onClose: () => void }> = ({ onClos
             case 'alert': return <AlertCircle className="w-4 h-4 text-red-500" />;
             case 'bid': return <Bell className="w-4 h-4 text-orange-500" />;
             default: return <Info className="w-4 h-4 text-blue-500" />;
+        }
+    };
+
+    const handleNotifClick = (notif: Notification) => {
+        if (!notif.isRead) markNotificationAsRead(notif.id);
+        if (notif.link) {
+            onClose();
+            navigate(notif.link);
         }
     };
 
@@ -57,26 +67,29 @@ export const NotificationDropdown: React.FC<{ onClose: () => void }> = ({ onClos
                         {notifications.map((notif) => (
                             <div
                                 key={notif.id}
-                                onClick={() => {
-                                    if (!notif.isRead) markNotificationAsRead(notif.id);
-                                }}
-                                className={`p-4 hover:bg-slate-50 transition-colors cursor-pointer group ${!notif.isRead ? 'bg-orange-50/30' : ''}`}
+                                onClick={() => handleNotifClick(notif)}
+                                className={`p-4 hover:bg-slate-50 transition-colors cursor-pointer group ${!notif.isRead ? 'bg-orange-50/30' : ''} ${notif.link ? 'hover:bg-orange-50/50' : ''}`}
                             >
                                 <div className="flex gap-3">
                                     <div className="mt-1 flex-shrink-0">
                                         {getTypeIcon(notif.type)}
                                     </div>
-                                    <div className="flex-grow">
-                                        <h4 className={`text-sm mb-0.5 ${!notif.isRead ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
-                                            {notif.title}
-                                        </h4>
+                                    <div className="flex-grow min-w-0">
+                                        <div className="flex items-start justify-between gap-1">
+                                            <h4 className={`text-sm mb-0.5 ${!notif.isRead ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
+                                                {notif.title}
+                                            </h4>
+                                            {notif.link && (
+                                                <ExternalLink className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                            )}
+                                        </div>
                                         <p className="text-xs text-slate-600 font-bold leading-relaxed">{notif.message}</p>
                                         <span className="text-[10px] text-slate-500 mt-2 block font-black">
                                             {formatTimeAgo(notif.timestamp)}
                                         </span>
                                     </div>
                                     {!notif.isRead && (
-                                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2 ring-4 ring-orange-500/20"></div>
+                                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2 ring-4 ring-orange-500/20 flex-shrink-0"></div>
                                     )}
                                 </div>
                             </div>
