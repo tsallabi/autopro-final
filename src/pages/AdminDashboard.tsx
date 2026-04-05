@@ -5522,16 +5522,16 @@ export const AdminDashboard = () => {
         ${mobileSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
         overflow-y-auto border-l border-slate-800 pb-32 lg:pb-6
       `}>
-        <div className="flex items-center justify-between mb-10 px-2 mt-2">
-          <div className="flex flex-col items-center gap-1.5 w-full">
+        <div className="flex items-center justify-between mb-8 px-2 mt-4">
+          <div className="flex flex-col items-center gap-2 w-full">
             <img
               src="/logo_on_dark.png?v=3"
               alt="Logo"
-              className="h-14 w-auto object-contain rounded-xl shadow-lg"
+              className="h-16 w-auto object-contain drop-shadow-lg"
             />
-            <div className="text-center">
-              <h1 className="text-sm font-black tracking-tight leading-tight text-white">ليبيا اوتو برو</h1>
-              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (ADMIN)</span>
+            <div className="text-center space-y-0.5">
+              <h1 className="text-base font-black tracking-tight leading-tight text-white">ليبيا اوتو برو</h1>
+              <p className="text-[11px] font-black text-orange-400 tracking-widest uppercase">إدارة المنصة · ADMIN</p>
             </div>
           </div>
           <button 
