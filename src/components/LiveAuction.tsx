@@ -345,7 +345,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
   return (
     <div
       ref={containerRef}
-      className={`bg-slate-950 min-h-screen text-white selection:bg-accent-500/30 transition-all duration-300 ${outbidFlash ? 'shadow-[inset_0_0_150px_rgba(239,68,68,0.3)] bg-slate-900 border-x-4 border-red-500' : ''} pt-16 md:pt-20 pb-24 md:pb-12`}
+      className={`bg-slate-950 text-white selection:bg-accent-500/30 transition-all duration-300 ${outbidFlash ? 'shadow-[inset_0_0_150px_rgba(239,68,68,0.3)] bg-slate-900 border-x-4 border-red-500' : ''} pt-4 md:pt-20 pb-24 md:pb-12`}
       dir="rtl"
     >
       <div className={`mx-auto w-full ${isTvMode ? 'max-w-[1920px] h-full flex flex-col' : 'max-w-7xl px-4 sm:px-6 lg:px-8'}`}>
@@ -479,19 +479,19 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
 
             {/* Bidding Controls */}
             {!isTvMode ? (
-              <div className="glass-dark rounded-[2.5rem] p-8 border border-white/5 shadow-2xl relative overflow-hidden">
+              <div className="glass-dark rounded-[2rem] p-4 md:p-8 border border-white/5 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-accent-500/5 blur-[100px] -mr-32 -mt-32"></div>
                 <div className="flex justify-between items-end mb-6">
                   <div>
                     <div className="text-slate-400 mb-1">{t('liveAuction.highestBid')}</div>
-                    <div className="text-5xl font-bold text-green-400 font-mono tracking-tight">
+                    <div className="text-3xl md:text-5xl font-bold text-green-400 font-mono tracking-tight">
                       ${(currentBid || 0).toLocaleString()}
-                      <span className="text-lg text-slate-500 block mt-1 tracking-normal font-sans">≈ {Math.round((currentBid || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
+                      <span className="text-sm md:text-lg text-slate-500 block mt-1 tracking-normal font-sans">≈ {Math.round((currentBid || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
                     </div>
                   </div>
 
-                  {/* Total Fee Calculator (Basic Version) */}
-                  <div className="text-right glass-dark p-3 rounded-xl border border-white/5 min-w-[200px]">
+                  {/* Total Fee Calculator (Basic Version) - hidden on mobile */}
+                  <div className="hidden md:block text-right glass-dark p-3 rounded-xl border border-white/5 min-w-[200px]">
                     <div className="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-tighter">{t('liveAuction.estFinalCost')}</div>
                     <div className="space-y-1 text-xs">
                       <div className="flex justify-between gap-4">
@@ -604,8 +604,8 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
             )}
           </div>
 
-          {/* Sidebar - History & Info */}
-          <div className="flex flex-col gap-6">
+          {/* Sidebar - History & Info — hidden on mobile */}
+          <div className="hidden lg:flex flex-col gap-6">
 
             {/* Bid History */}
             <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 flex-grow flex flex-col">
