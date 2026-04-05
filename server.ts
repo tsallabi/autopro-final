@@ -625,46 +625,244 @@ try { db.exec(`ALTER TABLE transactions ADD COLUMN currency TEXT DEFAULT 'USD'`)
 try { db.exec(`ALTER TABLE transactions ADD COLUMN adminNote TEXT`); } catch (_) { }
 
 // ======= PHASE 4: SELLER WALLET TABLES =======
-const initLibyanMarketPrices = () => {
+// AUTO-GENERATED: Libyan Market Prices Seed — 227 vehicles
+const seedLibyanMarketPrices227 = () => {
   try {
-    const count: any = db.prepare("SELECT COUNT(*) as count FROM libyan_market_prices").get();
-    if (count && count.count === 0) {
-      const rawData = `جديد	تويوتا	ستارليت	2025	اوتوماتيك	بنزين	0	99,999
-جديد	جيتور	T2	2026	اوتوماتيك	بنزين	0	255,000
-جديد	آيتو	آيتو 9	2026	اوتوماتيك	بنزين	0	36,666
-مستعمل	تويوتا	كامري	2024	اوتوماتيك	بنزين	1,000 - 9,999	260,000
-جديد	Audi	Q3	2024	اوتوماتيك	بنزين	0	178,938
-جديد	Audi	RS6 Avant	2024	اوتوماتيك	بنزين	0	650,000
-مستعمل	هيونداي	كريتا	2025	اوتوماتيك	بنزين	10,000 - 19,999	99,999
-جديد	كيا	سورينتو	2023	اوتوماتيك	بنزين	0	135,000
-مستعمل	هيونداي	سنتافي	2023	اوتوماتيك	بنزين	50,000 - 59,999	135,000
-مستعمل	هيونداي	فوليستر	2023	اوتوماتيك	بنزين	90,000 - 99,999	55,000
-مستعمل	كيا	فورتي	2023	اوتوماتيك	بنزين	10,000 - 19,999	65,000
-جديد	تويوتا	توندرا	2023	اوتوماتيك	بنزين	0	295,000
-مستعمل	هيونداي	سنتافي	2022	اوتوماتيك	بنزين	40,000 - 49,999	125,000
-مستعمل	هيونداي	توسان	2022	اوتوماتيك	بنزين	60,000 - 69,999	110,000
-مستعمل	هيونداي	سوناتا	2022	اوتوماتيك	بنزين	80,000 - 89,999	82,000
-مستعمل	مرسيدس بنز	الفئة-C	2021	اوتوماتيك	بنزين	10,000 - 19,999	84,000
-مستعمل	تويوتا	كامري	2020	اوتوماتيك	بنزين	70,000 - 79,999	80,000
-مستعمل	كيا	فورتي	2020	اوتوماتيك	بنزين	130,000 - 139,999	50,000
-مستعمل	نيسان	باترول	2020	اوتوماتيك	بنزين	+200,000	64,000
-مستعمل	كيا	سبورتاج	2019	اوتوماتيك	بنزين	170,000 - 179,999	57,000
-مستعمل	كيا	اوبتيما	2017	اوتوماتيك	بنزين	110,000 - 119,999	36,000`;
-      
-      const lines = rawData.split('\n').filter(l => l.trim().length > 0);
-      const stmt = db.prepare('INSERT INTO libyan_market_prices (id, condition, make, model, year, transmission, fuel, mileage, priceLYD) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      db.transaction(() => {
-        lines.forEach((line, idx) => {
-          const [condition, make, model, year, transmission, fuel, mileage, priceStr] = line.split('\t');
-          const price = parseFloat(priceStr?.replace(/,/g, '') || '0');
-          stmt.run(`lmp-${idx}`, condition, make, model, parseInt(year), transmission, fuel, mileage, price);
-        });
-      })();
-      console.log(`✅ Seeded ${lines.length} Libyan Market Prices`);
-    }
-  } catch (err) { console.error("Market seeder error", err); }
+    const count: any = db.prepare("SELECT COUNT(*) as c FROM libyan_market_prices").get() as any;
+    if ((count?.c || 0) >= 50) { console.log('[SEED] libyan_market_prices already seeded'); return; }
+    console.log('[SEED] Seeding 227 Libyan market prices...');
+    db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('1', 'جديد', 'تويوتا', 'Toyota', 'ستارليت', 'Starlet', 2025, 'اوتوماتيك', 'بنزين', '0', 99999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('2', 'جديد', 'جيتور', 'Jetour', 'T2', 'T2', 2026, 'اوتوماتيك', 'بنزين', '0', 255000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('3', 'جديد', 'آيتو', 'Aito', 'آيتو 9', 'Aito 9', 2026, 'اوتوماتيك', 'بنزين', '0', 36666, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('4', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2024, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 260000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('5', 'جديد', 'أودي', 'Audi', 'Q3', 'Q3', 2024, 'اوتوماتيك', 'بنزين', '0', 178938, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('6', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2024, 'اوتوماتيك', 'بنزين', '20,000 - 29,999', 145000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('7', 'مستعمل', 'هيونداي', 'Hyundai', 'كريتا', 'Creta', 2025, 'اوتوماتيك', 'بنزين', '10,000 - 19,999', 99999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('8', 'جديد', 'كيا', 'Kia', 'سورينتو', 'Sorento', 2023, 'اوتوماتيك', 'بنزين', '0', 135000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('9', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2023, 'اوتوماتيك', 'بنزين', '50,000 - 59,999', 135000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('10', 'مستعمل', 'هيونداي', 'Hyundai', 'فوليستر', 'Ioniq 5', 2023, 'اوتوماتيك', 'بنزين', '90,000 - 99,999', 38689, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('11', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2023, 'اوتوماتيك', 'بنزين', '10,000 - 19,999', 658555, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('12', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2023, 'اوتوماتيك', 'هايبرد', '30,000 - 39,999', NULL, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('13', 'جديد', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2023, 'اوتوماتيك', 'بنزين', '0', 295000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('14', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2022, 'اوتوماتيك', 'بنزين', '40,000 - 49,999', 1255669, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('15', 'مستعمل', 'هيونداي', 'Hyundai', 'توسان', 'Tucson', 2022, 'اوتوماتيك', 'بنزين', '60,000 - 69,999', 110000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('16', 'مستعمل', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2022, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 82000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('17', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2022, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 5288, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('18', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-C', 'C-Class', 2021, 'اوتوماتيك', 'بنزين', '10,000 - 19,999', 84000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('19', 'مستعمل', 'هيونداي', 'Hyundai', 'فينيو', 'Venue', 2021, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 68000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('20', 'مستعمل', 'هيونداي', 'Hyundai', 'كونا', 'Kona', 2021, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 1000000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('21', 'مستعمل', 'جينيسيس', 'Genesis', 'G70', 'G70', 2020, 'اوتوماتيك', 'بنزين', '40,000 - 49,999', 999999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('22', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2020, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 80000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('23', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2020, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 78500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('24', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2020, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 50000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('25', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2020, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 55000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('26', 'مستعمل', 'نيسان', 'Nissan', 'باترول', 'Patrol', 2020, 'اوتوماتيك', 'بنزين', '—', 64000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('27', 'جديد', 'هيونداي', 'Hyundai', 'فينيو', 'Venue', 2020, 'اوتوماتيك', 'بنزين', '0', 68800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('28', 'جديد', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2020, 'اوتوماتيك', 'بنزين', '0', 99999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('29', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2020, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 9999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('30', 'مستعمل', 'كيا', 'Kia', 'سورينتو', 'Sorento', 2020, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 73000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('31', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2019, 'اوتوماتيك', 'بنزين', '50,000 - 59,999', 54000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('32', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2019, 'اوتوماتيك', 'بنزين', '170,000 - 179,999', 57000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('33', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2019, 'اوتوماتيك', 'بنزين', '90,000 - 99,999', 58000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('34', 'مستعمل', 'فولكسفاغن', 'Volkswagen', 'جولف GTI', 'Golf GTI', 2019, 'اوتوماتيك', 'بنزين', '40,000 - 49,999', 99999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('35', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2019, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 85000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('36', 'مستعمل', 'جينيسيس', 'Genesis', 'G70', 'G70', 2019, 'اوتوماتيك', 'بنزين', '50,000 - 59,999', 999999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('37', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-GLE', 'GLE', 2018, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 295000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('38', 'مستعمل', 'تويوتا', 'Toyota', 'بريفيا', 'Previa', 2018, 'اوتوماتيك', 'بنزين', '—', 75000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('39', 'مستعمل', 'تويوتا', 'Toyota', 'راف فور', 'RAV4', 2018, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 75000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('40', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2018, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 76000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('41', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2018, 'اوتوماتيك', 'بنزين', '170,000 - 179,999', 150000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('42', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2017, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 63222, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('43', 'مستعمل', 'كيا', 'Kia', 'اوبتيما', 'Optima', 2017, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 36000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('44', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-C', 'C-Class', 2017, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 56000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('45', 'مستعمل', 'جينيسيس', 'Genesis', 'G80', 'G80', 2017, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 99887, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('46', 'مستعمل', 'كيا', 'Kia', 'سيدونا', 'Sedona', 2017, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 48500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('47', 'مستعمل', 'لكزس', 'Lexus', 'GX', 'GX', 2017, 'اوتوماتيك', 'بنزين', '140,000 - 149,999', 158000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('48', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2017, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 37000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('49', 'جديد', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2017, 'اوتوماتيك', 'بنزين', '0', 99996, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('50', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2016, 'اوتوماتيك', 'بنزين', '—', 130000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('51', 'مستعمل', 'تويوتا', 'Toyota', 'كورولا', 'Corolla', 2016, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 67000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('52', 'مستعمل', 'جينيسيس', 'Genesis', 'G80', 'G80', 2016, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 66500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('53', 'جديد', 'كيا', 'Kia', 'فورتي', 'Forte', 2015, 'اوتوماتيك', 'بنزين', '0', 25400, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('54', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2015, 'اوتوماتيك', 'بنزين', '120,000 - 129,999', 24850, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('55', 'جديد', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2015, 'اوتوماتيك', 'بنزين', '0', 9999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('56', 'مستعمل', 'كيا', 'Kia', 'اوبتيما', 'Optima', 2015, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 33000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('57', 'مستعمل', 'كيا', 'Kia', 'سورينتو', 'Sorento', 2015, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 37800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('58', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2015, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 65000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('59', 'مستعمل', 'بي ام دبليو', 'BMW', 'الفئة X5', 'X5', 2015, 'اوتوماتيك', 'بنزين', '—', 100000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('60', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2015, 'اوتوماتيك', 'بنزين', '60,000 - 69,999', 36500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('61', 'مستعمل', 'تويوتا', 'Toyota', 'كورولا', 'Corolla', 2015, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 800000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('62', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2015, 'اوتوماتيك', 'بنزين', '—', 120000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('63', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2014, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 42000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('64', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2014, 'اوتوماتيك', 'بنزين', '140,000 - 149,999', 39000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('65', 'مستعمل', 'كيا', 'Kia', 'ريو', 'Rio', 2014, 'اوتوماتيك', 'بنزين', '—', 19000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('66', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2014, 'اوتوماتيك', 'Not in source', '70,000 - 79,999', 31800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('67', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2014, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 12121, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('68', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-A', 'A-Class', 2014, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 45000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('69', 'مستعمل', 'بي ام دبليو', 'BMW', 'الفئة 3', 'Series 3', 2014, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 35500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('70', 'مستعمل', 'جينيسيس', 'Genesis', 'اخرى', 'Other', 2014, 'اوتوماتيك', 'بنزين', '50,000 - 59,999', 31500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('71', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2015, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 26500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('72', 'مستعمل', 'كيا', 'Kia', 'كادينزا', 'Cadenza', 2014, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 33000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('73', 'جديد', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2014, 'اوتوماتيك', 'بنزين', '0', 55000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('74', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2014, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 20500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('75', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2014, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 100000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('76', 'مستعمل', 'نيسان', 'Nissan', 'ارمادا', 'Armada', 2013, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 45000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('77', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2013, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 43000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('78', 'مستعمل', 'جينيسيس', 'Genesis', 'اخرى', 'Other', 2013, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 27500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('79', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2013, 'اوتوماتيك', 'بنزين', '90,000 - 99,999', 56500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('80', 'مستعمل', 'كيا', 'Kia', 'سورينتو', 'Sorento', 2013, 'اوتوماتيك', 'بنزين', '170,000 - 179,999', 38750, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('81', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2013, 'اوتوماتيك', 'بنزين', '—', 110000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('82', 'مستعمل', 'هيونداي', 'Hyundai', 'النترا', 'Elantra', 2013, 'اوتوماتيك', 'بنزين', '150,000 - 200,000', 20000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('83', 'مستعمل', 'هيونداي', 'Hyundai', 'اكسنت', 'Accent', 2013, 'اوتوماتيك', 'بنزين', '—', 15500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('84', 'جديد', 'هيونداي', 'Hyundai', 'i30', 'i30', 2013, 'اوتوماتيك', 'بنزين', '0', 19600, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('85', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-GLK', 'GLK', 2012, 'اوتوماتيك', 'بنزين', '150,000 - 199,999', 31000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('86', 'جديد', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2012, 'اوتوماتيك', 'بنزين', '0', 25500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('87', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2012, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 30800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('88', 'مستعمل', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2012, 'اوتوماتيك', 'بنزين', '80,000 - 179,999', 25800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('89', 'جديد', 'كيا', 'Kia', 'كادينزا', 'Cadenza', 2012, 'اوتوماتيك', 'بنزين', '0', 28500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('90', 'جديد', 'هيونداي', 'Hyundai', 'توسان', 'Tucson', 2012, 'اوتوماتيك', 'بنزين', '0', 34800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('91', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2012, 'اوتوماتيك', 'بنزين', '120,000 - 129,999', 33400, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('92', 'مستعمل', 'جينيسيس', 'Genesis', 'اخرى', 'Other', 2012, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 20000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('93', 'مستعمل', 'كيا', 'Kia', 'كادينزا', 'Cadenza', 2012, 'اوتوماتيك', 'بنزين', '120,000 - 149,999', 12367, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('94', 'مستعمل', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2012, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 28250, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('95', 'مستعمل', 'كيا', 'Kia', 'كادينزا', 'Cadenza', 2012, 'اوتوماتيك', 'بنزين', '120,000 - 129,999', 122111, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('96', 'مستعمل', 'تويوتا', 'Toyota', 'FJ', 'FJ Cruiser', 2012, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 85000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('97', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2012, 'اوتوماتيك', 'بنزين', '—', 60000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('98', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2012, 'اوتوماتيك', 'بنزين', '—', 5550, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('99', 'مستعمل', 'كيا', 'Kia', 'اوبتيما', 'Optima', 2012, 'اوتوماتيك', 'بنزين', '180,000 - 200,000', 13000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('100', 'جديد', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2012, 'اوتوماتيك', 'بنزين', '0', 42000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('101', 'جديد', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2012, 'اوتوماتيك', 'بنزين', '1- 999', 28500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('102', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2012, 'اوتوماتيك', 'بنزين', '10,000 - 79,999', 15800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('103', 'مستعمل', 'بي ام دبليو', 'BMW', 'الفئة 5', 'Series 5', 2012, 'اوتوماتيك', 'بنزين', '120,000 - 129,999', 34000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('104', 'مستعمل', 'نيسان', 'Nissan', 'صني', 'Sunny', 2012, 'اوتوماتيك', 'بنزين', '30,000 - 39,999', 5600, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('105', 'جديد', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2012, 'اوتوماتيك', 'بنزين', '0', NULL, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('106', 'مستعمل', 'كيا', 'Kia', 'سورينتو', 'Sorento', 2012, 'اوتوماتيك', 'بنزين', '30,000 - 119,999', 37500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('107', 'مستعمل', 'جيب', 'Jeep', 'جراند شيروكى', 'Grand Cherokee', 2012, 'اوتوماتيك', 'بنزين', '—', 1111110, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('108', 'جديد', 'فيات', 'Fiat', '2012', '—', 2012, 'اوتوماتيك', 'بنزين', '0', 27000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('109', 'مستعمل', 'كيا', 'Kia', '2012', '—', 2012, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 29500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('110', 'مستعمل', 'كيا', 'Kia', 'سورينتو', 'Sorento', 2012, 'اوتوماتيك', 'بنزين', '—', 32500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('111', 'جديد', 'كيا', 'Kia', 'بيكانتو', 'Picanto', 2012, 'اوتوماتيك', 'بنزين', '0', 21500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('112', 'مستعمل', 'هوندا', 'Honda', 'CR-V', 'CR-V', 2012, 'اوتوماتيك', 'بنزين', '180,000 - 189,999', 888808, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('113', 'مستعمل', 'كيا', 'Kia', 'مورنينج', 'Morning', 2012, 'اوتوماتيك', 'بنزين', '140,000 - 149,999', 16500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('114', 'مستعمل', 'هيونداي', 'Hyundai', 'اكسنت', 'Accent', 2012, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 335289, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('115', 'مستعمل', 'كيا', 'Kia', 'كادينزا', 'Cadenza', 2011, 'اوتوماتيك', 'بنزين', '120,000 - 200,000', 29500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('116', 'مستعمل', 'سامسونج', 'Samsung', 'SM5', 'SM5', 2011, 'اوتوماتيك', 'Not in source', '80,000 - 89,999', 19500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('117', 'مستعمل', 'هيونداي', 'Hyundai', 'اكسنت', 'Accent', 2011, 'اوتوماتيك', 'بنزين', '—', 16900, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('118', 'مستعمل', 'كيا', 'Kia', 'K5', 'K5', 2011, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('119', 'جديد', 'كيا', 'Kia', 'سيراتو', 'Cerato', 2011, 'اوتوماتيك', 'بنزين', '0', 17500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('120', 'مستعمل', 'دايو', 'Daewoo', 'لاسيتي', 'Lacetti', 2010, 'اوتوماتيك', 'بنزين', '10,000 - 19,999', 10800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('121', 'مستعمل', 'هيونداي', 'Hyundai', 'فيراكروز', 'Veracruz', 2010, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 28000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('122', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2010, 'اوتوماتيك', 'بنزين', '—', 41000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('123', 'مستعمل', 'ميتسوبيشي', 'Mitsubishi', 'لانسر', 'Lancer', 2010, 'يدوي/عادي', 'بنزين', '—', 12500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('124', 'مستعمل', 'سامسونج', 'Samsung', 'SM3', 'SM3', 2010, 'اوتوماتيك', 'بنزين', '90,000 - 99,999', 22000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('125', 'مستعمل', 'سامسونج', 'Samsung', 'QM5', 'QM5', 2010, 'اوتوماتيك', 'بنزين', '—', 14900, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('126', 'جديد', 'كيا', 'Kia', 'برايد', 'Pride', 2010, 'اوتوماتيك', 'بنزين', '0', 9500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('127', 'مستعمل', 'كيا', 'Kia', 'بيكانتو', 'Picanto', 2010, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 14800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('128', 'مستعمل', 'جينيسيس', 'Genesis', 'اخرى', 'Other', 2010, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 26800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('129', 'مستعمل', 'كيا', 'Kia', 'ريو', 'Rio', 2010, 'اوتوماتيك', 'بنزين', '20,000 - 129,999', 16000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('130', 'جديد', 'كيا', 'Kia', 'فورتي', 'Forte', 2010, 'اوتوماتيك', 'بنزين', '0', 9999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('131', 'مستعمل', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2010, 'اوتوماتيك', 'بنزين', '100,000 - 109,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('132', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2010, 'اوتوماتيك', 'بنزين', '70,000 - 189,999', 28000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('133', 'مستعمل', 'هيونداي', 'Hyundai', '2010', '—', 2010, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 23000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('134', 'مستعمل', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2010, 'اوتوماتيك', 'بنزين', '—', 14500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('135', 'جديد', 'تويوتا', 'Toyota', 'كامري', 'Camry', 2010, 'اوتوماتيك', 'بنزين', '0', 12000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('136', 'مستعمل', 'كيا', 'Kia', 'سبورتاج', 'Sportage', 2010, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 29800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('137', 'مستعمل', 'كيا', 'Kia', 'كادينزا', 'Cadenza', 2010, 'اوتوماتيك', 'بنزين', '180,000 - 189,999', 29000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('138', 'مستعمل', 'كيا', 'Kia', '2010', '—', 2010, 'اوتوماتيك', 'بنزين', '—', 18500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('139', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2010, 'اوتوماتيك', 'بنزين', '70,000 - 79,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('140', 'مستعمل', 'كيا', 'Kia', 'مورنينج', 'Morning', 2010, 'اوتوماتيك', 'بنزين', '60,000 - 69,999', 13800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('141', 'جديد', 'هيونداي', 'Hyundai', 'i30', 'i30', 2010, 'اوتوماتيك', 'بنزين', '0', 22800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('142', 'مستعمل', 'شيفروليه', 'Chevrolet', 'كروز', 'Cruze', 2010, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 6000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('143', 'مستعمل', 'فولكسفاغن', 'Volkswagen', 'تيجوان', 'Tiguan', 2010, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 21000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('144', 'مستعمل', 'بي ام دبليو', 'BMW', 'الفئة X5', 'X5', 2010, 'اوتوماتيك', 'بنزين', '140,000 - 149,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('145', 'مستعمل', 'هيونداي', 'Hyundai', 'النترا', 'Elantra', 2010, 'يدوي/عادي', 'بنزين', '150,000 - 159,999', 16000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('146', 'مستعمل', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2010, 'اوتوماتيك', 'بنزين', '80,000 - 199,999', 26500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('147', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2009, 'اوتوماتيك', 'بنزين', '130,000 - 199,999', 29500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('148', 'مستعمل', 'هيونداي', 'Hyundai', 'توسان', 'Tucson', 2009, 'اوتوماتيك', 'بنزين', '120,000 - 129,999', 23000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('149', 'جديد', 'هوندا', 'Honda', 'اكورد', 'Accord', 2009, 'اوتوماتيك', 'بنزين', '0', 21800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('150', 'مستعمل', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2009, 'اوتوماتيك', 'بنزين', '80,000 - 159,999', 23500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('151', 'مستعمل', 'كيا', 'Kia', 'مورنينج', 'Morning', 2009, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 13200, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('152', 'مستعمل', 'دودج', 'Dodge', 'رام', 'Ram', 2009, 'اوتوماتيك', 'بنزين', '—', 48000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('153', 'جديد', 'كيا', 'Kia', 'بيكانتو', 'Picanto', 2009, 'اوتوماتيك', 'بنزين', '0', 11500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('154', 'مستعمل', 'كيا', 'Kia', 'كارينز', 'Carens', 2009, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 20500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('155', 'مستعمل', 'شيفروليه', 'Chevrolet', 'سلفرادو', 'Silverado', 2009, 'اوتوماتيك', 'بنزين', '140,000 - 149,999', 53000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('156', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2009, 'اوتوماتيك', 'بنزين', '—', 12000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('157', 'مستعمل', 'هيونداي', 'Hyundai', 'النترا', 'Elantra', 2009, 'اوتوماتيك', 'بنزين', '—', 14000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('158', 'مستعمل', 'ميتسوبيشي', 'Mitsubishi', 'L200', 'L200', 2009, 'يدوي/عادي', 'بنزين', '—', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('159', 'مستعمل', 'سامسونج', 'Samsung', 'SM5', 'SM5', 2009, 'اوتوماتيك', 'بنزين', '90,000 - 99,999', 18800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('160', 'مستعمل', 'هيونداي', 'Hyundai', 'بورتر', 'Porter', 2009, 'يدوي/عادي', 'ديزل', '20,000 - 29,999', 19000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('161', 'مستعمل', 'كيا', 'Kia', 'فورتي', 'Forte', 2009, 'اوتوماتيك', 'بنزين', '—', 13400, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('162', 'مستعمل', 'كيا', 'Kia', 'كارينز', 'Carens', 2008, 'اوتوماتيك', 'بنزين', '80,000 - 89,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('163', 'مستعمل', 'فولكسفاغن', 'Volkswagen', 'باسات', 'Passat', 2008, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 13500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('164', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2008, 'اوتوماتيك', 'بنزين', '130,000 - 149,999', 20750, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('165', 'جديد', 'كيا', 'Kia', 'برايد', 'Pride', 2008, 'اوتوماتيك', 'بنزين', '0', 13500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('166', 'مستعمل', 'هيونداي', 'Hyundai', 'i30', 'i30', 2008, 'اوتوماتيك', 'بنزين', '80,000 - 129,999', 20750, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('167', 'مستعمل', 'تويوتا', 'Toyota', 'FJ', 'FJ Cruiser', 2008, 'اوتوماتيك', 'بنزين', '—', 57500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('168', 'مستعمل', 'سامسونج', 'Samsung', 'SM3', 'SM3', 2008, 'اوتوماتيك', 'بنزين', '180,000 - 189,999', 15000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('169', 'مستعمل', 'تويوتا', 'Toyota', 'تاكوما', 'Tacoma', 2008, 'اوتوماتيك', 'بنزين', '—', 65000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('170', 'مستعمل', 'جيب', 'Jeep', 'شيروكى', 'Cherokee', 2008, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 35000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('171', 'مستعمل', 'تويوتا', 'Toyota', 'لاند كروزر', 'Land Cruiser', 2008, 'اوتوماتيك', 'بنزين', '10,000 - 19,999', 22255, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('172', 'جديد', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2008, 'اوتوماتيك', 'بنزين', '0', 17800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('173', 'مستعمل', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2008, 'اوتوماتيك', 'بنزين', '110,000 - 200,000', 10222, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('174', 'جديد', 'كيا', 'Kia', 'Not in source', 'Not in source', 2008, 'اوتوماتيك', 'بنزين', '0', 8800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('175', 'جديد', 'سامسونج', 'Samsung', 'SM3', 'SM3', 2008, 'اوتوماتيك', 'بنزين', '0', 10800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('176', 'مستعمل', 'هيونداي', 'Hyundai', 'جيتز', 'Getz', 2008, 'اوتوماتيك', 'بنزين', '—', 15000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('177', 'جديد', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2008, 'اوتوماتيك', 'بنزين', '0', 21800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('178', 'مستعمل', 'كيا', 'Kia', 'سيراتو', 'Cerato', 2007, 'اوتوماتيك', 'بنزين', '—', 10000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('179', 'مستعمل', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2007, 'اوتوماتيك', 'بنزين', '120,000 - 189,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('180', 'جديد', 'مازدا', 'Mazda', 'CX-5', 'CX-5', 2007, 'يدوي/عادي', 'بنزين', '0', 14500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('181', 'مستعمل', 'كيا', 'Kia', 'بيكانتو', 'Picanto', 2007, 'اوتوماتيك', 'بنزين', '1,000 - 9,999', 8000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('182', 'مستعمل', 'هيونداي', 'Hyundai', 'ازيرا', 'Azera', 2007, 'اوتوماتيك', 'بنزين', '140,000 - 149,999', 22000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('183', 'جديد', 'سامسونج', 'Samsung', 'SM3', 'SM3', 2007, 'اوتوماتيك', 'بنزين', '0', 99000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('184', 'مستعمل', 'هيونداي', 'Hyundai', 'النترا', 'Elantra', 2007, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 14500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('185', 'مستعمل', 'شيفروليه', 'Chevrolet', 'سلفرادو', 'Silverado', 2007, 'اوتوماتيك', 'بنزين', '—', 31800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('186', 'مستعمل', 'جي إم سي', 'GMC', 'يوكن', 'Yukon', 2007, 'اوتوماتيك', 'بنزين', '110,000 - 119,999', 30000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('187', 'مستعمل', 'هوندا', 'Honda', 'اكورد', 'Accord', 2007, 'اوتوماتيك', 'بنزين', '—', 20000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('188', 'مستعمل', 'كيا', 'Kia', 'لوتزي', 'Lotze', 2007, 'اوتوماتيك', 'بنزين', '—', 9200, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('189', 'مستعمل', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2007, 'اوتوماتيك', 'بنزين', '130,000 - 139,999', 23000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('190', 'جديد', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2007, 'اوتوماتيك', 'بنزين', '0', 21500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('191', 'مستعمل', 'شيفروليه', 'Chevrolet', 'اوبترا', 'Optra', 2006, 'يدوي/عادي', 'بنزين', '1,000 - 9,999', 8000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('192', 'جديد', 'تويوتا', 'Toyota', 'يارس', 'Yaris', 2006, 'يدوي/عادي', 'بنزين', '0', 13700, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('193', 'جديد', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2006, 'اوتوماتيك', 'بنزين', '0', 24000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('194', 'مستعمل', 'كيا', 'Kia', 'اوبريوس', 'Opirus', 2006, 'اوتوماتيك', 'بنزين', '—', 4800, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('195', 'مستعمل', 'تويوتا', 'Toyota', 'سيكويا', 'Sequoia', 2006, 'اوتوماتيك', 'بنزين', '—', 42000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('196', 'مستعمل', 'هيونداي', 'Hyundai', 'تراجيت', 'Trajet', 2006, 'يدوي/عادي', 'بنزين', '—', 10000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('197', 'مستعمل', 'ميتسوبيشي', 'Mitsubishi', 'سبيس جير', 'Space Gear', 2005, 'يدوي/عادي', 'بنزين', '—', 90999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('198', 'مستعمل', 'هيونداي', 'Hyundai', 'النترا', 'Elantra', 2005, 'اوتوماتيك', 'بنزين', '—', 15000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('199', 'مستعمل', 'كيا', 'Kia', 'ريو', 'Rio', 2005, 'يدوي/عادي', 'بنزين', '—', 7000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('200', 'مستعمل', 'سامسونج', 'Samsung', 'SM3', 'SM3', 2005, 'اوتوماتيك', 'بنزين', '—', 6500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('201', 'مستعمل', 'تويوتا', 'Toyota', 'كورولا', 'Corolla', 2005, 'اوتوماتيك', 'بنزين', '—', 15500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('202', 'مستعمل', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2005, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 15500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('203', 'مستعمل', 'هيونداي', 'Hyundai', 'سنتافي', 'Santa Fe', 2005, 'يدوي/عادي', 'بنزين', '180,000 - 189,999', NULL, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('204', 'مستعمل', 'هيونداي', 'Hyundai', 'جيتز', 'Getz', 2005, 'يدوي/عادي', 'بنزين', '—', 16000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('205', 'مستعمل', 'كيا', 'Kia', 'سبيكترا', 'Spectra', 2005, 'اوتوماتيك', 'بنزين', '190,000 - 199,999', 12000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('206', 'مستعمل', 'هيونداي', 'Hyundai', 'فيرنا', 'Verna', 2005, 'يدوي/عادي', 'بنزين', '1,000 - 9,999', 13000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('207', 'مستعمل', 'كيا', 'Kia', 'ريو', 'Rio', 2004, 'اوتوماتيك', 'بنزين', '160,000 - 169,999', 5500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('208', 'مستعمل', 'تويوتا', 'Toyota', 'سيكويا', 'Sequoia', 2004, 'اوتوماتيك', 'بنزين', '—', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('209', 'مستعمل', 'تويوتا', 'Toyota', '4 رونر', '4Runner', 2004, 'اوتوماتيك', 'بنزين', '160,000 - 200,000', 41000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('210', 'مستعمل', 'أوبل', 'Opel', 'زافيرا', 'Zafira', 2004, 'يدوي/عادي', 'بنزين', '160,000 - 169,999', 7500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('211', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2004, 'اوتوماتيك', 'بنزين', '—', 14500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('212', 'مستعمل', 'فولكسفاغن', 'Volkswagen', 'ID 4', 'ID.4', 2004, 'يدوي/عادي', 'بنزين', '—', 5000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('213', 'مستعمل', 'هيونداي', 'Hyundai', 'سوناتا', 'Sonata', 2004, 'اوتوماتيك', 'بنزين', '—', 6000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('214', 'مستعمل', 'هيونداي', 'Hyundai', 'افانتي', 'Avante', 2003, 'اوتوماتيك', 'بنزين', '—', 7700, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('215', 'مستعمل', 'دايو', 'Daewoo', 'كالوس', 'Kalos', 2003, 'اوتوماتيك', 'بنزين', '—', 1000000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('216', 'مستعمل', 'ميتسوبيشي', 'Mitsubishi', 'كولت', 'Colt', 2000, 'يدوي/عادي', 'بنزين', '140,000 - 149,999', 5900, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('217', 'مستعمل', 'تويوتا', 'Toyota', '4 رونر', '4Runner', 2000, 'اوتوماتيك', 'بنزين', '—', 27500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('218', 'مستعمل', 'دايو', 'Daewoo', 'سيالو', 'Cielo', 2000, 'يدوي/عادي', 'بنزين', '1,000 - 9,999', 8500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('219', 'مستعمل', 'فولكسفاغن', 'Volkswagen', 'بورا', 'Bora', 2000, 'يدوي/عادي', 'ديزل', '—', 15500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('220', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-E', 'E-Class', 2000, 'اوتوماتيك', 'بنزين', '150,000 - 159,999', 25000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('221', 'مستعمل', 'مرسيدس بنز', 'Mercedes-Benz', 'الفئة-C', 'C-Class', 1999, 'اوتوماتيك', 'بنزين', '—', 13000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('222', 'مستعمل', 'بي ام دبليو', 'BMW', 'الفئة 5', 'Series 5', 1998, 'اوتوماتيك', 'بنزين', '—', 987569, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('223', 'مستعمل', 'كرايسلر', 'Chrysler', 'اخرى', 'Other', 1990, 'اوتوماتيك', 'بنزين', '—', 10500, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('224', 'مستعمل', 'ميتسوبيشي', 'Mitsubishi', 'لانسر', 'Lancer', 2007, 'اوتوماتيك', 'بنزين', '—', 7000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('225', 'مستعمل', 'شيفروليه', 'Chevrolet', 'اوبترا', 'Optra', 2008, 'يدوي/عادي', 'بنزين', '—', 6000, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('226', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2010, 'اوتوماتيك', 'بنزين', '—', 99999, '2026-04-05')").run();
+  db.prepare("INSERT OR IGNORE INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated) VALUES ('227', 'مستعمل', 'تويوتا', 'Toyota', 'توندرا', 'Tundra', 2006, 'اوتوماتيك', 'بنزين', '—', 44500, '2026-04-05')").run();
+    console.log('[SEED] ✅ libyan_market_prices seeded:', db.prepare("SELECT COUNT(*) as c FROM libyan_market_prices").get());
+  } catch(e: any) { console.error('[SEED] libyan_market_prices error:', e.message); }
 };
-initLibyanMarketPrices();
+seedLibyanMarketPrices227();
+
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS seller_wallets (
@@ -4709,7 +4907,13 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ====== MARKET ESTIMATES ======
   app.get("/api/admin/market-estimates", (req, res) => {
     try {
-      // First try with lastUpdated, fallback to rowid if fails
+      // Pull from the rich libyan_market_prices table (227 cars) — prefer over old empty market_estimates
+      const lmpCount: any = db.prepare("SELECT COUNT(*) as c FROM libyan_market_prices").get() as any;
+      if ((lmpCount?.c || 0) > 0) {
+        const data = db.prepare("SELECT id, make, makeEn, model, modelEn, year, priceLYD as price, condition, transmission, fuel, mileage, lastUpdated FROM libyan_market_prices ORDER BY make ASC, year DESC").all();
+        return res.json(data);
+      }
+      // Fallback to old market_estimates table
       let data;
       try {
         data = db.prepare("SELECT * FROM market_estimates ORDER BY lastUpdated DESC").all();
@@ -4717,9 +4921,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         data = db.prepare("SELECT * FROM market_estimates ORDER BY rowid DESC").all();
       }
       res.json(data);
-    } catch (e) { 
+    } catch (e) {
       console.error("Market estimates fetch crash:", e);
-      res.status(500).json({ error: "Failed to fetch market estimates" }); 
+      res.status(500).json({ error: "Failed to fetch market estimates" });
     }
   });
 
@@ -4788,45 +4992,128 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // GET /api/libyan-market — full list with smart search, filter, pagination
   app.get("/api/libyan-market", (req, res) => {
     try {
-      const { make, model, year } = req.query;
+      const { make, model, year, condition, q, page, limit: lim } = req.query;
+      const pageNum = Math.max(1, parseInt(page as string) || 1);
+      const pageSize = Math.min(200, parseInt(lim as string) || 200);
+      const offset = (pageNum - 1) * pageSize;
+
       let query = "SELECT * FROM libyan_market_prices WHERE 1=1";
-      const params = [];
-      if (make) { query += " AND make LIKE ?"; params.push(`%${make}%`); }
-      if (model) { query += " AND model LIKE ?"; params.push(`%${model}%`); }
+      const params: any[] = [];
+
+      // Smart full-text search (Arabic + English)
+      if (q) {
+        query += " AND (make LIKE ? OR makeEn LIKE ? OR model LIKE ? OR modelEn LIKE ?)";
+        const s = `%${q}%`;
+        params.push(s, s, s, s);
+      }
+      if (make) { query += " AND (make LIKE ? OR makeEn LIKE ?)"; params.push(`%${make}%`, `%${make}%`); }
+      if (model) { query += " AND (model LIKE ? OR modelEn LIKE ?)"; params.push(`%${model}%`, `%${model}%`); }
       if (year) { query += " AND year = ?"; params.push(parseInt(year as string)); }
-      
-      query += " ORDER BY make, year DESC";
-      const data = db.prepare(query).all(...params);
-      res.json(data);
-    } catch(e) { res.status(500).json({ error: "Failed" }); }
+      if (condition) { query += " AND condition = ?"; params.push(condition); }
+
+      const total = (db.prepare(`SELECT COUNT(*) as c FROM libyan_market_prices WHERE 1=1${query.split('WHERE 1=1')[1]}`).get(...params) as any)?.c || 0;
+      query += ` ORDER BY make ASC, year DESC, model ASC LIMIT ${pageSize} OFFSET ${offset}`;
+      const data: any[] = db.prepare(query).all(...params);
+
+      res.json({ data, total, page: pageNum, pageSize, pages: Math.ceil(total / pageSize) });
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // POST /api/libyan-market — add new car (admin)
   app.post("/api/libyan-market", (req, res) => {
     try {
-      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
+      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD } = req.body;
+      if (!make || !model || !year) return res.status(400).json({ error: "الماركة والموديل والسنة مطلوبة" });
       const id = `lmp-${Date.now()}`;
-      db.prepare("INSERT INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, condition, make, makeEn || '', model, modelEn || '', year, transmission, fuel, mileage, priceLYD, city || 'طرابلس');
-      res.json({ success: true, id });
-    } catch(e) { res.status(500).json({ error: "Failed" }); }
+      db.prepare(`INSERT INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, lastUpdated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(id, condition || 'مستعمل', make, makeEn || make, model, modelEn || model,
+        parseInt(year as string), transmission || 'اوتوماتيك', fuel || 'بنزين',
+        mileage || '—', priceLYD || null, new Date().toISOString().split('T')[0]);
+      const row = db.prepare("SELECT * FROM libyan_market_prices WHERE id = ?").get(id);
+      res.json({ success: true, id, row });
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // PUT /api/libyan-market/:id — edit car (admin)
+  app.put("/api/libyan-market/:id", (req, res) => {
+    try {
+      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD } = req.body;
+      db.prepare(`UPDATE libyan_market_prices SET
+        condition = ?, make = ?, makeEn = ?, model = ?, modelEn = ?,
+        year = ?, transmission = ?, fuel = ?, mileage = ?,
+        priceLYD = ?, lastUpdated = ?
+        WHERE id = ?`
+      ).run(condition, make, makeEn || make, model, modelEn || model,
+        parseInt(year), transmission, fuel, mileage,
+        priceLYD || null, new Date().toISOString().split('T')[0], req.params.id);
+      res.json({ success: true });
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // DELETE /api/libyan-market/:id — delete car (admin)
   app.delete("/api/libyan-market/:id", (req, res) => {
     try {
       db.prepare("DELETE FROM libyan_market_prices WHERE id = ?").run(req.params.id);
       res.json({ success: true });
-    } catch(e) { res.status(500).json({ error: "Failed" }); }
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.put("/api/libyan-market/:id", (req, res) => {
+  // POST /api/admin/libyan-market/reseed — wipe and re-seed from latest data
+  app.post("/api/admin/libyan-market/reseed", (req, res) => {
     try {
-      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
-      db.prepare("UPDATE libyan_market_prices SET condition = ?, make = ?, makeEn = ?, model = ?, modelEn = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, priceLYD = ?, city = ?, lastUpdated = CURRENT_TIMESTAMP WHERE id = ?")
-        .run(condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city, req.params.id);
-      res.json({ success: true });
-    } catch(e) { res.status(500).json({ error: "Failed" }); }
+      db.prepare("DELETE FROM libyan_market_prices").run();
+      seedLibyanMarketPrices227();
+      const count = (db.prepare("SELECT COUNT(*) as c FROM libyan_market_prices").get() as any)?.c || 0;
+      res.json({ success: true, count, message: `تم إعادة تهيئة قاعدة البيانات — ${count} سيارة` });
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/libyan-market/match — smart price lookup for a specific car
+  app.get("/api/libyan-market/match", (req, res) => {
+    try {
+      const { make, model, year, condition, exchangeRate } = req.query;
+      const rate = parseFloat(exchangeRate as string) || 4.85;
+      if (!make || !model) return res.status(400).json({ error: "make and model required" });
+
+      // Best match: exact make+model+year, then fallback to make+model, then make only
+      const rows: any[] = db.prepare(`
+        SELECT *, ABS(year - ?) as yearDiff
+        FROM libyan_market_prices
+        WHERE (make LIKE ? OR makeEn LIKE ?) AND (model LIKE ? OR modelEn LIKE ?)
+        ORDER BY yearDiff ASC, priceLYD DESC
+        LIMIT 5`).all(
+          parseInt(year as string) || 2020,
+          `%${make}%`, `%${make}%`,
+          `%${model}%`, `%${model}%`
+        );
+
+      if (rows.length === 0) return res.json({ found: false });
+
+      // Use the best match (closest year)
+      const best = rows[0];
+      const avgPriceLYD = rows.reduce((s, r) => s + (r.priceLYD || 0), 0) / rows.filter(r => r.priceLYD).length;
+      const priceLYD = best.priceLYD || avgPriceLYD;
+      const priceUSD = priceLYD / rate;
+
+      res.json({
+        found: true,
+        priceLYD: Math.round(priceLYD),
+        priceUSD: Math.round(priceUSD),
+        exchangeRate: rate,
+        matchedYear: best.year,
+        condition: best.condition,
+        make: best.make,
+        makeEn: best.makeEn,
+        model: best.model,
+        modelEn: best.modelEn,
+        similarCount: rows.length,
+        lastUpdated: best.lastUpdated,
+      });
+    } catch(e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // ====== LIVE AUCTIONS MGMT ======
