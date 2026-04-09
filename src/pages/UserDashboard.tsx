@@ -11,7 +11,7 @@ import {
   AlertCircle, Wallet as WalletIcon, FileCheck, User, BarChart3, ChevronRight, ChevronDown, Car, Home, DollarSign,
   RefreshCw, Send
 } from 'lucide-react';
-import { useStore } from '../context/StoreContext';
+import { useStore, authFetch } from '../context/StoreContext';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { SHIPMENT_STATUS_LABELS } from '../types';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useStore } from '../context/StoreContext';
+import { useStore, authFetch } from '../context/StoreContext';
 import {
   CreditCard, Shield, CheckCircle, Wallet, Globe, MapPin,
   ChevronRight, ArrowRight, Lock, Star, DollarSign,

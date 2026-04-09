@@ -5,7 +5,7 @@ import {
     DollarSign, TrendingUp, Shield, ChevronDown, ChevronUp,
     AlertCircle, Send, Banknote, RefreshCw, ReceiptText
 } from 'lucide-react';
-import { useStore } from '../context/StoreContext';
+import { useStore, authFetch } from '../context/StoreContext';
 import { Link } from 'react-router-dom';
 
 /* ─── types ─── */
