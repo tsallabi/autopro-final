@@ -77,7 +77,7 @@ export const BranchesPage = () => {
                                         </div>
                                         <div>
                                             <div className="text-sm text-slate-500 mb-1">رقم الهاتف</div>
-                                            <div className="font-bold text-slate-900 dir-ltr">{branch.phone}</div>
+                                            <a href={`tel:${branch.phone.replace(/\s/g, '')}`} className="font-bold text-slate-900 dir-ltr hover:text-orange-500 transition-colors">{branch.phone}</a>
                                         </div>
                                     </div>
 
@@ -87,7 +87,7 @@ export const BranchesPage = () => {
                                         </div>
                                         <div>
                                             <div className="text-sm text-slate-500 mb-1">البريد الإلكتروني</div>
-                                            <div className="font-medium text-slate-900">{branch.email}</div>
+                                            <a href={`mailto:${branch.email}`} className="font-medium text-slate-900 hover:text-orange-500 transition-colors">{branch.email}</a>
                                         </div>
                                     </div>
 
@@ -110,9 +110,14 @@ export const BranchesPage = () => {
                     <ShieldCheck className="w-16 h-16 text-orange-500 mb-6" />
                     <h2 className="text-2xl font-black mb-4">هل تحتاج لمساعدة فورية ؟</h2>
                     <p className="text-slate-400 mb-8 max-w-lg">فريق الدعم الفني متاح عبر الواتساب للرد على جميع استفساراتكم بخصوص المزايدة والشحن والجمارك.</p>
-                    <button className="bg-orange-500 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20">
+                    <a
+                        href="https://wa.me/218911234567"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block bg-orange-500 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20"
+                    >
                         تواصل عبر واتساب الآن
-                    </button>
+                    </a>
                 </div>
 
             </div>

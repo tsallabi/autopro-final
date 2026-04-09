@@ -33,6 +33,41 @@ export const CostCalculator = () => {
 
     const glassCard = "bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl";
 
+    const handlePrintQuote = () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const breakdown = [
+            { label: 'سعر شراء السيارة', value: price },
+            { label: 'رسوم المزاد الثابتة', value: settings.auctionFee },
+            { label: 'عمولة الخدمة', value: (price * (settings.commission / 100)) },
+            { label: 'الشحن والنقل المحلي', value: settings.transport },
+            { label: 'رسوم المعاملات والأدوات', value: settings.other },
+        ];
+
+        const rows = breakdown.map(item =>
+            `<tr><td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-weight:600">${item.label}</td><td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-family:monospace;text-align:left;font-weight:700">$${item.value.toLocaleString('en-US')}</td></tr>`
+        ).join('');
+
+        printWindow.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>عرض سعر - AutoPro</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:40px;color:#1e293b;direction:rtl}
+.header{text-align:center;margin-bottom:32px;padding-bottom:24px;border-bottom:3px solid #f97316}
+.header h1{font-size:28px;margin:0 0 8px;color:#0f172a}.header p{color:#64748b;margin:0;font-size:14px}
+table{width:100%;border-collapse:collapse;margin:24px 0}
+.total-row td{background:#f8fafc;font-size:20px;font-weight:900;color:#f97316;padding:16px}
+.footer{margin-top:40px;text-align:center;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;padding-top:20px}
+@media print{body{padding:20px}}</style></head><body>
+<div class="header"><h1>AutoPro - عرض سعر تقديري</h1><p>تاريخ الإصدار: ${new Date().toLocaleDateString('ar-LY')}</p></div>
+<table><thead><tr><th style="text-align:right;padding:12px 16px;border-bottom:2px solid #1e293b;font-size:14px">البند</th><th style="text-align:left;padding:12px 16px;border-bottom:2px solid #1e293b;font-size:14px">المبلغ</th></tr></thead>
+<tbody>${rows}<tr class="total-row"><td style="padding:16px;border-top:3px solid #f97316;font-weight:900">الإجمالي</td><td style="padding:16px;border-top:3px solid #f97316;font-family:monospace;text-align:left;font-weight:900">$${total.toLocaleString('en-US')}</td></tr>
+<tr><td style="padding:12px 16px;color:#64748b" colspan="2">ما يعادل تقريباً: ${Math.round(total * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</td></tr></tbody></table>
+<div class="footer"><p>* هذا عرض سعر تقديري وقد يختلف حسب نتائج المزاد الفعلية</p><p>AutoPro - منصة استيراد السيارات الأولى في ليبيا</p></div>
+</body></html>`);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => { printWindow.print(); }, 300);
+    };
+
     return (
         <div className="min-h-screen bg-slate-950 text-white pt-24 pb-12 selection:bg-orange-500/30 font-sans" dir="rtl">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -153,7 +188,10 @@ export const CostCalculator = () => {
                                     ))}
 
                                     <div className="pt-8 mt-4 border-t border-white/5">
-                                        <button className="w-full bg-white text-slate-950 hover:bg-orange-500 hover:text-white py-6 rounded-[2rem] font-black text-xl transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-4 group">
+                                        <button
+                                            onClick={handlePrintQuote}
+                                            className="w-full bg-white text-slate-950 hover:bg-orange-500 hover:text-white py-6 rounded-[2rem] font-black text-xl transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-4 group"
+                                        >
                                             تحميل عرض السعر PDF
                                             <FileText className="w-6 h-6 group-hover:scale-110 transition-transform" />
                                         </button>

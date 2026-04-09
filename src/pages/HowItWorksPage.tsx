@@ -1,9 +1,11 @@
 import React from 'react';
 import { Gavel, Truck, Ship, MapPin, Calculator, FileCheck, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 
 export const HowItWorksPage = () => {
     const { t } = useTranslation();
+    const navigate = useNavigate();
 
     const steps = [
         {
@@ -82,7 +84,10 @@ export const HowItWorksPage = () => {
                     <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-6" />
                     <h2 className="text-2xl font-black text-slate-900 mb-4">أنت الآن جاهز للبدء!</h2>
                     <p className="text-slate-600 mb-8 max-w-xl mx-auto">سجل حسابك مجاناً الآن وابدأ في تصفح آلاف السيارات المتاحة في المزادات المباشرة، وحقق أرباحك بشفافية تامة.</p>
-                    <button className="bg-orange-500 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30 text-lg">
+                    <button
+                        onClick={() => navigate('/auth?mode=register')}
+                        className="bg-orange-500 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30 text-lg"
+                    >
                         إنشاء حساب مجاني
                     </button>
                 </div>

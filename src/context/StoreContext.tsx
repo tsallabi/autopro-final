@@ -48,6 +48,21 @@ interface StoreContextType {
   updateExchangeRate: (rate: number) => Promise<boolean>;
 }
 
+// Authenticated fetch helper — injects JWT token from localStorage
+export function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = localStorage.getItem('authToken');
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
+  return fetch(url, { ...options, headers });
+}
+
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -190,10 +205,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       try {
-        const res = await fetch('/api/users');
+        const res = await authFetch('/api/users');
         if (res.ok) {
           const data = await res.json();
-          setUsers(data);
+          setUsers(Array.isArray(data) ? data : []);
         }
       } catch (e) {
         console.error("Failed to fetch users", e);
@@ -216,7 +231,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       try {
-        const res = await fetch('/api/settings');
+        const res = await authFetch('/api/settings');
         if (res.ok) {
           const data = await res.json();
           if (data.usd_lyd_rate) setExchangeRate(Number(data.usd_lyd_rate));
@@ -232,7 +247,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const fetchMarketEstimates = async () => {
     try {
-      const res = await fetch('/api/admin/market-estimates');
+      const res = await authFetch('/api/admin/market-estimates');
       if (res.ok) {
         const data = await res.json();
         setMarketEstimates(Array.isArray(data) ? data : []);
@@ -242,7 +257,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addMarketEstimate = async (estimate: Omit<MarketEstimate, 'id'>) => {
     try {
-      const res = await fetch('/api/admin/market-estimates', {
+      const res = await authFetch('/api/admin/market-estimates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(estimate)
@@ -257,7 +272,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateExchangeRate = async (rate: number) => {
     try {
-      const res = await fetch('/api/settings', {
+      const res = await authFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usd_lyd_rate: rate })
@@ -272,7 +287,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateMarketEstimate = async (id: number, estimate: Partial<MarketEstimate>) => {
     try {
-      const res = await fetch(`/api/admin/market-estimates/${id}`, {
+      const res = await authFetch(`/api/admin/market-estimates/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(estimate)
@@ -287,7 +302,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteMarketEstimate = async (id: number) => {
     try {
-      const res = await fetch(`/api/admin/market-estimates/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/market-estimates/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setMarketEstimates(prev => prev.filter(e => e.id !== id));
         return true;
@@ -307,19 +322,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Fetch watchlist and unread counts when user changes
   useEffect(() => {
     if (currentUser) {
-      fetch(`/api/watchlist/user/${currentUser.id}`)
-        .then(res => res.json())
-        .then(setWatchlist);
+      authFetch(`/api/watchlist/user/${currentUser.id}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setWatchlist(Array.isArray(data) ? data : []))
+        .catch(() => setWatchlist([]));
 
       fetchUnreadCounts();
 
-      fetch(`/api/notifications/${currentUser.id}`)
-        .then(res => res.json())
-        .then(setNotifications);
+      authFetch(`/api/notifications/${currentUser.id}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setNotifications(Array.isArray(data) ? data : []))
+        .catch(() => setNotifications([]));
 
-      fetch(`/api/messages/user/${currentUser.id}`)
-        .then(res => res.json())
-        .then(setMessages);
+      authFetch(`/api/messages/user/${currentUser.id}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setMessages(Array.isArray(data) ? data : []))
+        .catch(() => setMessages([]));
     } else {
       setWatchlist([]);
       setNotifications([]);
@@ -331,7 +349,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchUnreadCounts = async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/unread-counts/${currentUser.id}`);
+      const res = await authFetch(`/api/unread-counts/${currentUser.id}`);
       if (res.ok) {
         const counts = await res.json();
         setUnreadCounts(counts);
@@ -343,7 +361,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const markNotificationAsRead = async (id: string) => {
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+      await authFetch(`/api/notifications/${id}/read`, { method: 'POST' });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: 1 } : n));
       fetchUnreadCounts();
     } catch (e) {
@@ -354,7 +372,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const markAllNotificationsAsRead = async () => {
     if (!currentUser) return;
     try {
-      await fetch('/api/notifications/read-all', {
+      await authFetch('/api/notifications/read-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id })

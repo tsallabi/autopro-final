@@ -13,7 +13,7 @@ import {
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
-import { useStore } from '../context/StoreContext';
+import { useStore, authFetch } from '../context/StoreContext';
 import { Car as CarType } from '../types';
 import { CopartAuctionSystem } from '../components/CopartAuctionSystem';
 import { UnifiedCarForm } from '../components/UnifiedCarForm';
@@ -83,7 +83,7 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
   const API_BASE = '';
 
   useEffect(() => {
-    fetch(`/api/admin/manage-live-auctions`)
+    authFetch(`/api/admin/manage-live-auctions`)
       .then(r => r.json())
       .then(d => {
         if (d.error) throw new Error(d.error);
@@ -406,7 +406,7 @@ const ExternalLogsViewer: React.FC = () => {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/admin/external-notifications');
+      const res = await authFetch('/api/admin/external-notifications');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -431,7 +431,7 @@ const ExternalLogsViewer: React.FC = () => {
 
     setTesting(true);
     try {
-      const res = await fetch('/api/admin/external-notifications/test', {
+      const res = await authFetch('/api/admin/external-notifications/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: trialEmail, phone: trialPhone })
@@ -1131,8 +1131,8 @@ const PaymentRequestsPanel: React.FC = () => {
   const load = async () => {
     try {
       const [rRes, sRes] = await Promise.all([
-        fetch('/api/admin/payment-requests'),
-        fetch('/api/admin/wallet-stats'),
+        authFetch('/api/admin/payment-requests'),
+        authFetch('/api/admin/wallet-stats'),
       ]);
       if (rRes.ok) { const d = await rRes.json(); setRequests(d.requests || []); }
       if (sRes.ok) setStats(await sRes.json());
@@ -1144,7 +1144,7 @@ const PaymentRequestsPanel: React.FC = () => {
   const handleAction = async (id: string, action: 'approve' | 'reject') => {
     setActionLoading(id + action);
     try {
-      const res = await fetch(`/api/admin/payment-requests/${id}/${action}`, {
+      const res = await authFetch(`/api/admin/payment-requests/${id}/${action}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ adminNote: note[id] || '' }),
       });
@@ -1159,7 +1159,7 @@ const PaymentRequestsPanel: React.FC = () => {
       return;
     }
     try {
-      const res = await fetch('/api/admin/manual-topup', {
+      const res = await authFetch('/api/admin/manual-topup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...topupForm, adminId: currentUser?.id })
@@ -1657,17 +1657,17 @@ const MarketingPanel: React.FC = () => {
   };
 
   const fetchMarketingData = () => {
-    fetch('/api/admin/mailing-list').then(r => r.json()).then(data => {
+    authFetch('/api/admin/mailing-list').then(r => r.json()).then(data => {
       if (Array.isArray(data)) setUsers(data);
     }).catch(e => console.error(e));
 
-    fetch('/api/admin/marketing-cars').then(r => r.json()).then(data => {
+    authFetch('/api/admin/marketing-cars').then(r => r.json()).then(data => {
       if (Array.isArray(data)) setCars(data);
     }).catch(e => console.error("Marketing Cars Fetch Error:", e));
   };
 
   const fetchTemplates = () => {
-    fetch('/api/admin/notification-templates').then(r => r.json()).then(data => {
+    authFetch('/api/admin/notification-templates').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
         setNotifTemplates(data);
         if (data.length > 0 && !selectedTemplateId) {
@@ -1781,7 +1781,7 @@ const MarketingPanel: React.FC = () => {
     const emails = users.filter(u => selectedUsers.includes(u.id)).map(u => u.email).filter(Boolean);
 
     try {
-      const res = await fetch('/api/admin/send-campaign', {
+      const res = await authFetch('/api/admin/send-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emails, subject, html: generateHTML() })
@@ -1803,7 +1803,7 @@ const MarketingPanel: React.FC = () => {
     if (!editTemplate) return;
     setSavingTemplate(true);
     try {
-      const res = await fetch(`/api/admin/notification-templates/${editTemplate.id}`, {
+      const res = await authFetch(`/api/admin/notification-templates/${editTemplate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editTemplate)
@@ -2156,8 +2156,8 @@ const CRMPanel: React.FC = () => {
   React.useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetch('/api/crm/customers').then(r => r.ok ? r.json() : []),
-      fetch('/api/marketing/leads').then(r => r.ok ? r.json() : []),
+      authFetch('/api/crm/customers').then(r => r.ok ? r.json() : []),
+      authFetch('/api/marketing/leads').then(r => r.ok ? r.json() : []),
     ]).then(([c, l]) => {
       setCustomers(Array.isArray(c) ? c : []);
       setLeads(Array.isArray(l) ? l : []);
@@ -2174,7 +2174,7 @@ const CRMPanel: React.FC = () => {
     if (!broadcastForm.subject || !broadcastForm.content) { showAlert('الموضوع والمحتوى مطلوبان'); return; }
     setSending(true);
     try {
-      const r = await fetch('/api/crm/send-message', {
+      const r = await authFetch('/api/crm/send-message', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(broadcastForm),
       });
@@ -2319,8 +2319,8 @@ const SellerJourneyPanel: React.FC = () => {
   const load = () => {
     setLoading(true);
     Promise.all([
-      fetch('/api/sellers').then(r => r.ok ? r.json() : []),
-      fetch('/api/admin/seller-payouts').then(r => r.ok ? r.json() : []),
+      authFetch('/api/sellers').then(r => r.ok ? r.json() : []),
+      authFetch('/api/admin/seller-payouts').then(r => r.ok ? r.json() : []),
     ]).then(([s, p]) => {
       setSellers(Array.isArray(s) ? s : []);
       setPayouts(Array.isArray(p) ? p : []);
@@ -2330,14 +2330,29 @@ const SellerJourneyPanel: React.FC = () => {
   React.useEffect(() => { load(); }, []);
 
   const approvePayout = async (id: string) => {
-    const r = await fetch(`/api/admin/approve-seller-withdrawal/${id}`, { method: 'POST' });
+    const r = await authFetch(`/api/admin/approve-seller-withdrawal/${id}`, { method: 'POST' });
     if (r.ok) { showAlert('تم الموافقة على طلب السحب ✅', 'success'); load(); }
     else showAlert((await r.json()).error || 'فشل');
   };
 
   const kycApprove = async (userId: string) => {
-    const r = await fetch(`/api/admin/kyc/${userId}/approve`, { method: 'POST' });
+    const r = await authFetch(`/api/admin/kyc/${userId}/approve`, { method: 'POST' });
     if (r.ok) { showAlert('تم اعتماد البائع ✅', 'success'); load(); }
+  };
+
+  const kycReject = async (userId: string) => {
+    const r = await authFetch(`/api/admin/kyc/${userId}/reject`, { method: 'POST' });
+    if (r.ok) { showAlert('تم رفض طلب KYC ❌', 'success'); load(); }
+    else showAlert((await r.json().catch(() => ({}))).error || 'فشل في الرفض', 'error');
+  };
+
+  const rejectPayout = async (id: string) => {
+    const r = await authFetch(`/api/admin/withdrawal-requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'تم الرفض من قبل الإدارة' })
+    });
+    if (r.ok) { showAlert('تم رفض طلب السحب ❌', 'success'); load(); }
+    else showAlert((await r.json().catch(() => ({}))).error || 'فشل في الرفض', 'error');
   };
 
   const STATUS_COLOR: Record<string,string> = {
@@ -2430,10 +2445,16 @@ const SellerJourneyPanel: React.FC = () => {
                     <td className="p-4 font-mono font-black text-slate-700">${(s.availableBalance || 0).toLocaleString()}</td>
                     <td className="p-4">
                       {s.kycStatus === 'pending' && (
-                        <button onClick={() => kycApprove(s.id)}
-                          className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all">
-                          اعتماد KYC ✅
-                        </button>
+                        <div className="flex gap-2">
+                          <button onClick={() => kycApprove(s.id)}
+                            className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all">
+                            اعتماد KYC ✅
+                          </button>
+                          <button onClick={() => kycReject(s.id)}
+                            className="bg-rose-500 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-rose-600 transition-all">
+                            رفض KYC ❌
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -2479,10 +2500,16 @@ const SellerJourneyPanel: React.FC = () => {
                     <td className="p-4 text-xs text-slate-500">{p.requestedAt ? new Date(p.requestedAt).toLocaleDateString('ar-EG') : '—'}</td>
                     <td className="p-4">
                       {p.status === 'pending' && (
-                        <button onClick={() => approvePayout(p.id)}
-                          className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all">
-                          صرف ✅
-                        </button>
+                        <div className="flex gap-2">
+                          <button onClick={() => approvePayout(p.id)}
+                            className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-700 transition-all">
+                            صرف ✅
+                          </button>
+                          <button onClick={() => rejectPayout(p.id)}
+                            className="bg-rose-500 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-rose-600 transition-all">
+                            رفض ❌
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -2510,8 +2537,8 @@ const FinancialSummaryPanel: React.FC = () => {
   React.useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetch('/api/admin/financial-summary').then(r => r.ok ? r.json() : {}),
-      fetch('/api/admin/reports').then(r => r.ok ? r.json() : {}),
+      authFetch('/api/admin/financial-summary').then(r => r.ok ? r.json() : {}),
+      authFetch('/api/admin/reports').then(r => r.ok ? r.json() : {}),
     ]).then(([f, r]) => { setData(f); setReport(r); }).finally(() => setLoading(false));
   }, []);
 
@@ -2661,8 +2688,8 @@ const AuditLogPanel: React.FC = () => {
   React.useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetch('/api/admin/audit-log').then(r => r.ok ? r.json() : []),
-      fetch('/api/admin/security-log').then(r => r.ok ? r.json() : {}),
+      authFetch('/api/admin/audit-log').then(r => r.ok ? r.json() : []),
+      authFetch('/api/admin/security-log').then(r => r.ok ? r.json() : {}),
     ]).then(([l, s]) => { setLogs(Array.isArray(l) ? l : []); setSecData(s); }).finally(() => setLoading(false));
   }, []);
 
@@ -2872,8 +2899,8 @@ export const AdminDashboard = () => {
     if (view === 'messages') {
       setFetchingMessages(true);
       Promise.all([
-        fetch('/api/admin/all-messages').then(res => res.ok ? res.json() : []),
-        fetch('/api/admin/all-notifications').then(res => res.ok ? res.json() : [])
+        authFetch('/api/admin/all-messages').then(res => res.ok ? res.json() : []),
+        authFetch('/api/admin/all-notifications').then(res => res.ok ? res.json() : [])
       ]).then(([msgs, notes]) => {
         setAllSystemMessages(Array.isArray(msgs) ? msgs : []);
         setAllSystemNotifications(Array.isArray(notes) ? notes : []);
@@ -2884,18 +2911,27 @@ export const AdminDashboard = () => {
       });
     }
     if (view === 'marketplace_management' || view === 'offer_market') {
-      fetch('/api/admin/offer-market-cars')
+      authFetch('/api/admin/offer-market-cars')
         .then(res => res.ok ? res.json() : [])
         .then(data => setOfferMarketCars(Array.isArray(data) ? data : []))
         .catch(() => setOfferMarketCars([]));
     }
     if (view === 'financials' || view === 'financial_ledger') {
-      fetch('/api/admin/all-transactions').then(res => res.ok ? res.json() : []).then(txs => setAllTransactions(Array.isArray(txs) ? txs : [])).catch(() => setAllTransactions([]));
-      fetch('/api/admin/all-invoices').then(res => res.ok ? res.json() : []).then(invs => setAllInvoices(Array.isArray(invs) ? invs : [])).catch(() => setAllInvoices([]));
+      authFetch('/api/admin/all-transactions').then(res => res.ok ? res.json() : []).then(txs => setAllTransactions(Array.isArray(txs) ? txs : [])).catch(() => setAllTransactions([]));
+      authFetch('/api/admin/all-invoices').then(res => res.ok ? res.json() : []).then(invs => setAllInvoices(Array.isArray(invs) ? invs : [])).catch(() => setAllInvoices([]));
     }
     if (view === 'reports') {
-      fetch('/api/admin/reports-analytics').then(res => res.ok ? res.json() : null).then(setReportsAnalytics).catch(() => {});
+      authFetch('/api/admin/reports-analytics').then(res => res.ok ? res.json() : null).then(setReportsAnalytics).catch(() => {});
       fetch('/api/libyan-market').then(res => res.ok ? res.json() : []).then(data => setLibyanMarketPrices(Array.isArray(data) ? data : [])).catch(() => setLibyanMarketPrices([]));
+    }
+    if (view === 'expenses') {
+      setExpensesLoading(true);
+      authFetch('/api/admin/expenses').then(res => res.ok ? res.json() : []).then(data => setExpenses(Array.isArray(data) ? data : [])).catch(() => setExpenses([])).finally(() => setExpensesLoading(false));
+    }
+    if (view === 'overview') {
+      authFetch('/api/admin/reports').then(r => r.ok ? r.json() : {}).then(data => {
+        if (data.monthly && Array.isArray(data.monthly)) setOverviewMonthly(data.monthly);
+      }).catch(() => {});
     }
   }, [view]);
 
@@ -2944,10 +2980,22 @@ export const AdminDashboard = () => {
   const [calcInput, setCalcInput] = useState<number>(5000);
   const [reportsAnalytics, setReportsAnalytics] = useState<any>({ activeUsers: 0, totalBids: 0, salesVol: 0, dbHitRate: 99.8, geoSalesRaw: [] });
 
+  // Expenses state
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [newExpense, setNewExpense] = useState({ date: new Date().toISOString().slice(0, 10), category: '', description: '', amount: '' });
+  const [expensesLoading, setExpensesLoading] = useState(false);
+
+  // Overview chart monthly data
+  const [overviewMonthly, setOverviewMonthly] = useState<any[]>([]);
+
+  // Stripe API key state
+  const [stripeApiKey, setStripeApiKey] = useState('');
+  const [stripeSaving, setStripeSaving] = useState(false);
 
   useEffect(() => {
     // 1. Fetch System Summary for badges and Overview
-    fetch('/api/admin/system-summary')
+    authFetch('/api/admin/system-summary')
       .then(res => res.json())
       .then(data => {
         setPendingUsers(data.pendingUsers || []);
@@ -2961,20 +3009,20 @@ export const AdminDashboard = () => {
       .catch(err => console.error('Summary fetch error:', err));
 
     if (view === 'user_management' || view === 'user_verification') {
-      fetch('/api/admin/pending-users').then(res => res.json()).then(setPendingUsers);
+      authFetch('/api/admin/pending-users').then(res => res.json()).then(setPendingUsers);
       // Also fetch pending deposits to show them in the financial section of verification
-      fetch('/api/transactions?status=pending&type=deposit').then(res => res.json()).then(setPendingDeposits);
+      authFetch('/api/transactions?status=pending&type=deposit').then(res => res.json()).then(setPendingDeposits);
     }
 
     if (view === 'financial_approvals' || view === 'overview') {
-      fetch('/api/transactions?status=pending&type=deposit')
+      authFetch('/api/transactions?status=pending&type=deposit')
         .then(res => res.json())
         .then(setPendingDeposits)
         .catch(err => console.error('Pending deposits fetch error:', err));
     }
 
     if (view === 'transactions' || view === 'financial_ledger') {
-      fetch('/api/transactions')
+      authFetch('/api/transactions')
         .then(res => res.json())
         .then(setTransactions)
         .catch(err => console.error('Transactions fetch error:', err));
@@ -2982,13 +3030,13 @@ export const AdminDashboard = () => {
 
     // Original fetching for other views
     if (view === 'logistics') {
-      fetch('/api/admin/shipments').then(res => res.json()).then(setAdminShipments);
+      authFetch('/api/admin/shipments').then(res => res.json()).then(setAdminShipments);
     }
     if (view === 'system') {
-      fetch('/api/admin/branches').then(res => res.json()).then(setBranches);
+      authFetch('/api/admin/branches').then(res => res.json()).then(setBranches);
     }
     if (view === 'marketplace_management') {
-      fetch('/api/admin/offer-market-cars')
+      authFetch('/api/admin/offer-market-cars')
         .then(res => res.json())
         .then(data => setOfferMarketCars(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch offer market cars:', err));
@@ -2996,7 +3044,7 @@ export const AdminDashboard = () => {
 
     // ✅ PHASE 7: Fetch KYC pending
     if (view === 'kyc_review') {
-      fetch('/api/admin/kyc-pending')
+      authFetch('/api/admin/kyc-pending')
         .then(r => r.json())
         .then(d => setKycUsers(Array.isArray(d) ? d : []))
         .catch(err => console.error('KYC fetch error:', err));
@@ -3004,14 +3052,14 @@ export const AdminDashboard = () => {
 
     // ✅ PHASE 5: Fetch withdrawal requests
     if (view === 'withdrawal_requests') {
-      fetch('/api/admin/withdrawal-requests')
+      authFetch('/api/admin/withdrawal-requests')
         .then(res => res.json())
         .then(data => setWithdrawalRequests(Array.isArray(data) ? data : []))
         .catch(err => console.error('Withdrawal requests fetch error:', err));
     }
 
     if (view === 'document_cycle' && adminInvoices.length === 0) {
-      fetch('/api/admin/invoices')
+      authFetch('/api/admin/invoices')
         .then(res => res.json())
         .then(data => setAdminInvoices(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch admin invoices:', err));
@@ -3021,7 +3069,7 @@ export const AdminDashboard = () => {
   // ✅ PHASE 5: Approve/Reject withdrawal handlers
   const handleApproveWithdrawal = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/withdrawal-requests/${id}/approve`, {
+      const res = await authFetch(`/api/admin/withdrawal-requests/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: withdrawalNote })
@@ -3038,7 +3086,7 @@ export const AdminDashboard = () => {
 
   const handleRejectWithdrawal = async (id: string, reason: string) => {
     try {
-      const res = await fetch(`/api/admin/withdrawal-requests/${id}/reject`, {
+      const res = await authFetch(`/api/admin/withdrawal-requests/${id}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
@@ -3054,7 +3102,7 @@ export const AdminDashboard = () => {
 
   const handleApproveCar = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/approve-car/${id}`, { method: 'POST' });
+      const res = await authFetch(`/api/admin/approve-car/${id}`, { method: 'POST' });
       if (res.ok) {
         showAlert('تمت الموافقة على السيارة ونشرها في المزاد', 'success');
         setAdminPendingCars(prev => prev.filter(c => c.id !== id));
@@ -3064,7 +3112,7 @@ export const AdminDashboard = () => {
 
   const handleApproveUser = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/approve-user/${id}`, { method: 'POST' });
+      const res = await authFetch(`/api/admin/approve-user/${id}`, { method: 'POST' });
       if (res.ok) {
         showAlert('تم تفعيل المستخدم بنجاح', 'success');
         setPendingUsers(prev => prev.filter(u => u.id !== id));
@@ -3074,7 +3122,7 @@ export const AdminDashboard = () => {
 
   const handleRejectUser = async (id: string, reason: string) => {
     try {
-      const res = await fetch(`/api/admin/reject-user/${id}`, {
+      const res = await authFetch(`/api/admin/reject-user/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
@@ -3088,14 +3136,14 @@ export const AdminDashboard = () => {
 
   const handleUpdateShipment = async (id: string, status: string, notes: string, trackingNumber?: string, location?: string) => {
     try {
-      const res = await fetch(`/api/admin/shipments/${id}/update-status`, {
+      const res = await authFetch(`/api/admin/shipments/${id}/update-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, trackingNotes: notes, trackingNumber, currentLocation: location })
       });
       if (res.ok) {
         showAlert('تم تحديث حالة الشحنة', 'success');
-        fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
+        authFetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
       }
     } catch (e) { showAlert('فشل تحديث الشحنة'); }
   };
@@ -3109,7 +3157,7 @@ export const AdminDashboard = () => {
 
     setIsAddingFee(true);
     try {
-      const res = await fetch('/api/admin/invoices/manual', {
+      const res = await authFetch('/api/admin/invoices/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3126,7 +3174,7 @@ export const AdminDashboard = () => {
         setShowAddFeeModal(null);
         setFeeForm({ amount: '', type: 'storage_fine', dueDate: '' });
         // Refresh invoices
-        fetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices);
+        authFetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices);
       } else {
         const err = await res.json();
         showAlert(err.error || 'فشل إصدار الفاتورة', 'error');
@@ -3356,7 +3404,7 @@ export const AdminDashboard = () => {
 
   const handleUpdateBranch = async (config: any) => {
     try {
-      const res = await fetch('/api/admin/config', {
+      const res = await authFetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
@@ -3364,7 +3412,7 @@ export const AdminDashboard = () => {
       if (res.ok) {
         showAlert('تم تحديث إعدادات الفرع بنجاح', 'success');
         setEditingBranch(null);
-        fetch('/api/admin/branches').then(r => r.json()).then(setBranches);
+        authFetch('/api/admin/branches').then(r => r.json()).then(setBranches);
       }
     } catch (e) {
       showAlert('خطأ في تحديث البيانات');
@@ -3373,7 +3421,7 @@ export const AdminDashboard = () => {
 
   const handleUpdateOffice = async (office: any) => {
     try {
-      const res = await fetch('/api/admin/offices', {
+      const res = await authFetch('/api/admin/offices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(office)
@@ -3381,7 +3429,7 @@ export const AdminDashboard = () => {
       if (res.ok) {
         showAlert('تم حفظ المكتب بنجاح', 'success');
         setEditingOffice(null);
-        fetch('/api/admin/offices').then(r => r.json()).then(setOffices);
+        authFetch('/api/admin/offices').then(r => r.json()).then(setOffices);
       }
     } catch (e) {
       showAlert('خطأ في حفظ البيانات');
@@ -3973,7 +4021,7 @@ export const AdminDashboard = () => {
                               onClick={() => {
                                 showConfirm(`هل أنت متأكد من حذف حساب ${user.firstName} ${user.lastName} بشكل نهائي؟ لا يمكن التراجع عن هذا الإجراء وسيتم حذف كافة البيانات المرتبطة به.`, async () => {
                                   try {
-                                    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+                                    const res = await authFetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
                                     if (res.ok) {
                                       setUsers(users.filter(u => u.id !== user.id));
                                       showAlert('تم حذف المستخدم بنجاح', 'success');
@@ -4062,7 +4110,7 @@ export const AdminDashboard = () => {
                 <p className="text-slate-500 font-bold">بانتظار تأكيد وصول الأموال لـ {pendingDeposits.length} طلب</p>
               </div>
               <button aria-label="زر" title="زر"
-                onClick={() => fetch('/api/transactions?status=pending&type=deposit').then(res => res.json()).then(setPendingDeposits)}
+                onClick={() => authFetch('/api/transactions?status=pending&type=deposit').then(res => res.json()).then(setPendingDeposits)}
                 className="p-3 bg-white rounded-2xl border border-slate-100 shadow-sm hover:bg-slate-50 transition-all"
               >
                 <RefreshCw className="w-5 h-5 text-slate-400" />
@@ -4134,7 +4182,7 @@ export const AdminDashboard = () => {
                               showConfirm(
                                 `هل تؤكد استلام ${amtLabel} من ${userName}؟\nسيتم تفعيل القوة الشرائية فوراً.`,
                                 async () => {
-                                  const res = await fetch(`/api/admin/approve-deposit/${tx.id}`, { method: 'POST' });
+                                  const res = await authFetch(`/api/admin/approve-deposit/${tx.id}`, { method: 'POST' });
                                   if (res.ok) {
                                     setPendingDeposits((prev: any[]) => prev.filter(p => p.id !== tx.id));
                                     showAlert(`✅ تم تأكيد إيداع ${userName} وتفعيل القوة الشرائية`, 'success');
@@ -4155,7 +4203,7 @@ export const AdminDashboard = () => {
                             onClick={() => {
                               const reason = window.prompt(`سبب رفض إيداع ${userName}:`);
                               if (reason !== null) {
-                                fetch(`/api/admin/reject-deposit/${tx.id}`, {
+                                authFetch(`/api/admin/reject-deposit/${tx.id}`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ reason }),
@@ -4680,7 +4728,7 @@ export const AdminDashboard = () => {
                     <div className="flex gap-2">
                       <button
                         onClick={async () => {
-                          const res = await fetch(`/api/admin/cars/${car.id}/review`, {
+                          const res = await authFetch(`/api/admin/cars/${car.id}/review`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'approve' })
@@ -4698,7 +4746,7 @@ export const AdminDashboard = () => {
                         onClick={async () => {
                           const reason = window.prompt('سبب الرفض:');
                           if (reason) {
-                            const res = await fetch(`/api/admin/cars/${car.id}/review`, {
+                            const res = await authFetch(`/api/admin/cars/${car.id}/review`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ action: 'reject', reason })
@@ -4769,7 +4817,7 @@ export const AdminDashboard = () => {
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-8">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center text-right">
                 <h3 className="font-black text-slate-800">سجل المعاملات المالية الموثق</h3>
-                <button onClick={() => fetch('/api/admin/all-transactions').then(res => res.json()).then(setAllTransactions)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
+                <button onClick={() => authFetch('/api/admin/all-transactions').then(res => res.json()).then(setAllTransactions)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-right min-w-[800px]">
@@ -4812,7 +4860,7 @@ export const AdminDashboard = () => {
                   <FileText className="w-5 h-5 text-blue-500" />
                   الفواتير والمطالبات المالية
                 </h3>
-                <button onClick={() => fetch('/api/admin/all-invoices').then(res => res.json()).then(setAllInvoices)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
+                <button onClick={() => authFetch('/api/admin/all-invoices').then(res => res.json()).then(setAllInvoices)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-right min-w-[1000px]">
@@ -4873,11 +4921,11 @@ export const AdminDashboard = () => {
                                 onClick={() => {
                                   showConfirm(`تأكيد استلام تحويل بقيمة $${inv.amount.toLocaleString()} واعتماد الفاتورة؟`, async () => {
                                     try {
-                                      const res = await fetch(`/api/invoices/${inv.id}/pay`, { method: 'POST' });
+                                      const res = await authFetch(`/api/invoices/${inv.id}/pay`, { method: 'POST' });
                                       if (res.ok) {
                                         showAlert('تم اعتماد الدفع بنجاح وتسوية حساب البائع ✅', 'success');
-                                        fetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
-                                        fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
+                                        authFetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
+                                        authFetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
                                       } else {
                                         showAlert('حدث خطأ في ترصيد الدفعة', 'error');
                                       }
@@ -5005,7 +5053,7 @@ export const AdminDashboard = () => {
               <h2 className="text-2xl font-bold text-slate-800">سوق العروض (Secondary Market)</h2>
               <button aria-label="زر" title="زر"
                 onClick={() => {
-                  fetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
+                  authFetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
                     .then(res => res.json())
                     .then(setOfferMarketCars);
                 }}
@@ -5049,7 +5097,7 @@ export const AdminDashboard = () => {
                             <button
                               onClick={() => {
                                 showConfirm('هل أنت متأكد من قبول هذا العرض؟', async () => {
-                                  const res = await fetch(`/api/offers/${car.id}/accept`, {
+                                  const res = await authFetch(`/api/offers/${car.id}/accept`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -5070,7 +5118,7 @@ export const AdminDashboard = () => {
                             <button
                               onClick={() => {
                                 showConfirm('هل أنت متأكد من رفض العرض؟ سيتم حذف العرض الحالي.', async () => {
-                                  const res = await fetch(`/api/offers/${car.id}/reject`, {
+                                  const res = await authFetch(`/api/offers/${car.id}/reject`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -5078,7 +5126,7 @@ export const AdminDashboard = () => {
                                   if (res.ok) {
                                     showAlert('تم رفض العرض', 'success');
                                     // Refresh car data
-                                    fetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
+                                    authFetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
                                       .then(res => res.json())
                                       .then(setOfferMarketCars);
                                   }
@@ -5091,7 +5139,7 @@ export const AdminDashboard = () => {
                             <button
                               onClick={() => {
                                 showConfirm('هل تريد إعادة إدراج السيارة للمزاد القادم؟', async () => {
-                                  const res = await fetch(`/api/cars/${car.id}/re-list`, {
+                                  const res = await authFetch(`/api/cars/${car.id}/re-list`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -5301,14 +5349,10 @@ export const AdminDashboard = () => {
                 <h3 className="text-lg font-bold text-slate-800 mb-6">تحليلات الأداء</h3>
                 <div className="h-[320px] w-full min-w-0" dir="ltr">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <BarChart data={[
-                      { name: 'Jan', مبيعات: 4000 },
-                      { name: 'Feb', مبيعات: 3000 },
-                      { name: 'Mar', مبيعات: 2000 },
-                      { name: 'Apr', مبيعات: 2780 },
-                      { name: 'May', مبيعات: 1890 },
-                      { name: 'Jun', مبيعات: 2390 },
-                    ]}>
+                    <BarChart data={overviewMonthly.length > 0
+                      ? overviewMonthly.map((m: any) => ({ name: m.month, مبيعات: m.total || 0 }))
+                      : [{ name: '—', مبيعات: 0 }]
+                    }>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} stroke="#94a3b8" />
                       <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" />
@@ -5545,7 +5589,7 @@ export const AdminDashboard = () => {
               </div>
               <button
                 onClick={() => {
-                  fetch('/api/admin/offer-market-cars')
+                  authFetch('/api/admin/offer-market-cars')
                     .then(res => res.json())
                     .then(data => setOfferMarketCars(data));
                 }}
@@ -5600,7 +5644,7 @@ export const AdminDashboard = () => {
                             <button
                               onClick={() => {
                                 showConfirm('هل تريد قبول أعلى عرض وإتمام البيع؟', async () => {
-                                  const res = await fetch(`/api/offers/${car.id}/accept`, { method: 'POST' });
+                                  const res = await authFetch(`/api/offers/${car.id}/accept`, { method: 'POST' });
                                   if (res.ok) {
                                     showAlert('تم قبول العرض والبيع بنجاح!', 'success');
                                     setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
@@ -5614,7 +5658,7 @@ export const AdminDashboard = () => {
                             <button
                               onClick={() => {
                                 showConfirm('هل تريد رفض العروض وإعادة السيارة للمزاد؟', async () => {
-                                  const res = await fetch(`/api/offers/${car.id}/reject`, { method: 'POST' });
+                                  const res = await authFetch(`/api/offers/${car.id}/reject`, { method: 'POST' });
                                   if (res.ok) {
                                     showAlert('تم رفض العروض وإعادة السيارة للجدولة', 'info');
                                     setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
@@ -5669,7 +5713,7 @@ export const AdminDashboard = () => {
                 </p>
               </div>
               <button
-                onClick={() => fetch('/api/admin/withdrawal-requests').then(r => r.json()).then(d => setWithdrawalRequests(Array.isArray(d) ? d : []))}
+                onClick={() => authFetch('/api/admin/withdrawal-requests').then(r => r.json()).then(d => setWithdrawalRequests(Array.isArray(d) ? d : []))}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -5770,7 +5814,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
               <button 
-                onClick={() => fetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
+                onClick={() => authFetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
                 className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all"
               >
                 <RefreshCw className="w-4 h-4" /> تحديث السجل
@@ -5871,7 +5915,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
               <button 
-                 onClick={() => fetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
+                 onClick={() => authFetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
                  className="bg-orange-50 text-orange-600 hover:bg-orange-100 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all border border-orange-200"
               >
                 <RefreshCw className="w-4 h-4" /> تحديث المواقع
@@ -5982,7 +6026,39 @@ export const AdminDashboard = () => {
           </div>
         );
 
-      case 'expenses':
+      case 'expenses': {
+        const totalExpenses = expenses.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
+        const categoryTotals: Record<string, number> = {};
+        expenses.forEach((e: any) => { categoryTotals[e.category || 'أخرى'] = (categoryTotals[e.category || 'أخرى'] || 0) + Number(e.amount || 0); });
+        const topCategories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+        const handleAddExpense = async () => {
+          if (!newExpense.description || !newExpense.amount || !newExpense.category) { showAlert('يرجى تعبئة جميع الحقول', 'error'); return; }
+          try {
+            const res = await authFetch('/api/admin/expenses', {
+              method: 'POST',
+              body: JSON.stringify({ date: newExpense.date, category: newExpense.category, description: newExpense.description, amount: Number(newExpense.amount) })
+            });
+            if (res.ok) {
+              const created = await res.json();
+              setExpenses(prev => [created, ...prev]);
+              setShowAddExpenseModal(false);
+              setNewExpense({ date: new Date().toISOString().slice(0, 10), category: '', description: '', amount: '' });
+              showAlert('تم إضافة المصروف بنجاح', 'success');
+            } else { const err = await res.json(); showAlert(err.error || 'فشل في الإضافة', 'error'); }
+          } catch { showAlert('خطأ في الاتصال', 'error'); }
+        };
+
+        const handleDeleteExpense = (id: string) => {
+          showConfirm('هل أنت متأكد من حذف هذا المصروف؟', async () => {
+            try {
+              const res = await authFetch(`/api/admin/expenses/${id}`, { method: 'DELETE' });
+              if (res.ok) { setExpenses(prev => prev.filter(e => e.id !== id)); showAlert('تم الحذف', 'success'); }
+              else showAlert('فشل في الحذف', 'error');
+            } catch { showAlert('خطأ في الاتصال', 'error'); }
+          });
+        };
+
         return (
           <div className="p-6 md:p-8 animate-in fade-in duration-300" dir="rtl">
             <div className="flex justify-between items-center mb-10">
@@ -5995,7 +6071,7 @@ export const AdminDashboard = () => {
                   <p className="text-slate-500 text-sm mt-1">تسجيل ومتابعة كافة المصاريف الإدارية والتشغيلية للمنصة</p>
                 </div>
               </div>
-              <button className="bg-rose-500 hover:bg-rose-600 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all">
+              <button onClick={() => setShowAddExpenseModal(true)} className="bg-rose-500 hover:bg-rose-600 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all">
                 <Plus className="w-5 h-5" />
                 إضافة مصروف جديد
               </button>
@@ -6003,18 +6079,15 @@ export const AdminDashboard = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
               {[
-                { label: 'مصاريف الشهر الحالي', value: '$12,450', color: 'rose', trend: '+5%' },
-                { label: 'مصاريف الرواتب', value: '$8,000', color: 'indigo', trend: '0%' },
-                { label: 'مصاريف تشغيل المكاتب', value: '$4,450', color: 'amber', trend: '-2%' },
+                { label: 'إجمالي المصاريف', value: `$${totalExpenses.toLocaleString()}`, color: 'rose' },
+                { label: 'عدد السجلات', value: `${expenses.length}`, color: 'indigo' },
+                { label: 'أعلى فئة', value: topCategories[0] ? `${topCategories[0][0]} ($${topCategories[0][1].toLocaleString()})` : '—', color: 'amber' },
               ].map((card, i) => (
                 <div key={i} className={`bg-${card.color}-500 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden group`}>
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-white/20 transition-all"></div>
                   <div className="relative z-10">
                     <div className="text-xs font-black text-white/70 uppercase tracking-widest mb-1">{card.label}</div>
                     <div className="text-4xl font-black font-mono tracking-tighter mb-4">{card.value}</div>
-                    <div className="flex items-center gap-2">
-                       <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black">{card.trend} عن الشهر الماضي</span>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -6041,35 +6114,82 @@ export const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {[
-                    { date: '2024-03-25', desc: 'إيجار مكتب طرابلس - شهر 3', cat: 'مكاتب', amount: '$1,200', user: 'أحمد مراد' },
-                    { date: '2024-03-24', desc: 'تجديد اشتراكات السيرفرات', cat: 'تقنية', amount: '$450', user: 'نظام آلي' },
-                    { date: '2024-03-22', desc: 'مصاريف صيانة سيارة النقل', cat: 'لوجستيات', amount: '$300', user: 'محمد علي' },
-                  ].map((ex, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-all">
-                      <td className="p-5 font-mono text-slate-400">{ex.date}</td>
-                      <td className="p-5 font-black text-slate-800">{ex.desc}</td>
+                  {expensesLoading ? (
+                    <tr><td colSpan={6} className="p-10 text-center text-slate-400 font-bold">جاري التحميل...</td></tr>
+                  ) : expenses.length === 0 ? (
+                    <tr><td colSpan={6} className="p-10 text-center text-slate-300 font-bold italic">لا توجد مصاريف مسجلة بعد</td></tr>
+                  ) : expenses.map((ex: any) => (
+                    <tr key={ex.id} className="hover:bg-slate-50 transition-all">
+                      <td className="p-5 font-mono text-slate-400">{ex.date || '—'}</td>
+                      <td className="p-5 font-black text-slate-800">{ex.description}</td>
                       <td className="p-5">
-                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">{ex.cat}</span>
+                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">{ex.category}</span>
                       </td>
-                      <td className="p-5 font-black text-rose-600 text-lg" dir="ltr">{ex.amount}</td>
-                      <td className="p-5 text-center font-bold text-slate-500">{ex.user}</td>
+                      <td className="p-5 font-black text-rose-600 text-lg" dir="ltr">${Number(ex.amount).toLocaleString()}</td>
+                      <td className="p-5 text-center font-bold text-slate-500">{ex.createdBy || '—'}</td>
                       <td className="p-5 text-left">
-                        <button title="حذف" aria-label="حذف" className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4"/></button>
+                        <button onClick={() => handleDeleteExpense(ex.id)} title="حذف" aria-label="حذف" className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4"/></button>
                       </td>
                     </tr>
                   ))}
-                  <tr>
-                    <td colSpan={6} className="p-10 text-center text-slate-300 font-bold italic">
-                       نهاية السجل — حمل التقرير السنوي لعرض كافة المصاريف
-                    </td>
-                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
+
+          {/* Add Expense Modal */}
+          {showAddExpenseModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddExpenseModal(false)}>
+              <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl" dir="rtl" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-black text-slate-800">إضافة مصروف جديد</h3>
+                  <button onClick={() => setShowAddExpenseModal(false)} className="p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 mb-1">التاريخ</label>
+                    <input type="date" value={newExpense.date} onChange={e => setNewExpense({...newExpense, date: e.target.value})}
+                      className="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-rose-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 mb-1">الفئة</label>
+                    <select value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})}
+                      className="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-rose-400 bg-white">
+                      <option value="">اختر الفئة</option>
+                      <option value="مكاتب">مكاتب</option>
+                      <option value="رواتب">رواتب</option>
+                      <option value="تقنية">تقنية</option>
+                      <option value="لوجستيات">لوجستيات</option>
+                      <option value="تسويق">تسويق</option>
+                      <option value="صيانة">صيانة</option>
+                      <option value="أخرى">أخرى</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 mb-1">الوصف</label>
+                    <input type="text" value={newExpense.description} onChange={e => setNewExpense({...newExpense, description: e.target.value})}
+                      placeholder="مثال: إيجار مكتب طرابلس" className="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-rose-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 mb-1">المبلغ ($)</label>
+                    <input type="number" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})}
+                      placeholder="0.00" className="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-rose-400" dir="ltr" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={handleAddExpense} className="flex-1 bg-rose-500 hover:bg-rose-600 text-white py-3 rounded-2xl font-black transition-all">
+                    <Plus className="w-4 h-4 inline ml-2" /> إضافة
+                  </button>
+                  <button onClick={() => setShowAddExpenseModal(false)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 rounded-2xl font-black text-slate-600 transition-all">
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         );
+      }
 
       case 'payment_gateways':
         return (
@@ -6100,15 +6220,34 @@ export const AdminDashboard = () => {
                 <div className="space-y-4">
                    <div>
                      <label className="block text-xs font-black text-slate-400 mb-1.5 uppercase">API Secret Key</label>
-                     <input type="password" placeholder="sk_live_..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-mono outline-none focus:border-[#635BFF] text-left" dir="ltr" />
+                     <input type="password" placeholder="sk_live_..." value={stripeApiKey} onChange={e => setStripeApiKey(e.target.value)}
+                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-mono outline-none focus:border-[#635BFF] text-left" dir="ltr" />
                    </div>
                    <div>
                      <label className="block text-xs font-black text-slate-400 mb-1.5 uppercase">Webhook Endpoint URL</label>
                      <div className="flex gap-2">
                        <input readOnly value="https://autopro.ac/api/webhooks/stripe" className="flex-grow bg-slate-100 border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-500 text-left" dir="ltr" />
-                       <button className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-4 py-2 rounded-xl text-xs transition-colors">نسخ</button>
+                       <button onClick={() => { navigator.clipboard.writeText('https://autopro.ac/api/webhooks/stripe'); showAlert('تم نسخ رابط الـ Webhook', 'success'); }}
+                         className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-4 py-2 rounded-xl text-xs transition-colors">نسخ</button>
                      </div>
                    </div>
+                   <button
+                     disabled={stripeSaving || !stripeApiKey.trim()}
+                     onClick={async () => {
+                       setStripeSaving(true);
+                       try {
+                         const res = await authFetch('/api/admin/settings/update', {
+                           method: 'POST',
+                           body: JSON.stringify({ stripeSecretKey: stripeApiKey, stripeEnabled: paymentSettings.stripe })
+                         });
+                         if (res.ok) showAlert('تم حفظ إعدادات Stripe بنجاح ✅', 'success');
+                         else { const err = await res.json().catch(() => ({})); showAlert(err.error || 'فشل في الحفظ', 'error'); }
+                       } catch { showAlert('خطأ في الاتصال', 'error'); }
+                       finally { setStripeSaving(false); }
+                     }}
+                     className="w-full bg-[#635BFF] hover:bg-[#5248e6] disabled:opacity-50 text-white font-black py-3 rounded-2xl transition-all">
+                     {stripeSaving ? 'جاري الحفظ...' : 'حفظ إعدادات Stripe'}
+                   </button>
                    <p className="text-[11px] text-slate-400 font-bold leading-relaxed bg-blue-50/50 p-3 rounded-xl border border-blue-50">
                      💡 بمجرد تفعيل هذا الرابط في لوحة Stripe، سيقوم النظام آلياً بتحويل حالة أي سيارة إلى <b className="text-blue-600">"تم الدفع"</b> فور نجاح العملية دون تدخل بشري.
                    </p>
@@ -6691,7 +6830,7 @@ export const AdminDashboard = () => {
                   setIsScraping(true);
                   setScrapeResult(null);
                   try {
-                    const res = await fetch('/api/admin/scrape-opensooq', {
+                    const res = await authFetch('/api/admin/scrape-opensooq', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ make: opensooqMake, model: opensooqModel })
@@ -7185,13 +7324,13 @@ export const AdminDashboard = () => {
               <button 
                 onClick={async () => {
                   try {
-                    const res = await fetch(`/api/admin/invoices/${editingInvoice.id}`, {
+                    const res = await authFetch(`/api/admin/invoices/${editingInvoice.id}`, {
                       method: 'PUT', headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ amount: editingInvoice.amount, notes: editingInvoice.notes })
                     });
                     if (res.ok) {
                       showAlert('تم حفظ التعديلات بنجاح', 'success');
-                      fetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
+                      authFetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
                       setEditingInvoice(null);
                     } else {
                       showAlert('فشل التحديث', 'error');
@@ -7219,7 +7358,7 @@ export const AdminDashboard = () => {
           onConfirm={async () => {
             const { invoice, nextStatus } = showInvoiceConfirmModal;
             try {
-              const res = await fetch(`/api/admin/invoices/${invoice.id}/status`, {
+              const res = await authFetch(`/api/admin/invoices/${invoice.id}/status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: nextStatus, releaseCardUrl: invoice._newUrl || invoice.releaseCardUrl })

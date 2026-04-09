@@ -26,7 +26,7 @@ export const SellerDashboard = () => {
 
   useEffect(() => {
     if (currentUser?.id) {
-      fetch(`/api/user/settings/${currentUser.id}`)
+      authFetch(`/api/user/settings/${currentUser.id}`)
         .then(res => res.json())
         .then(data => {
           if (!data.error) {
@@ -45,7 +45,7 @@ export const SellerDashboard = () => {
     setNotificationSettings(newSettings);
     setIsSavingSettings(true);
     try {
-      await fetch(`/api/user/settings/${currentUser?.id}`, {
+      await authFetch(`/api/user/settings/${currentUser?.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSettings)
@@ -93,7 +93,7 @@ export const SellerDashboard = () => {
 
       console.log('Sending profile payload:', payload);
 
-      const res = await fetch('/api/user/update-profile', {
+      const res = await authFetch('/api/user/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -206,7 +206,7 @@ export const SellerDashboard = () => {
       const formData = new FormData();
       selectedFiles.forEach(file => formData.append('images', file));
 
-      const res = await fetch('/api/upload/images', {
+      const res = await authFetch('/api/upload/images', {
         method: 'POST',
         body: formData
       });
@@ -258,7 +258,7 @@ export const SellerDashboard = () => {
     setSellerCars(filteredCars);
 
     if (inventoryTab === 'offers') {
-      fetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
+      authFetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
         .then(res => res.json())
         .then(data => setOfferMarketCars(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch offer market cars:', err));
@@ -268,14 +268,14 @@ export const SellerDashboard = () => {
 
 
     if (view === 'logistics') {
-      fetch(`/api/shipments/seller/${currentUser?.id}`)
+      authFetch(`/api/shipments/seller/${currentUser?.id}`)
         .then(res => res.json())
         .then(setShipments)
         .catch(err => console.error('Failed to fetch seller shipments:', err));
     }
 
     if (view === 'invoices') {
-      fetch(`/api/seller/invoices/${currentUser?.id}`)
+      authFetch(`/api/seller/invoices/${currentUser?.id}`)
         .then(res => res.json())
         .then(data => setSellerInvoices(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch seller invoices:', err));
@@ -283,7 +283,7 @@ export const SellerDashboard = () => {
 
     // ✅ PHASE 4: Fetch real seller wallet data
     if (view === 'financials' && currentUser?.id) {
-      fetch(`/api/seller/wallet/${currentUser.id}`)
+      authFetch(`/api/seller/wallet/${currentUser.id}`)
         .then(res => res.json())
         .then(data => {
           setWallet(data);
@@ -298,7 +298,7 @@ export const SellerDashboard = () => {
         })
         .catch(err => console.error('Failed to fetch wallet:', err));
 
-      fetch(`/api/seller/transactions/${currentUser.id}`)
+      authFetch(`/api/seller/transactions/${currentUser.id}`)
         .then(res => res.json())
         .then(data => setLedger(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch ledger:', err));
@@ -311,7 +311,7 @@ export const SellerDashboard = () => {
     if (soldCars.length === 0) return;
 
     soldCars.forEach(car => {
-      fetch(`/api/invoices/car/${car.id}`)
+      authFetch(`/api/invoices/car/${car.id}`)
         .then(res => res.json())
         .then(data => {
           setInvoiceStatuses(prev => {
@@ -346,7 +346,7 @@ export const SellerDashboard = () => {
     }
     setIsWithdrawing(true);
     try {
-      const res = await fetch('/api/seller/withdraw', {
+      const res = await authFetch('/api/seller/withdraw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -362,7 +362,7 @@ export const SellerDashboard = () => {
         setShowWithdrawModal(false);
         setWithdrawAmount('');
         // Refresh wallet
-        fetch(`/api/seller/wallet/${currentUser?.id}`)
+        authFetch(`/api/seller/wallet/${currentUser?.id}`)
           .then(r => r.json())
           .then(setWallet);
       } else {
@@ -401,7 +401,7 @@ export const SellerDashboard = () => {
         pendingFiles.forEach(img => {
           if (img.file) formData.append('images', img.file);
         });
-        const uploadRes = await fetch('/api/upload/images', { method: 'POST', body: formData });
+        const uploadRes = await authFetch('/api/upload/images', { method: 'POST', body: formData });
         if (uploadRes.ok) {
           const uploadData = await uploadRes.json();
           allUrls = [...allUrls, ...uploadData.urls];
@@ -722,7 +722,7 @@ export const SellerDashboard = () => {
                                       <button
                                         onClick={async () => {
                                           try {
-                                            const res = await fetch(`/api/cars/${car.id}/notify-winner`, { method: 'POST' });
+                                            const res = await authFetch(`/api/cars/${car.id}/notify-winner`, { method: 'POST' });
                                             const data = await res.json();
                                             if (res.ok) {
                                               showAlert(data.message, 'success');
@@ -2042,7 +2042,7 @@ export const SellerDashboard = () => {
                   if (images && images.length > 0) {
                     const formData = new FormData();
                     images.forEach(img => formData.append('images', img));
-                    const imgRes = await fetch('/api/upload/images', { method: 'POST', body: formData });
+                    const imgRes = await authFetch('/api/upload/images', { method: 'POST', body: formData });
                     if (imgRes.ok) {
                       const imgData = await imgRes.json();
                       if (imgData.urls) uploadedImages.push(...imgData.urls);
@@ -2058,7 +2058,7 @@ export const SellerDashboard = () => {
                   if (engineSound) {
                     const mediaData = new FormData();
                     mediaData.append('media', engineSound);
-                    const mediaRes = await fetch('/api/upload/media', { method: 'POST', body: mediaData });
+                    const mediaRes = await authFetch('/api/upload/media', { method: 'POST', body: mediaData });
                     if (mediaRes.ok) {
                       const mediaJson = await mediaRes.json();
                       engineAudioUrl = mediaJson.url;
@@ -2068,7 +2068,7 @@ export const SellerDashboard = () => {
                   if (inspectionReport) {
                     const pData = new FormData();
                     pData.append('media', inspectionReport);
-                    const pRes = await fetch('/api/upload/media', { method: 'POST', body: pData });
+                    const pRes = await authFetch('/api/upload/media', { method: 'POST', body: pData });
                     if (pRes.ok) {
                       const pJson = await pRes.json();
                       inspectionPdf = pJson.url;
@@ -2267,7 +2267,7 @@ export const SellerDashboard = () => {
               <button
                 onClick={async () => {
                   try {
-                    const res = await fetch(`/api/cars/${rescheduleCar.id}/reschedule`, {
+                    const res = await authFetch(`/api/cars/${rescheduleCar.id}/reschedule`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({

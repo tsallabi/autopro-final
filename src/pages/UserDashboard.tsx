@@ -114,7 +114,7 @@ export const UserDashboard = () => {
 
   useEffect(() => {
     if (effectiveUser.id) {
-      fetch(`/api/user/settings/${effectiveUser.id}`)
+      authFetch(`/api/user/settings/${effectiveUser.id}`)
         .then(res => res.json())
         .then(data => {
           if (!data.error) {
@@ -133,7 +133,7 @@ export const UserDashboard = () => {
     setNotificationSettings(newSettings);
     setIsSavingSettings(true);
     try {
-      await fetch(`/api/user/settings/${effectiveUser.id}`, {
+      await authFetch(`/api/user/settings/${effectiveUser.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSettings)
@@ -171,7 +171,7 @@ export const UserDashboard = () => {
     e.preventDefault();
     setIsSavingProfile(true);
     try {
-      const res = await fetch('/api/user/update-profile', {
+      const res = await authFetch('/api/user/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: effectiveUser.id, ...profileForm })
@@ -198,7 +198,7 @@ export const UserDashboard = () => {
     }
     setIsSavingProfile(true);
     try {
-      const res = await fetch('/api/user/change-password', {
+      const res = await authFetch('/api/user/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: effectiveUser.id, currentPassword: passForm.current, newPassword: passForm.new })
@@ -227,20 +227,20 @@ export const UserDashboard = () => {
   // Fetch static user data only when effectiveUser changes or view changes
   useEffect(() => {
     if (effectiveUser?.id) {
-      fetch(`/api/invoices/user/${effectiveUser.id}`).then(r => r.json()).then(setInvoices).catch(() => { });
-      fetch(`/api/transactions/user/${effectiveUser.id}`).then(r => r.json()).then(setTransactions).catch(() => { });
-      fetch(`/api/bids/user/${effectiveUser.id}`).then(r => r.json()).then(setUserBids).catch(() => { });
-      fetch(`/api/shipments/user/${effectiveUser.id}`).then(r => r.json()).then(setShipments).catch(() => { });
-      fetch(`/api/offers/user/${effectiveUser.id}`).then(r => r.json()).then(setUserOffers).catch(() => { });
+      authFetch(`/api/invoices/user/${effectiveUser.id}`).then(r => r.json()).then(setInvoices).catch(() => { });
+      authFetch(`/api/transactions/user/${effectiveUser.id}`).then(r => r.json()).then(setTransactions).catch(() => { });
+      authFetch(`/api/bids/user/${effectiveUser.id}`).then(r => r.json()).then(setUserBids).catch(() => { });
+      authFetch(`/api/shipments/user/${effectiveUser.id}`).then(r => r.json()).then(setShipments).catch(() => { });
+      authFetch(`/api/offers/user/${effectiveUser.id}`).then(r => r.json()).then(setUserOffers).catch(() => { });
 
       setLoadingMessages(true);
-      fetch(`/api/messages/user/${effectiveUser.id}`)
+      authFetch(`/api/messages/user/${effectiveUser.id}`)
         .then(r => r.json())
         .then(data => { setMessages(data); setLoadingMessages(false); })
         .catch(() => setLoadingMessages(false));
 
       if (effectiveUser.role === 'admin') {
-        fetch('/api/admin/pending-cars').then(r => r.json()).then(setPendingCars).catch(() => { });
+        authFetch('/api/admin/pending-cars').then(r => r.json()).then(setPendingCars).catch(() => { });
       }
     }
   }, [effectiveUser?.id, view]);
@@ -267,7 +267,7 @@ export const UserDashboard = () => {
 
       unviewedInvoices.forEach(async (inv) => {
         try {
-          const res = await fetch(`/api/invoices/${inv.id}/view`, { method: 'PUT' });
+          const res = await authFetch(`/api/invoices/${inv.id}/view`, { method: 'PUT' });
           if (res.ok) {
             setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, isViewed: 1 } : i));
           }
@@ -302,7 +302,7 @@ export const UserDashboard = () => {
 
   const handleRejectCounterOffer = async (bidId: string) => {
     try {
-      const res = await fetch(`/api/bids/${bidId}/reject-counter`, { method: 'POST' });
+      const res = await authFetch(`/api/bids/${bidId}/reject-counter`, { method: 'POST' });
       if (res.ok) {
         // Assuming toast and fetchActiveBids are defined elsewhere
         // toast.success("تم رفض عرض البائع المضاد.", { icon: '🤝' });
@@ -316,7 +316,7 @@ export const UserDashboard = () => {
   const handleCancelTransport = async (invoiceId: string) => {
     if (!window.confirm("تحذير: اختيارك لهذا الخيار يعني أنك تتكفل بنقل السيارة وشحنها شخصياً وستُلغى فواتير النقل التابعة لنا. هل أنت متأكد؟")) return;
     try {
-      const res = await fetch(`/api/invoices/${invoiceId}/cancel-transport`, { method: 'POST' });
+      const res = await authFetch(`/api/invoices/${invoiceId}/cancel-transport`, { method: 'POST' });
       if (res.ok) {
         showAlert("تم اختيار النقل الشخصي بنجاح 🚚", 'success'); // Using showAlert as toast is not defined in this snippet
         // Assuming fetchInvoices and fetchShipments are available in this scope
@@ -351,7 +351,7 @@ export const UserDashboard = () => {
         return;
       }
 
-      const res = await fetch(`/api/invoices/${selectedInvoice.id}/pay`, {
+      const res = await authFetch(`/api/invoices/${selectedInvoice.id}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -409,7 +409,7 @@ export const UserDashboard = () => {
   const handleConfirmDelivery = async (id: string) => {
     if (!window.confirm('هل أنت متأكد أنك استلمت السيارة وقمت بمعاينتها؟ لا يمكن التراجع عن هذا الإجراء وسيتم تحويل قيمة السداد للبائع المستحق.')) return;
     try {
-      const res = await fetch(`/api/user/invoices/${id}/confirm-delivery`, { method: 'POST' });
+      const res = await authFetch(`/api/user/invoices/${id}/confirm-delivery`, { method: 'POST' });
       if (res.ok) {
         setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'delivered_to_buyer' } : inv));
         showAlert('تم تأكيد الاستلام بنجاح. مبروك سيارتك الجديدة!', 'success');
@@ -423,7 +423,7 @@ export const UserDashboard = () => {
 
   const handleRequestShipping = async (carId: string) => {
     try {
-      const res = await fetch(`/api/shipments/${carId}/request`, {
+      const res = await authFetch(`/api/shipments/${carId}/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: effectiveUser.id })
@@ -432,7 +432,7 @@ export const UserDashboard = () => {
         showAlert('تم إرسال طلب الشحن بنجاح! جاري تحويلك للتتبع...', 'success');
 
         // Refresh shipments to show the new status then navigate to tracking
-        const updatedShipments = await fetch(`/api/shipments/user/${effectiveUser.id}`).then(r => r.json());
+        const updatedShipments = await authFetch(`/api/shipments/user/${effectiveUser.id}`).then(r => r.json());
         setShipments(updatedShipments);
 
         // Slight delay to ensure state update completes before switching view
@@ -1030,7 +1030,7 @@ export const UserDashboard = () => {
                           <button
                             onClick={async () => {
                               try {
-                                const res = await fetch(`/api/offers/${car.id}/respond`, {
+                                const res = await authFetch(`/api/offers/${car.id}/respond`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ userId: currentUser?.id, action: 'accept' })
@@ -1046,7 +1046,7 @@ export const UserDashboard = () => {
                             onClick={async () => {
                               if (window.confirm(t('userDashboard.bids.rejectCounterWarn'))) {
                                 try {
-                                  const res = await fetch(`/api/offers/${car.id}/respond`, {
+                                  const res = await authFetch(`/api/offers/${car.id}/respond`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId: currentUser?.id, action: 'reject' })
@@ -1293,7 +1293,7 @@ export const UserDashboard = () => {
                     <div className="flex gap-3">
                       <button
                         onClick={async () => {
-                          const res = await fetch(`/api/admin/approve-car/${car.id}`, { method: 'POST' });
+                          const res = await authFetch(`/api/admin/approve-car/${car.id}`, { method: 'POST' });
                           if (res.ok) {
                             setPendingCars(prev => prev.filter(c => c.id !== car.id));
                             showAlert('تم اعتماد السيارة وستظهر قريباً في المزادات', 'success');
@@ -1305,7 +1305,7 @@ export const UserDashboard = () => {
                       </button>
                       <button
                         onClick={async () => {
-                          const res = await fetch(`/api/admin/reject-car/${car.id}`, { method: 'POST' });
+                          const res = await authFetch(`/api/admin/reject-car/${car.id}`, { method: 'POST' });
                           if (res.ok) {
                             setPendingCars(prev => prev.filter(c => c.id !== car.id));
                             showAlert('تم رفض السيارة وإخطار البائع', 'error');
@@ -1893,7 +1893,7 @@ export const UserDashboard = () => {
                               showAlert('✅ تم إرسال رسالتك! سيرد عليك فريق الدعم خلال 24 ساعة.', 'success');
                               setShowNewMessageModal(false);
                               setNewMessageData({ subject: '', content: '', category: 'general' });
-                              fetch(`/api/messages/user/${effectiveUser.id}`)
+                              authFetch(`/api/messages/user/${effectiveUser.id}`)
                                 .then(r => r.json())
                                 .then(data => setMessages(data))
                                 .catch(() => { });

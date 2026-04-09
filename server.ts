@@ -18,6 +18,33 @@ import Stripe from "stripe";
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
 const SALT_ROUNDS = 10;
 
+// ── Auth Middleware ──
+function authenticateToken(req: any, res: any, next: any) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: "غير مخوَّل — يرجى تسجيل الدخول" });
+  try {
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch {
+    return res.status(401).json({ error: "جلسة منتهية — يرجى إعادة تسجيل الدخول" });
+  }
+}
+
+function requireAdmin(req: any, res: any, next: any) {
+  authenticateToken(req, res, () => {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — صلاحيات المدير مطلوبة" });
+    }
+    next();
+  });
+}
+
+function requireAuth(req: any, res: any, next: any) {
+  authenticateToken(req, res, () => next());
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -995,6 +1022,44 @@ db.exec(`
     timestamp   TEXT NOT NULL,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    token TEXT NOT NULL,
+    expiresAt TEXT NOT NULL
+  );
+`);
+
+// Expenses table for operational cost tracking
+db.exec(`
+  CREATE TABLE IF NOT EXISTS expenses (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'USD',
+    date TEXT NOT NULL,
+    addedBy TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY(addedBy) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    token TEXT NOT NULL,
+    expiresAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS crm_notes (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    note TEXT NOT NULL,
+    addedBy TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
 `);
 
 // Safe column additions for Phase 10
@@ -1620,16 +1685,7 @@ async function startServer() {
   
 
 
-  app.delete("/api/libyan-market/:id", (req, res) => {
-    try {
-      db.prepare("DELETE FROM market_estimates WHERE id = ?").run(req.params.id);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to delete market estimate", details: err.message });
-    }
-  });
-
-  app.get("/api/debug/seed-simulation", (req, res) => {
+  app.get("/api/debug/seed-simulation", requireAdmin, (req, res) => {
     try {
       console.log("🚀 API Triggered Full Simulation Seeding...");
 
@@ -1777,7 +1833,7 @@ async function startServer() {
   // ══════════════════════════════════════════════════════════════
 
   // GET /api/wallet/:userId — full wallet summary
-  app.get("/api/wallet/:userId", (req, res) => {
+  app.get("/api/wallet/:userId", requireAuth, (req, res) => {
     try {
       const { userId } = req.params;
       let wallet: any = db.prepare("SELECT * FROM buyer_wallets WHERE userId = ?").get(userId) as any;
@@ -1794,7 +1850,7 @@ async function startServer() {
   });
 
   // GET /api/wallet/:userId/transactions — transaction history
-  app.get("/api/wallet/:userId/transactions", (req, res) => {
+  app.get("/api/wallet/:userId/transactions", requireAuth, (req, res) => {
     try {
       const { userId } = req.params;
       const txs: any[] = db.prepare("SELECT * FROM wallet_transactions WHERE userId = ? ORDER BY timestamp DESC LIMIT 100").all(userId);
@@ -1803,7 +1859,7 @@ async function startServer() {
   });
 
   // POST /api/wallet/topup — user requests a top-up (pending admin approval)
-  app.post("/api/wallet/topup", (req, res) => {
+  app.post("/api/wallet/topup", requireAuth, (req, res) => {
     try {
       const { userId, amount, method, referenceNo } = req.body;
       if (!userId || !amount || amount <= 0) return res.status(400).json({ error: "بيانات غير مكتملة" });
@@ -1816,7 +1872,7 @@ async function startServer() {
   });
 
   // POST /api/wallet/pay-invoice — pay an invoice from wallet balance
-  app.post("/api/wallet/pay-invoice", (req, res) => {
+  app.post("/api/wallet/pay-invoice", requireAuth, (req, res) => {
     try {
       const { userId, invoiceId } = req.body;
       const invoice: any = db.prepare("SELECT * FROM invoices WHERE id = ? AND userId = ?").get(invoiceId, userId) as any;
@@ -1853,7 +1909,7 @@ async function startServer() {
   });
 
   // GET /api/admin/payment-requests — admin: list all payment requests
-  app.get("/api/admin/payment-requests", (_req, res) => {
+  app.get("/api/admin/payment-requests", requireAdmin, (_req, res) => {
     try {
       const requests: any[] = db.prepare(`
         SELECT pr.*, u.firstName, u.lastName, u.email
@@ -1910,7 +1966,7 @@ async function startServer() {
     }
   }
 
-  app.post("/api/admin/payment-requests/:id/approve", (req, res) => {
+  app.post("/api/admin/payment-requests/:id/approve", requireAdmin, (req, res) => {
     try {
       const { id } = req.params;
       const { adminNote } = req.body;
@@ -1944,7 +2000,7 @@ async function startServer() {
   });
 
   // POST /api/admin/payment-requests/:id/reject
-  app.post("/api/admin/payment-requests/:id/reject", (req, res) => {
+  app.post("/api/admin/payment-requests/:id/reject", requireAdmin, (req, res) => {
     try {
       const { id } = req.params;
       const { adminNote } = req.body;
@@ -1974,7 +2030,7 @@ async function startServer() {
   });
 
   // GET /api/admin/wallet-stats — admin: financial overview
-  app.get("/api/admin/wallet-stats", (_req, res) => {
+  app.get("/api/admin/wallet-stats", requireAdmin, (_req, res) => {
     try {
       const totalDeposited = (db.prepare("SELECT SUM(totalDeposited) as v FROM buyer_wallets").get() as any)?.v || 0;
       const totalBalance = (db.prepare("SELECT SUM(balance) as v FROM buyer_wallets").get() as any)?.v || 0;
@@ -1986,7 +2042,7 @@ async function startServer() {
   });
 
   // POST /api/wallet/withdrawal — user requests withdrawal
-  app.post("/api/wallet/withdrawal", (req, res) => {
+  app.post("/api/wallet/withdrawal", requireAuth, (req, res) => {
     try {
       const { userId, amount, iban, bankName } = req.body;
       if (!userId || !amount || amount <= 0) return res.status(400).json({ error: "بيانات غير مكتملة" });
@@ -2130,31 +2186,8 @@ async function startServer() {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ======= INSPECTION ROUTES =======
-  app.get("/api/inspections/:userId", (req, res) => {
-    try {
-      const { userId } = req.params;
-      const inspections = db.prepare("SELECT * FROM inspections WHERE userId = ? ORDER BY requestedAt DESC").all(userId);
-      res.json(inspections);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post("/api/inspections", (req, res) => {
-    try {
-      const { userId, carMake, carModel, carYear, vin, notes } = req.body;
-      if (!userId || !carMake || !carModel) return res.status(400).json({ error: "Missing required fields" });
-      const id = `insp-${Date.now()}`;
-      const now = new Date().toISOString();
-      db.prepare(`INSERT INTO inspections (id, userId, carMake, carModel, carYear, vin, notes, status, requestedAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`).run(id, userId, carMake, carModel, carYear, vin, notes, now, now);
-      
-      sendNotification('admin-1', '🛡️ طلب فحص جديد', `طلب فحص لسيارة ${carMake} ${carModel} (${carYear}) من المستخدم ${userId}`, 'info');
-      res.json({ success: true, inspectionId: id });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
   // POST /api/user/update-profile — user updates their profile info
-  app.post("/api/user/update-profile", (req, res) => {
+  app.post("/api/user/update-profile", requireAuth, (req, res) => {
     try {
       const { id, firstName, lastName, phone, address } = req.body;
       if (!id) return res.status(400).json({ error: "Missing ID" });
@@ -2178,7 +2211,7 @@ async function startServer() {
   });
 
   // POST /api/user/change-password — user changes their password
-  app.post("/api/user/change-password", (req, res) => {
+  app.post("/api/user/change-password", requireAuth, (req, res) => {
     try {
       const { id, currentPassword, newPassword } = req.body;
       if (!id || !currentPassword || !newPassword) return res.status(400).json({ error: "Missing fields" });
@@ -2215,7 +2248,7 @@ async function startServer() {
     res.json(Object.assign({}, config || {}, sysConfig));
   });
 
-  app.get("/api/admin/branches", (req, res) => {
+  app.get("/api/admin/branches", requireAdmin, (req, res) => {
     try {
       const branches: any[] = db.prepare("SELECT * FROM branch_configs").all();
       const branchesWithStats = branches.map((branch: any) => {
@@ -2233,7 +2266,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/admin/config", (req, res) => {
+  app.post("/api/admin/config", requireAdmin, (req, res) => {
     const { id, name, englishName, logoText, logoSubtext, currency, domain, primaryColor, contactEmail, contactPhone } = req.body;
     try {
       db.prepare(`
@@ -2247,7 +2280,7 @@ async function startServer() {
   });
 
   // ======= OFFICES ROUTES =======
-  app.get("/api/admin/offices", (req, res) => {
+  app.get("/api/admin/offices", requireAdmin, (req, res) => {
     try {
       const offices: any[] = db.prepare(`
         SELECT o.*, b.name as branchName, 
@@ -2261,7 +2294,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/admin/offices", (req, res) => {
+  app.post("/api/admin/offices", requireAdmin, (req, res) => {
     const { id, name, branchId, manager, status } = req.body;
     const officeId = id || `off-${Date.now()}`;
     try {
@@ -2352,8 +2385,11 @@ async function startServer() {
     const buyingPower = 0; // Starts at 0 until deposit is paid
 
     try {
-      // 🔐 SECURITY: Hash password before storing
-      const hashedPassword = await bcrypt.hash(password || '123456', SALT_ROUNDS);
+      // 🔐 SECURITY: Require password with minimum 6 characters
+      if (!password || password.length < 6) {
+        return res.status(400).json({ error: "كلمة المرور مطلوبة (6 أحرف على الأقل)" });
+      }
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
       db.prepare(`
         INSERT INTO users(
@@ -2658,7 +2694,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.delete("/api/cars/:id", (req, res) => {
+  app.delete("/api/cars/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("DELETE FROM cars WHERE id = ?").run(id);
@@ -2669,7 +2705,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= OFFER MARKET & ADMIN ENDPOINTS =======
-  app.get("/api/admin/offer-market-cars", (req, res) => {
+  app.get("/api/admin/offer-market-cars", requireAdmin, (req, res) => {
     try {
       const cars: any[] = db.prepare("SELECT * FROM cars WHERE status = 'offer_market'").all();
       res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
@@ -2678,7 +2714,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/offers/:carId/accept", (req, res) => {
+  app.post("/api/offers/:carId/accept", requireAuth, (req, res) => {
     const { carId } = req.params;
     const { userId, userRole } = req.body || {};
     const actionUserId = userId || 'admin-1'; // fallback to admin if accessed directly from admin panel
@@ -2709,7 +2745,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/offers/:carId/reject", (req, res) => {
+  app.post("/api/offers/:carId/reject", requireAuth, (req, res) => {
     const { carId } = req.params;
     const { userId, userRole } = req.body || {};
 
@@ -2737,7 +2773,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/offers/:carId/counter", (req, res) => {
+  app.post("/api/offers/:carId/counter", requireAuth, (req, res) => {
     const { carId } = req.params;
     const { counterAmount, userId, userRole } = req.body || {};
 
@@ -2772,7 +2808,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/offers/:carId/respond", (req, res) => {
+  app.post("/api/offers/:carId/respond", requireAuth, (req, res) => {
     const { carId } = req.params;
     const { userId, action } = req.body || {};
 
@@ -2809,14 +2845,14 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ====== MARKETING API ======
-  app.get("/api/admin/mailing-list", (req, res) => {
+  app.get("/api/admin/mailing-list", requireAdmin, (req, res) => {
     try {
       const list = db.prepare("SELECT id, firstName, lastName, email FROM users WHERE role IN ('buyer', 'user', 'user_pending', 'seller')").all();
       res.json(list);
     } catch (e) { res.status(500).json({ error: "Failed to fetch mailing list" }); }
   });
 
-  app.get("/api/admin/marketing-cars", (req, res) => {
+  app.get("/api/admin/marketing-cars", requireAdmin, (req, res) => {
     try {
       const list = db.prepare("SELECT * FROM cars WHERE status IN ('live', 'active', 'upcoming', 'offer_market', 'ultimo') OR isBuyNow = 1").all();
       res.json(list.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
@@ -2824,7 +2860,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= NOTIFICATION TEMPLATES API =======
-  app.get("/api/admin/notification-templates", (req, res) => {
+  app.get("/api/admin/notification-templates", requireAdmin, (req, res) => {
     try {
       const templates = db.prepare("SELECT * FROM notification_templates ORDER BY updatedAt DESC").all();
       res.json(templates);
@@ -2833,7 +2869,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.put("/api/admin/notification-templates/:id", (req, res) => {
+  app.put("/api/admin/notification-templates/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { subject, body_html, body_whatsapp } = req.body;
     try {
@@ -2850,34 +2886,17 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // User Routes
-  app.get("/api/users", (req, res) => {
+  app.get("/api/users", requireAdmin, (req, res) => {
     try {
-      const users: any[] = db.prepare("SELECT * FROM users").all();
+      const users: any[] = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users").all();
       res.json(users);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch users" });
     }
   });
 
-  app.put("/api/users/:id", (req, res) => {
-    const { id } = req.params;
-    const { firstName, lastName, email, phone, role, status, deposit, buyingPower, commission, country, address1, manager, office, companyName } = req.body;
-    try {
-      db.prepare(`
-        UPDATE users SET 
-          firstName = ?, lastName = ?, email = ?, phone = ?, role = ?, 
-          status = ?, deposit = ?, buyingPower = ?, commission = ?, 
-          country = ?, address1 = ?, manager = ?, office = ?, companyName = ?
-        WHERE id = ?
-      `).run(firstName, lastName, email, phone, role, status, deposit, buyingPower, commission, country, address1, manager, office, companyName, id);
-      res.json({ success: true });
-    } catch (e) {
-      res.status(400).json({ error: "فشل تحديث بيانات المستخدم" });
-    }
-  });
-
   // ======= USER SETTINGS =======
-  app.get("/api/user/settings/:id", (req, res) => {
+  app.get("/api/user/settings/:id", requireAuth, (req, res) => {
     const { id } = req.params;
     try {
       let settings: any = db.prepare("SELECT * FROM user_settings WHERE userId = ?").get(id);
@@ -2891,7 +2910,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/user/settings/:id", (req, res) => {
+  app.post("/api/user/settings/:id", requireAuth, (req, res) => {
     const { id } = req.params;
     const { emailNotifications, whatsappNotifications } = req.body;
     try {
@@ -2909,7 +2928,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= ADMIN: USER APPROVAL ROUTES =======
-  app.get("/api/admin/pending-users", (req, res) => {
+  app.get("/api/admin/pending-users", requireAdmin, (req, res) => {
     try {
       const users: any[] = db.prepare("SELECT * FROM users WHERE status = 'pending_approval'").all();
       res.json(users);
@@ -2918,7 +2937,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/approve-user/:id", (req, res) => {
+  app.post("/api/admin/approve-user/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("UPDATE users SET status = 'active' WHERE id = ? AND status = 'pending_approval'").run(id);
@@ -2936,7 +2955,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/reject-user/:id", (req, res) => {
+  app.post("/api/admin/reject-user/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
     try {
@@ -2956,7 +2975,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= ADMIN: CAR REVIEW ROUTES =======
-  app.get("/api/admin/pending-cars", (req, res) => {
+  app.get("/api/admin/pending-cars", requireAdmin, (req, res) => {
     try {
       const cars: any[] = db.prepare("SELECT * FROM cars WHERE status = 'pending_approval'").all();
       res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
@@ -2965,7 +2984,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/approve-car/:id", (req, res) => {
+  app.post("/api/admin/approve-car/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("UPDATE cars SET status = 'upcoming' WHERE id = ? AND status = 'pending_approval'").run(id);
@@ -2976,7 +2995,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/reject-car/:id", (req, res) => {
+  app.post("/api/admin/reject-car/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
@@ -2987,7 +3006,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= USER BIDS HISTORY =======
-  app.get("/api/bids/user/:userId", (req, res) => {
+  app.get("/api/bids/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     try {
       const bids: any[] = db.prepare(`
@@ -3004,7 +3023,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= SHIPMENT ROUTES =======
-  app.get("/api/shipments/user/:userId", (req, res) => {
+  app.get("/api/shipments/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     try {
       const shipments: any[] = db.prepare(`
@@ -3020,7 +3039,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/shipments", (req, res) => {
+  app.get("/api/admin/shipments", requireAdmin, (req, res) => {
     try {
       const shipments: any[] = db.prepare(`
         SELECT s.*, c.make, c.model, c.year, c.images, c.lotNumber,
@@ -3056,7 +3075,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/shipments/:id/update-status", (req, res) => {
+  app.post("/api/admin/shipments/:id/update-status", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { status, trackingNotes, currentLocation, estimatedDelivery, trackingNumber } = req.body;
     try {
@@ -3149,7 +3168,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // Invoice Routes
-  app.get("/api/invoices/user/:userId", (req, res) => {
+  app.get("/api/invoices/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     const invoices: any[] = db.prepare(`
       SELECT i.*, c.make, c.model, c.year, c.lotNumber, c.sellerId
@@ -3160,7 +3179,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json(invoices);
   });
 
-  app.get("/api/offers/user/:userId", (req, res) => {
+  app.get("/api/offers/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     try {
       const offers = db.prepare("SELECT * FROM cars WHERE winnerId = ? AND status = 'offer_market'").all(userId);
@@ -3170,7 +3189,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/invoices/:id/pay", (req, res) => {
+  app.post("/api/invoices/:id/pay", requireAuth, (req, res) => {
     const { id } = req.params;
     const { method, referenceNo, receiptUrl, userId } = req.body;
 
@@ -3248,7 +3267,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // Watchlist Routes
-  app.get("/api/watchlist/user/:userId", (req, res) => {
+  app.get("/api/watchlist/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     const watchlist: any[] = db.prepare(`
       SELECT w.*, c.make, c.model, c.year, c.currentBid, c.images, c.status
@@ -3262,7 +3281,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     })));
   });
 
-  app.post("/api/watchlist", (req, res) => {
+  app.post("/api/watchlist", requireAuth, (req, res) => {
     const { userId, carId } = req.body;
     const id = Date.now().toString();
     try {
@@ -3275,7 +3294,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.delete("/api/watchlist/:id", (req, res) => {
+  app.delete("/api/watchlist/:id", requireAuth, (req, res) => {
     const { id } = req.params;
     db.prepare("DELETE FROM watchlist WHERE id = ?").run(id);
     res.json({ success: true });
@@ -3285,7 +3304,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // NOTE: Duplicate routes removed. The canonical versions are at lines ~963-998 above.
 
   // ======= TRANSACTION ROUTES =======
-  app.get("/api/transactions/user/:userId", (req, res) => {
+  app.get("/api/transactions/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     const transactions: any[] = db.prepare("SELECT * FROM transactions WHERE userId = ? ORDER BY timestamp DESC").all(userId);
     res.json(transactions);
@@ -3374,7 +3393,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   };
 
   // GET /api/seller/wallet/:sellerId - Full wallet summary
-  app.get("/api/seller/wallet/:sellerId", (req, res) => {
+  app.get("/api/seller/wallet/:sellerId", requireAuth, (req, res) => {
     const { sellerId } = req.params;
     try {
       ensureSellerWallet(sellerId);
@@ -3399,7 +3418,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/seller/transactions/:sellerId - Seller transaction ledger
-  app.get("/api/seller/transactions/:sellerId", (req, res) => {
+  app.get("/api/seller/transactions/:sellerId", requireAuth, (req, res) => {
     const { sellerId } = req.params;
     try {
       const txs: any[] = db.prepare(`
@@ -3416,7 +3435,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/seller/withdraw - Request withdrawal
-  app.post("/api/seller/withdraw", (req, res) => {
+  app.post("/api/seller/withdraw", requireAuth, (req, res) => {
     const { sellerId, amount, iban, bankName } = req.body;
     try {
       ensureSellerWallet(sellerId);
@@ -3449,7 +3468,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/admin/withdrawal-requests - Admin: list pending withdrawals
-  app.get("/api/admin/withdrawal-requests", (_req, res) => {
+  app.get("/api/admin/withdrawal-requests", requireAdmin, (_req, res) => {
     try {
       const requests: any[] = db.prepare(`
         SELECT wr.*, u.firstName, u.lastName, u.email, u.iban
@@ -3464,7 +3483,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/withdrawal-requests/:id/approve - Admin: approve withdrawal
-  app.post("/api/admin/withdrawal-requests/:id/approve", (req, res) => {
+  app.post("/api/admin/withdrawal-requests/:id/approve", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { note } = req.body;
     try {
@@ -3490,7 +3509,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/withdrawal-requests/:id/reject - Admin: reject withdrawal
-  app.post("/api/admin/withdrawal-requests/:id/reject", (req, res) => {
+  app.post("/api/admin/withdrawal-requests/:id/reject", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
     try {
@@ -3512,7 +3531,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // PUT /api/seller/wallet/:id/iban - Update seller IBAN & bank info
-  app.put("/api/seller/wallet/:id/iban", (req, res) => {
+  app.put("/api/seller/wallet/:id/iban", requireAuth, (req, res) => {
     const { id } = req.params;
     const { iban, bankName } = req.body;
     if (!iban?.trim()) return res.status(400).json({ error: "IBAN مطلوب" });
@@ -3560,7 +3579,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= PHASE 7: KYC ADMIN REVIEW ROUTES =======
 
   // GET /api/admin/kyc-pending - List sellers with pending KYC docs
-  app.get("/api/admin/kyc-pending", (req, res) => {
+  app.get("/api/admin/kyc-pending", requireAdmin, (req, res) => {
     try {
       const users: any[] = db.prepare(`
         SELECT DISTINCT u.id, u.firstName, u.lastName, u.email, u.phone, u.kycStatus, u.joinDate,
@@ -3583,7 +3602,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/kyc/:userId/approve - Approve user KYC
-  app.post("/api/admin/kyc/:userId/approve", (req, res) => {
+  app.post("/api/admin/kyc/:userId/approve", requireAdmin, (req, res) => {
     const { userId } = req.params;
     const { note } = req.body;
     try {
@@ -3599,7 +3618,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/kyc/:userId/reject - Reject user KYC
-  app.post("/api/admin/kyc/:userId/reject", (req, res) => {
+  app.post("/api/admin/kyc/:userId/reject", requireAdmin, (req, res) => {
     const { userId } = req.params;
     const { reason } = req.body;
     try {
@@ -3615,7 +3634,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/admin/kyc-documents/:userId - Get docs for specific user
-  app.get("/api/admin/kyc-documents/:userId", (req, res) => {
+  app.get("/api/admin/kyc-documents/:userId", requireAdmin, (req, res) => {
     try {
       const docs: any[] = db.prepare("SELECT * FROM kyc_documents WHERE userId = ? ORDER BY uploadedAt DESC").all(req.params.userId);
       res.json(docs);
@@ -3625,59 +3644,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ==========================================
-  // PAYMENT REQUESTS & LIQUIDITY LOGIC
-  // ==========================================
-
-
-
-
-  app.get("/api/admin/payment-requests", (req, res) => {
-    try {
-      const deposits = db.prepare("SELECT t.*, u.name as userName, u.email as userEmail FROM transactions t JOIN users u ON t.userId = u.id WHERE t.type = 'deposit' ORDER BY t.timestamp DESC").all();
-      res.json(deposits);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch payment requests' });
-    }
-  });
-
-  app.post("/api/admin/payment-requests/:id/:action", (req, res) => {
-    try {
-      const { id, action } = req.params;
-      const status = action === 'approve' ? 'completed' : 'failed';
-
-      const tx = db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as any;
-      if (!tx) return res.status(404).json({ error: 'Transaction not found' });
-
-      db.prepare("UPDATE transactions SET status = ? WHERE id = ?").run(status, id);
-
-      if (status === 'completed') {
-        const user = db.prepare("SELECT wallet FROM users WHERE id = ?").get(tx.userId) as any;
-        const wallet = JSON.parse(user.wallet || '{"balance":0,"held":0}');
-        wallet.balance += tx.amount;
-        db.prepare("UPDATE users SET wallet = ? WHERE id = ?").run(JSON.stringify(wallet), tx.userId);
-
-        sendNotification(tx.userId, 'تم شحن محفظتك بنجاح 💰', `تم إضافة $${tx.amount.toLocaleString()} إلى رصيدك نقداً.`, 'success');
-      } else {
-        sendNotification(tx.userId, 'رفض طلب الشحن ❌', `عذراً، تم رفض طلب شحن الرصيد بقيمة $${tx.amount.toLocaleString()}.`, 'error');
-      }
-
-      res.json({ success: true, status });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to process payment request' });
-    }
-  });
-
-  // ==========================================
   // UNIFIED ACTIVITY LOG (MESSAGES / NOTIFICATIONS)
   // ==========================================
-  app.get("/api/admin/all-messages", (req, res) => {
+  app.get("/api/admin/all-messages", requireAdmin, (req, res) => {
     try {
       const msgs = db.prepare("SELECT * FROM messages ORDER BY timestamp DESC LIMIT 500").all();
       res.json(msgs);
     } catch (e) { res.status(500).json({ error: "Failed to fetch messages" }); }
   });
 
-  app.get("/api/admin/all-notifications", (req, res) => {
+  app.get("/api/admin/all-notifications", requireAdmin, (req, res) => {
     try {
       const notes = db.prepare("SELECT * FROM notifications ORDER BY timestamp DESC LIMIT 500").all();
       res.json(notes);
@@ -3687,7 +3663,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ==========================================
   // GLOBAL SYSTEM SETTINGS & NOTIFICATIONS
   // ==========================================
-  app.get("/api/admin/settings", (req, res) => {
+  app.get("/api/admin/settings", requireAdmin, (req, res) => {
     try {
       const settings = db.prepare("SELECT * FROM system_settings").all();
       res.json(Array.isArray(settings) ? settings : []);
@@ -3697,7 +3673,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/settings/update", (req, res) => {
+  app.post("/api/admin/settings/update", requireAdmin, (req, res) => {
     const { key, value } = req.body;
     try {
       db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updatedAt) VALUES (?, ?, ?)")
@@ -3706,7 +3682,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { res.status(500).json({ error: "Failed to update setting" }); }
   });
 
-  app.get("/api/admin/external-notifications", (req, res) => {
+  app.get("/api/admin/external-notifications", requireAdmin, (req, res) => {
     try {
       const logs = db.prepare("SELECT * FROM external_notifications ORDER BY timestamp DESC LIMIT 100").all();
       res.json(Array.isArray(logs) ? logs : []);
@@ -3716,7 +3692,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/external-notifications/test", async (req, res) => {
+  app.post("/api/admin/external-notifications/test", requireAdmin, async (req, res) => {
     const { email, phone } = req.body;
     const results = [];
 
@@ -3881,25 +3857,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
 
-  // ==========================================
-  // WALLET & PAYMENT CORE ENDPOINTS (KYC/Topup/Withdrawal)
-  // ==========================================
-  app.post("/api/wallet/topup", (req, res) => {
-    const { userId, amount, method } = req.body;
-    const id = `dep - ${Date.now()} `;
-    try {
-      db.prepare(`
-        INSERT INTO transactions(id, userId, amount, type, status, timestamp, method)
-      VALUES(?, ?, ?, 'deposit', 'pending', ?, ?)
-        `).run(id, userId, amount, new Date().toISOString(), method || 'bank_transfer');
-
-      res.json({ success: true, id });
-    } catch (e) {
-      res.status(500).json({ error: "فشل إرسال طلب الإيداع" });
-    }
-  });
-
-  app.get("/api/admin/pending-deposits", (req, res) => {
+  app.get("/api/admin/pending-deposits", requireAdmin, (req, res) => {
     try {
       const deposits: any[] = db.prepare(`
         SELECT t.*, u.firstName, u.lastName, u.email
@@ -3913,7 +3871,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/approve-deposit", (req, res) => {
+  app.post("/api/admin/approve-deposit", requireAdmin, (req, res) => {
     const { transactionId } = req.body;
     try {
       const tx: any = db.prepare("SELECT * FROM transactions WHERE id = ?").get(transactionId) as any;
@@ -3936,7 +3894,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/reject-deposit", (req, res) => {
+  app.post("/api/admin/reject-deposit", requireAdmin, (req, res) => {
     const { transactionId, reason } = req.body;
     try {
       const tx: any = db.prepare("SELECT * FROM transactions WHERE id = ?").get(transactionId) as any;
@@ -3952,7 +3910,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // Message Routes (enhanced)
-  app.get("/api/messages/user/:userId", (req, res) => {
+  app.get("/api/messages/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     const messages: any[] = db.prepare(`
       SELECT m.*, u.firstName as senderFirstName, u.lastName as senderLastName
@@ -3964,19 +3922,20 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json(messages);
   });
 
-  app.get("/api/admin/stats", (req, res) => {
+  app.get("/api/admin/stats", requireAdmin, (req, res) => {
     try {
       const totalSales: any = (db.prepare("SELECT SUM(amount) as total FROM bids").get() as any)?.total || 0;
       const activeAuctions: any = (db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get() as any)?.count || 0;
       const totalUsers: any = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any)?.count || 0;
       const totalCommission = totalSales * 0.05; // Example logic
+      const activeShipments: any = (db.prepare("SELECT COUNT(*) as count FROM shipments WHERE status NOT IN ('delivered', 'cancelled')").get() as any)?.count || 0;
 
       res.json({
         totalSales,
         activeAuctions,
         totalUsers,
         totalCommission,
-        activeShipments: 0, // Placeholder
+        activeShipments,
         liveBids: activeAuctions
       });
     } catch (err) {
@@ -3984,7 +3943,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/logs", (req, res) => {
+  app.get("/api/admin/logs", requireAdmin, (req, res) => {
     try {
       const logs: any[] = db.prepare(`
         SELECT 'bid' as type, b.amount, b.timestamp, u.firstName, u.lastName, c.make, c.model, c.lotNumber
@@ -4003,7 +3962,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/chart-data", (req, res) => {
+  app.get("/api/admin/chart-data", requireAdmin, (req, res) => {
     try {
       // Simple aggregation by month for the last 6 months
       const data: any[] = db.prepare(`
@@ -4060,25 +4019,6 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/offer-market-cars", (req, res) => {
-    const { userId, userRole } = req.query;
-    try {
-      let query = "SELECT * FROM cars WHERE status = 'offer_market'";
-      let params: any[] = [];
-
-      if (userRole !== 'admin') {
-        query += " AND sellerId = ?";
-        params.push(userId);
-      }
-
-      const cars: any[] = db.prepare(query).all(...params);
-      res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
-    } catch (e) {
-      res.status(500).json({ error: "فشل جلب سيارات سوق العروض" });
-    }
-  });
-
-
   // Duplicate /api/offers/:id/accept and reject endpoints removed to resolve routing conflict
 
   app.post("/api/cars/:id/re-list", (req, res) => {
@@ -4115,35 +4055,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/transactions", (req, res) => {
-    const { status, type, userId } = req.query;
-    try {
-      let query = "SELECT t.*, u.firstName, u.lastName FROM transactions t JOIN users u ON t.userId = u.id WHERE 1=1";
-      const params: any[] = [];
-      if (status) { query += " AND t.status = ?"; params.push(status); }
-      if (type) { query += " AND t.type = ?"; params.push(type); }
-      if (userId) { query += " AND t.userId = ?"; params.push(userId); }
-      query += " ORDER BY t.timestamp DESC";
-      const transactions: any[] = db.prepare(query).all(...params);
-      res.json(transactions);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch transactions" });
-    }
-  });
-
-  app.get("/api/transactions/user/:userId", (req, res) => {
-    const { userId } = req.params;
-    try {
-      const transactions: any[] = db.prepare(`
-        SELECT * FROM transactions WHERE userId = ? ORDER BY timestamp DESC
-      `).all(userId);
-      res.json(transactions);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch user transactions" });
-    }
-  });
-
-  app.post("/api/deposit", (req, res) => {
+  app.post("/api/deposit", requireAuth, (req, res) => {
     const { userId, amount, method = 'bank_transfer', referenceNo, currency = 'USD', notes } = req.body;
     const now = new Date().toISOString();
     const txId = `tx-dep-${Date.now()}`;
@@ -4186,7 +4098,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= NEW ADMIN: DEPOSIT APPROVAL =======
-  app.post("/api/admin/approve-deposit/:txId", (req, res) => {
+  app.post("/api/admin/approve-deposit/:txId", requireAdmin, (req, res) => {
     const { txId } = req.params;
     try {
       const tx: any = db.prepare("SELECT * FROM transactions WHERE id = ? AND status = 'pending'").get(txId);
@@ -4223,7 +4135,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/reject-deposit/:txId — Admin rejects a bank transfer deposit
-  app.post("/api/admin/reject-deposit/:txId", (req, res) => {
+  app.post("/api/admin/reject-deposit/:txId", requireAdmin, (req, res) => {
     const { txId } = req.params;
     const { reason } = req.body;
     try {
@@ -4299,7 +4211,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json({ received: true });
   });
 
-  app.delete("/api/users/:id", (req, res) => {
+  app.delete("/api/users/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("DELETE FROM users WHERE id = ?").run(id);
@@ -4368,7 +4280,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/notifications/:userId", (req, res) => {
+  app.get("/api/notifications/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     try {
       const notifications: any[] = db.prepare("SELECT * FROM notifications WHERE userId = ? ORDER BY timestamp DESC").all(userId);
@@ -4378,7 +4290,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/notifications/read-all", (req, res) => {
+  app.post("/api/notifications/read-all", requireAuth, (req, res) => {
     const { userId } = req.body;
     try {
       db.prepare("UPDATE notifications SET isRead = 1 WHERE userId = ?").run(userId);
@@ -4388,7 +4300,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/notifications/:id/read", (req, res) => {
+  app.post("/api/notifications/:id/read", requireAuth, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("UPDATE notifications SET isRead = 1 WHERE id = ?").run(id);
@@ -4609,138 +4521,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
 
-  // ======= ADMIN INVENTORY APPROVAL =======
-  app.get("/api/admin/pending-cars", (req, res) => {
-    try {
-      const cars = db.prepare("SELECT * FROM cars WHERE status = 'pending_approval'").all();
-      res.json(cars.map((c: any) => ({ ...c, images: JSON.parse(c.images || '[]') })));
-    } catch (e) {
-      res.status(500).json({ error: "Failed to fetch pending cars" });
-    }
-  });
-
-    // Removed duplicate approve-car route. Handled properly at line 1791.
-
-  app.post("/api/admin/reject-car/:id", (req, res) => {
-    const { id } = req.params;
-    const { reason } = req.body;
-    try {
-      db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
-      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
-      if (car.sellerId) {
-        sendInternalMessage('admin-1', car.sellerId, '❌ رفض إدراج سيارة', `للأسف تم رفض إدراج سيارتك ${car.make} ${car.model}.\nلسبب: ${reason} `);
-      }
-      res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ error: "Failed to reject car" });
-    }
-  });
-
-  // ======= INTEGRATED ADMIN & MARKETING =======
-
-  app.get("/api/admin/mailing-list", (req, res) => {
-    try {
-      const users = db.prepare("SELECT id, firstName, lastName, email, phone FROM users WHERE email IS NOT NULL").all();
-      res.json(users);
-    } catch (e) { res.status(500).json({ error: "Failed to fetch mailing list" }); }
-  });
-
-  app.get("/api/admin/marketing-cars", (req, res) => {
-    try {
-      // Fetch all non-sold cars for selection
-      const results = db.prepare("SELECT id, make, model, year, status, currentBid, startingBid, buyItNow, images FROM cars WHERE status NOT IN ('sold', 'closed', 'rejected')").all();
-      if (results.length > 0) {
-        const firstCar = results[0] as any;
-      }
-      
-      res.json(results.map((c: any) => {
-        let imgs = [];
-        try {
-          const rawImgs = c.images || c.Images; // Handle potential case diff
-          if (rawImgs && typeof rawImgs === 'string') {
-            imgs = JSON.parse(rawImgs);
-          } else if (Array.isArray(rawImgs)) {
-            imgs = rawImgs;
-          }
-        } catch (e) { imgs = []; }
-        
-        // Normalize object to lowercase keys for frontend consistency
-        return {
-          id: c.id || c.ID,
-          make: c.make || c.Make,
-          model: c.model || c.Model,
-          year: c.year || c.Year,
-          status: (c.status || c.Status || '').toLowerCase(),
-          currentBid: c.currentBid || 0,
-          startingBid: c.startingBid || 0,
-          buyNowPrice: c.buyItNow || 0,
-          images: imgs
-        };
-      }));
-    } catch (e) {
-      console.error("Marketing Cars Error:", e);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-  });
-
-  app.post("/api/admin/send-campaign", (req, res) => {
-    const { emails, subject, html } = req.body;
-    if (!emails || !Array.isArray(emails) || emails.length === 0) {
-      return res.status(400).json({ error: "No recipients" });
-    }
-
-    try {
-      // For campaigns, we'll send email directly via transporter
-       emails.forEach(email => {
-         transporter.sendMail({
-           from: process.env.SMTP_FROM || '"AUTOPRO MARKETING" <info@autopro.ac>',
-           to: email,
-           subject,
-           html
-         }).catch(e => console.error("Campaign mail error for:", email, e.message));
-       });
-       res.json({ success: true, count: emails.length });
-    } catch (e) { res.status(500).json({ error: "Failed to process campaign" }); }
-  });
-
-  // ======= TEMPLATE MANAGEMENT =======
-  app.get("/api/admin/templates", (req, res) => {
-    try {
-      const templates = db.prepare("SELECT * FROM notification_templates").all();
-      res.json(templates);
-    } catch (e) { res.status(500).json({ error: "Templates fetch error" }); }
-  });
-
-  app.put("/api/admin/templates/:id", (req, res) => {
-    const { id } = req.params;
-    const { name, subject, body_html, body_whatsapp } = req.body;
-    try {
-      db.prepare("UPDATE notification_templates SET name = ?, subject = ?, body_html = ?, body_whatsapp = ?, updatedAt = ? WHERE id = ?")
-        .run(name, subject, body_html, body_whatsapp, new Date().toISOString(), id);
-      res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Template update error" }); }
-  });
-
-  app.get("/api/admin/offer-market-cars", (req, res) => {
-    try {
-      const cars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market'").all();
-      res.json(cars.map((c: any) => ({ ...c, images: JSON.parse(c.images || '[]') })));
-    } catch (e) { res.status(500).json({ error: "Failed to fetch offer market cars" }); }
-  });
-
-  app.get("/api/admin/all-messages", (req, res) => {
-    try {
-      const msgs = db.prepare(`
-        SELECT m.*, u.firstName as senderFirstName, u.lastName as senderLastName 
-        FROM messages m
-        LEFT JOIN users u ON m.senderId = u.id
-        ORDER BY timestamp DESC
-        `).all();
-      res.json(msgs);
-    } catch (e) { res.status(500).json({ error: "Messages fetch error" }); }
-  });
-
-  app.get("/api/admin/all-transactions", (req, res) => {
+  app.get("/api/admin/all-transactions", requireAdmin, (req, res) => {
     try {
       const txs = db.prepare(`
         SELECT t.*, u.firstName, u.lastName 
@@ -4752,19 +4533,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { res.status(500).json({ error: "Transactions fetch error" }); }
   });
 
-  app.get("/api/admin/all-notifications", (req, res) => {
-    try {
-      const notes = db.prepare(`
-        SELECT n.*, u.firstName, u.lastName 
-        FROM notifications n
-        LEFT JOIN users u ON n.userId = u.id
-        ORDER BY n.timestamp DESC
-        `).all();
-      res.json(notes);
-    } catch (e) { res.status(500).json({ error: "Notifications fetch error" }); }
-  });
-
-  app.post("/api/admin/invoices/manual", (req, res) => {
+  app.post("/api/admin/invoices/manual", requireAdmin, (req, res) => {
     const { userId, carId, amount, type, dueDate } = req.body;
     if (!userId || !carId || !amount || !type) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -4796,7 +4565,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/invoices", (req, res) => {
+  app.get("/api/admin/invoices", requireAdmin, (req, res) => {
     try {
       const invoices = db.prepare(`
         SELECT i.*, u.firstName as buyerFirstName, u.lastName as buyerLastName, u.phone as buyerPhone, 
@@ -4813,7 +4582,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.put("/api/admin/invoices/:id", (req, res) => {
+  app.put("/api/admin/invoices/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { amount, notes } = req.body;
     try {
@@ -4828,7 +4597,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/system-summary", (req, res) => {
+  app.get("/api/admin/system-summary", requireAdmin, (req, res) => {
     try {
       const pendingUsers = db.prepare("SELECT * FROM users WHERE status = 'pending_approval'").all();
       const pendingCars = db.prepare("SELECT * FROM cars WHERE status = 'pending_approval'").all();
@@ -4880,7 +4649,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
 
-  app.get("/api/admin/merchants", (req, res) => {
+  app.get("/api/admin/merchants", requireAdmin, (req, res) => {
     try {
       res.json(db.prepare("SELECT * FROM users WHERE role = 'seller'").all());
     } catch (e) {
@@ -4888,7 +4657,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/cars/:id/review", (req, res) => {
+  app.post("/api/admin/cars/:id/review", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { action, reason } = req.body;
     try {
@@ -4905,7 +4674,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ====== MARKET ESTIMATES ======
-  app.get("/api/admin/market-estimates", (req, res) => {
+  app.get("/api/admin/market-estimates", requireAdmin, (req, res) => {
     try {
       // Pull from the rich libyan_market_prices table (227 cars) — prefer over old empty market_estimates
       const lmpCount: any = db.prepare("SELECT COUNT(*) as c FROM libyan_market_prices").get() as any;
@@ -4927,7 +4696,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/market-estimates", (req, res) => {
+  app.post("/api/admin/market-estimates", requireAdmin, (req, res) => {
     const { make, model, year, minPrice, maxPrice } = req.body;
     const id = `est - ${Date.now()} `;
     const lastUpdated = new Date().toISOString();
@@ -4938,7 +4707,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { res.status(500).json({ error: "Failed to create market estimate" }); }
   });
 
-  app.put("/api/admin/market-estimates/:id", (req, res) => {
+  app.put("/api/admin/market-estimates/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { minPrice, maxPrice } = req.body;
     const lastUpdated = new Date().toISOString();
@@ -4948,7 +4717,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { res.status(500).json({ error: "Failed to update market estimate" }); }
   });
 
-  app.delete("/api/admin/market-estimates/:id", (req, res) => {
+  app.delete("/api/admin/market-estimates/:id", requireAdmin, (req, res) => {
     try {
       db.prepare("DELETE FROM market_estimates WHERE id = ?").run(req.params.id);
       res.json({ success: true });
@@ -4956,7 +4725,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= REAL ANALYTICS API =======
-  app.get("/api/admin/reports-analytics", (req, res) => {
+  app.get("/api/admin/reports-analytics", requireAdmin, (req, res) => {
     try {
       const activeUsers = (db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as any)?.count || 0;
       const totalBids = (db.prepare("SELECT COUNT(*) as count FROM bids").get() as any)?.count || 0;
@@ -4968,7 +4737,6 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         activeUsers,
         totalBids,
         salesVol,
-        dbHitRate: 99.8,
         geoSalesRaw
       });
     } catch(e) { res.status(500).json({ error: "Failed to fetch analytics" }); }
@@ -5063,7 +4831,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/libyan-market/reseed — wipe and re-seed from latest data
-  app.post("/api/admin/libyan-market/reseed", (req, res) => {
+  app.post("/api/admin/libyan-market/reseed", requireAdmin, (req, res) => {
     try {
       db.prepare("DELETE FROM libyan_market_prices").run();
       seedLibyanMarketPrices227();
@@ -5117,7 +4885,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ====== LIVE AUCTIONS MGMT ======
-  app.put("/api/admin/cars/:id/schedule", (req, res) => {
+  app.put("/api/admin/cars/:id/schedule", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { auctionStartTime, auctionEndDate, maxAuctionRetries } = req.body;
     try {
@@ -5130,7 +4898,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/admin/cars/:id/mark-sold", (req, res) => {
+  app.post("/api/admin/cars/:id/mark-sold", requireAdmin, (req, res) => {
     const { id } = req.params;
     const { winnerId, soldAmount } = req.body;
     try {
@@ -5145,7 +4913,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/admin/manage-live-auctions", (req, res) => {
+  app.get("/api/admin/manage-live-auctions", requireAdmin, (req, res) => {
     try {
       const scheduledCars = db.prepare("SELECT * FROM cars WHERE (status = 'upcoming' AND auctionStartTime IS NOT NULL) OR status = 'live'").all();
       const unscheduledCars = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' AND (auctionStartTime IS NULL OR auctionEndDate IS NULL)").all();
@@ -5312,7 +5080,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // =====================================================================
 
   // POST /api/seller/register — seller KYC application
-  app.post("/api/seller/register", (req, res) => {
+  app.post("/api/seller/register", requireAuth, (req, res) => {
     try {
       const { userId, companyName, tradeLicense, address, city, bankName, iban, phone } = req.body;
       if (!userId) return res.status(400).json({ error: "بيانات غير مكتملة" });
@@ -5375,7 +5143,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/seller/payout-request — seller requests withdrawal
-  app.post("/api/seller/payout-request", (req, res) => {
+  app.post("/api/seller/payout-request", requireAuth, (req, res) => {
     try {
       const { sellerId, amount } = req.body;
       if (!sellerId || !amount || amount <= 0) return res.status(400).json({ error: "بيانات غير مكتملة" });
@@ -5492,17 +5260,26 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // =====================================================================
 
   // GET /api/admin/reports — comprehensive financial report
-  app.get("/api/admin/reports", (req, res) => {
+  app.get("/api/admin/reports", requireAdmin, (req, res) => {
     try {
       const { from, to } = req.query;
-      const dateFilter = from && to ? `AND timestamp BETWEEN '${from}' AND '${to}'` : '';
+      // SAFE: parameterized queries to prevent SQL injection
+      const hasDateRange = from && to;
 
-      const totalRevenue = (db.prepare(`SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' ${dateFilter}`).get() as any)?.v || 0;
-      const totalCommission = (db.prepare(`SELECT SUM(amount * 0.05) as v FROM transactions WHERE type='commission' AND status='completed' ${dateFilter}`).get() as any)?.v || 0;
-      const totalDeposits = (db.prepare(`SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' ${dateFilter}`).get() as any);
-      const pendingDeposits = (db.prepare(`SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='pending'`).get() as any);
+      const totalRevenue = hasDateRange
+        ? (db.prepare("SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)?.v || 0
+        : (db.prepare("SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed'").get() as any)?.v || 0;
+      const totalCommission = hasDateRange
+        ? (db.prepare("SELECT SUM(amount * 0.05) as v FROM transactions WHERE type='commission' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)?.v || 0
+        : (db.prepare("SELECT SUM(amount * 0.05) as v FROM transactions WHERE type='commission' AND status='completed'").get() as any)?.v || 0;
+      const totalDeposits = hasDateRange
+        ? (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)
+        : (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed'").get() as any);
+      const pendingDeposits = (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='pending'").get() as any);
       const totalUsers = (db.prepare("SELECT COUNT(*) as c FROM users WHERE role NOT IN ('admin')").get() as any)?.c || 0;
-      const newUsers = (db.prepare(`SELECT COUNT(*) as c FROM users WHERE role NOT IN ('admin') ${from ? `AND joinDate >= '${from}'` : ''}`).get() as any)?.c || 0;
+      const newUsers = from
+        ? (db.prepare("SELECT COUNT(*) as c FROM users WHERE role NOT IN ('admin') AND joinDate >= ?").get(from) as any)?.c || 0
+        : totalUsers;
       const totalBids = (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM bids").get() as any);
       const activeCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'live'").get() as any)?.c || 0;
       const soldCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'sold'").get() as any)?.c || 0;
@@ -5548,7 +5325,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/admin/audit-log — security & action audit trail
-  app.get("/api/admin/audit-log", (req, res) => {
+  app.get("/api/admin/audit-log", requireAdmin, (req, res) => {
     try {
       // Synthesize audit log from existing data
       const bids: any[] = db.prepare(`
@@ -5583,7 +5360,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // =====================================================================
 
   // POST /api/admin/commission — record commission on sold car
-  app.post("/api/admin/commission", (req, res) => {
+  app.post("/api/admin/commission", requireAdmin, (req, res) => {
     try {
       const { carId, sellerId, saleAmount, commissionRate } = req.body;
       const rate = commissionRate || 0.05;
@@ -5615,7 +5392,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/admin/approve-seller-withdrawal/:reqId
-  app.post("/api/admin/approve-seller-withdrawal/:reqId", (req, res) => {
+  app.post("/api/admin/approve-seller-withdrawal/:reqId", requireAdmin, (req, res) => {
     try {
       const pr: any = db.prepare("SELECT * FROM payment_requests WHERE id = ? AND status = 'pending'").get(req.params.reqId);
       if (!pr) return res.status(404).json({ error: "الطلب غير موجود" });
@@ -5636,7 +5413,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/admin/seller-payouts — pending seller withdrawal requests
-  app.get("/api/admin/seller-payouts", (req, res) => {
+  app.get("/api/admin/seller-payouts", requireAdmin, (req, res) => {
     try {
       const payouts: any[] = db.prepare(`
         SELECT pr.*, u.firstName, u.lastName, u.email, u.companyName,
@@ -5651,7 +5428,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/admin/financial-summary — balance sheet for admin
-  app.get("/api/admin/financial-summary", (req, res) => {
+  app.get("/api/admin/financial-summary", requireAdmin, (req, res) => {
     try {
       const buyerDeposits = (db.prepare("SELECT SUM(balance) as v FROM buyer_wallets").get() as any)?.v || 0;
       const sellerAvailable = (db.prepare("SELECT SUM(availableBalance) as v FROM seller_wallets").get() as any)?.v || 0;
@@ -5679,7 +5456,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // =====================================================================
 
   // GET /api/admin/security-log — failed logins & suspicious activity
-  app.get("/api/admin/security-log", (req, res) => {
+  app.get("/api/admin/security-log", requireAdmin, (req, res) => {
     try {
       // Return recent user activity synthesized from DB
       const recentLogins: any[] = db.prepare(`
@@ -5740,32 +5517,190 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // =====================================================================
-  // ====== SETTINGS ======
-  app.get("/api/settings", (req, res) => {
+  // ====== FORGOT / RESET PASSWORD ======
+  app.post("/api/auth/forgot-password", async (req, res) => {
     try {
-      const rows = db.prepare("SELECT key, value FROM system_settings").all() as { key: string, value: string }[];
-      const settings = rows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
-      res.json(settings);
-    } catch (e) { res.status(500).json({ error: "Failed to fetch settings" }); }
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "البريد الإلكتروني مطلوب" });
+
+      const user = db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
+      // Always return success to prevent email enumeration
+      if (!user) return res.json({ success: true, message: "إذا كان البريد مسجلاً، سيصلك رمز إعادة التعيين" });
+
+      // Generate 6-digit code
+      const token = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
+
+      // Remove old tokens for this email
+      db.prepare("DELETE FROM password_reset_tokens WHERE email = ?").run(email);
+      // Insert new token
+      db.prepare("INSERT INTO password_reset_tokens (email, token, expiresAt) VALUES (?, ?, ?)").run(email, token, expiresAt);
+
+      // Send email
+      await sendEmail({
+        to: email,
+        subject: "رمز إعادة تعيين كلمة المرور — AutoPro",
+        html: `
+          <div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+            <h2 style="color:#f97316;">إعادة تعيين كلمة المرور</h2>
+            <p>رمز التحقق الخاص بك هو:</p>
+            <div style="font-size:32px;font-weight:bold;letter-spacing:8px;text-align:center;background:#f8fafc;border-radius:12px;padding:20px;margin:16px 0;color:#0f172a;">${token}</div>
+            <p style="color:#64748b;font-size:13px;">ينتهي صلاحية هذا الرمز خلال 15 دقيقة. إذا لم تطلب إعادة تعيين كلمة المرور، تجاهل هذه الرسالة.</p>
+          </div>
+        `,
+      });
+
+      res.json({ success: true, message: "إذا كان البريد مسجلاً، سيصلك رمز إعادة التعيين" });
+    } catch (e: any) {
+      console.error("[FORGOT-PASSWORD ERROR]", e);
+      res.status(500).json({ error: "حدث خطأ — يرجى المحاولة لاحقاً" });
+    }
   });
 
-  app.put("/api/settings", (req, res) => {
+  app.post("/api/auth/reset-password", async (req, res) => {
     try {
-      const updates = req.body;
-      const stmt = db.prepare("INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
-      const transaction = db.transaction((settings: Record<string, string>) => {
-        for (const [key, value] of Object.entries(settings)) {
-          stmt.run(key, String(value));
-        }
-      });
-      transaction(updates);
+      const { email, token, newPassword } = req.body;
+      if (!email || !token || !newPassword) return res.status(400).json({ error: "جميع الحقول مطلوبة" });
+      if (newPassword.length < 6) return res.status(400).json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
 
-      // Update runtime globals if exchangeRate changed
-      if (updates.exchangeRate) {
-        GLOBAL_EXCHANGE_RATE = parseFloat(updates.exchangeRate);
+      const row = db.prepare("SELECT * FROM password_reset_tokens WHERE email = ? AND token = ?").get(email, token) as any;
+      if (!row) return res.status(400).json({ error: "رمز التحقق غير صحيح" });
+      if (new Date(row.expiresAt) < new Date()) {
+        db.prepare("DELETE FROM password_reset_tokens WHERE email = ?").run(email);
+        return res.status(400).json({ error: "انتهت صلاحية رمز التحقق — اطلب رمزاً جديداً" });
       }
+
+      const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      db.prepare("UPDATE users SET password = ? WHERE email = ?").run(hashed, email);
+      db.prepare("DELETE FROM password_reset_tokens WHERE email = ?").run(email);
+
+      res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح — يمكنك تسجيل الدخول الآن" });
+    } catch (e: any) {
+      console.error("[RESET-PASSWORD ERROR]", e);
+      res.status(500).json({ error: "حدث خطأ — يرجى المحاولة لاحقاً" });
+    }
+  });
+
+  // =====================================================================
+  // EXPENSES API (real operational cost tracking)
+  // =====================================================================
+  app.get("/api/admin/expenses", requireAdmin, (_req, res) => {
+    try {
+      const expenses = db.prepare("SELECT * FROM expenses ORDER BY date DESC").all();
+      res.json(expenses);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/admin/expenses", requireAdmin, (req, res) => {
+    try {
+      const { category, description, amount, currency, date } = req.body;
+      if (!category || !description || !amount || !date) {
+        return res.status(400).json({ error: "جميع الحقول مطلوبة" });
+      }
+      const id = `exp-${Date.now()}`;
+      db.prepare("INSERT INTO expenses (id, category, description, amount, currency, date, addedBy, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, category, description, Number(amount), currency || 'USD', date, (req as any).user?.id || 'admin', new Date().toISOString());
+      res.json({ id, category, description, amount: Number(amount), currency: currency || 'USD', date });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/admin/expenses/:id", requireAdmin, (req, res) => {
+    try {
+      db.prepare("DELETE FROM expenses WHERE id = ?").run(req.params.id);
       res.json({ success: true });
-    } catch (e) { console.error(e); res.status(500).json({ error: "Failed to update settings" }); }
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // CRM NOTES (customer interaction history)
+  // =====================================================================
+  app.get("/api/crm/notes/:userId", requireAdmin, (req, res) => {
+    try {
+      const notes = db.prepare("SELECT n.*, u.firstName || ' ' || u.lastName as addedByName FROM crm_notes n LEFT JOIN users u ON n.addedBy = u.id WHERE n.userId = ? ORDER BY n.createdAt DESC").all(req.params.userId);
+      res.json(notes);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/crm/notes", requireAdmin, (req, res) => {
+    try {
+      const { userId, note } = req.body;
+      if (!userId || !note) return res.status(400).json({ error: "مطلوب" });
+      const id = `note-${Date.now()}`;
+      db.prepare("INSERT INTO crm_notes (id, userId, note, addedBy, createdAt) VALUES (?, ?, ?, ?, ?)")
+        .run(id, userId, note, (req as any).user?.id || 'admin', new Date().toISOString());
+      res.json({ id, userId, note, createdAt: new Date().toISOString() });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // CRM — update customer lead status manually
+  // =====================================================================
+  app.post("/api/crm/update-status", requireAdmin, (req, res) => {
+    try {
+      const { userId, status } = req.body;
+      if (!userId || !status) return res.status(400).json({ error: "مطلوب" });
+      try { db.exec("ALTER TABLE users ADD COLUMN crmStatus TEXT"); } catch (_) { }
+      db.prepare("UPDATE users SET crmStatus = ? WHERE id = ?").run(status, userId);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // SHIPMENT — add tracking number + details
+  // =====================================================================
+  app.post("/api/admin/shipments/:id/tracking", requireAdmin, (req, res) => {
+    try {
+      const { trackingNumber, shippingLine, containerNumber, eta } = req.body;
+      try { db.exec("ALTER TABLE shipments ADD COLUMN trackingNumber TEXT"); } catch (_) { }
+      try { db.exec("ALTER TABLE shipments ADD COLUMN shippingLine TEXT"); } catch (_) { }
+      try { db.exec("ALTER TABLE shipments ADD COLUMN containerNumber TEXT"); } catch (_) { }
+      try { db.exec("ALTER TABLE shipments ADD COLUMN eta TEXT"); } catch (_) { }
+      db.prepare("UPDATE shipments SET trackingNumber = ?, shippingLine = ?, containerNumber = ?, eta = ? WHERE id = ?")
+        .run(trackingNumber || null, shippingLine || null, containerNumber || null, eta || null, req.params.id);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // =====================================================================
+  // FINANCIAL — income statement / profit & loss
+  // =====================================================================
+  app.get("/api/admin/income-statement", requireAdmin, (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const hasRange = from && to;
+
+      const commissions = hasRange
+        ? (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM transactions WHERE type='commission' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)?.v || 0
+        : (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM transactions WHERE type='commission' AND status='completed'").get() as any)?.v || 0;
+
+      const paidInvoices = hasRange
+        ? (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM invoices WHERE status='paid' AND paidAt BETWEEN ? AND ?").get(from, to) as any)?.v || 0
+        : (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM invoices WHERE status='paid'").get() as any)?.v || 0;
+
+      const totalExpenses = hasRange
+        ? (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM expenses WHERE date BETWEEN ? AND ?").get(from, to) as any)?.v || 0
+        : (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM expenses").get() as any)?.v || 0;
+
+      const expensesByCategory = hasRange
+        ? db.prepare("SELECT category, SUM(amount) as total FROM expenses WHERE date BETWEEN ? AND ? GROUP BY category ORDER BY total DESC").all(from, to)
+        : db.prepare("SELECT category, SUM(amount) as total FROM expenses GROUP BY category ORDER BY total DESC").all();
+
+      const sellerPayouts = hasRange
+        ? (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM payment_requests WHERE type='withdrawal' AND status='approved' AND updatedAt BETWEEN ? AND ?").get(from, to) as any)?.v || 0
+        : (db.prepare("SELECT COALESCE(SUM(amount), 0) as v FROM payment_requests WHERE type='withdrawal' AND status='approved'").get() as any)?.v || 0;
+
+      const totalRevenue = commissions + paidInvoices;
+      const totalCosts = totalExpenses + sellerPayouts;
+      const netProfit = totalRevenue - totalCosts;
+
+      res.json({
+        revenue: { commissions, paidInvoices, total: totalRevenue },
+        costs: { expenses: totalExpenses, sellerPayouts, total: totalCosts },
+        expensesByCategory,
+        netProfit,
+        profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0'
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // Detect production: NODE_ENV=production OR RENDER env var OR dist folder exists

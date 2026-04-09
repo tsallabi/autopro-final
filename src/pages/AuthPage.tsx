@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     Mail, Lock, ArrowRight, Car, Shield, Globe, TrendingUp,
     User, Phone, Building2, FileText, CheckCircle2, ChevronRight,
-    Eye, EyeOff, Store, Gavel, X, Sparkles
+    Eye, EyeOff, Store, Gavel, X, Sparkles, KeyRound
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
@@ -38,6 +38,16 @@ export const AuthPage = () => {
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    /* ── forgot password flow ── */
+    const [forgotOpen, setForgotOpen] = useState(false);
+    const [forgotStep, setForgotStep] = useState<'email' | 'token' | 'done'>('email');
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [forgotToken, setForgotToken] = useState('');
+    const [forgotNewPass, setForgotNewPass] = useState('');
+    const [forgotLoading, setForgotLoading] = useState(false);
+    const [forgotMsg, setForgotMsg] = useState('');
+    const [forgotError, setForgotError] = useState('');
 
     /* ── form data ── */
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -165,6 +175,68 @@ export const AuthPage = () => {
     };
 
     const switchMode = () => { setIsLogin(p => !p); setError(''); setStep(0); };
+
+    /* ── forgot password handlers ── */
+    const openForgotPassword = () => {
+        setForgotOpen(true);
+        setForgotStep('email');
+        setForgotEmail(form.email || '');
+        setForgotToken('');
+        setForgotNewPass('');
+        setForgotMsg('');
+        setForgotError('');
+    };
+
+    const handleForgotSendCode = async () => {
+        if (!forgotEmail) { setForgotError('أدخل بريدك الإلكتروني'); return; }
+        setForgotLoading(true);
+        setForgotError('');
+        try {
+            const res = await fetch('/api/auth/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: forgotEmail }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setForgotMsg(data.message || 'تم إرسال رمز التحقق');
+                setForgotStep('token');
+            } else {
+                setForgotError(data.error || 'حدث خطأ');
+            }
+        } catch { setForgotError('فشل الاتصال بالخادم'); }
+        finally { setForgotLoading(false); }
+    };
+
+    const handleResetPassword = async () => {
+        if (!forgotToken || !forgotNewPass) { setForgotError('أدخل الرمز وكلمة المرور الجديدة'); return; }
+        if (forgotNewPass.length < 6) { setForgotError('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
+        setForgotLoading(true);
+        setForgotError('');
+        try {
+            const res = await fetch('/api/auth/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: forgotEmail, token: forgotToken, newPassword: forgotNewPass }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setForgotMsg(data.message || 'تم تغيير كلمة المرور بنجاح');
+                setForgotStep('done');
+            } else {
+                setForgotError(data.error || 'حدث خطأ');
+            }
+        } catch { setForgotError('فشل الاتصال بالخادم'); }
+        finally { setForgotLoading(false); }
+    };
+
+    const closeForgotPassword = () => {
+        setForgotOpen(false);
+        if (forgotStep === 'done') {
+            setForm(p => ({ ...p, password: '' }));
+        }
+    };
+
     const inp = 'w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all text-slate-900 font-bold text-sm';
 
     /* ── RIGHT PANEL selling points ── */
@@ -202,7 +274,7 @@ export const AuthPage = () => {
                     <label className="flex items-center gap-2 text-slate-500 cursor-pointer">
                         <input type="checkbox" title="تذكرني" className="rounded" /> تذكرني
                     </label>
-                    <button type="button" className="text-slate-400 hover:text-orange-600 transition-colors">نسيت كلمة المرور؟</button>
+                    <button type="button" onClick={openForgotPassword} className="text-slate-400 hover:text-orange-600 transition-colors">نسيت كلمة المرور؟</button>
                 </div>
             </div>
         );
@@ -380,6 +452,95 @@ export const AuthPage = () => {
 
     return (
         <div className="min-h-screen flex bg-white font-cairo" dir="rtl">
+
+            {/* ── Forgot Password Modal ── */}
+            {forgotOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
+                        <button onClick={closeForgotPassword} title="إغلاق" aria-label="إغلاق"
+                            className="absolute top-4 left-4 text-slate-300 hover:text-slate-600 transition-colors">
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-11 h-11 bg-orange-500 rounded-2xl flex items-center justify-center">
+                                <KeyRound className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <h2 className="font-black text-lg text-slate-900">
+                                    {forgotStep === 'email' ? 'نسيت كلمة المرور' : forgotStep === 'token' ? 'أدخل رمز التحقق' : 'تم بنجاح'}
+                                </h2>
+                                <p className="text-xs text-slate-400 font-bold">
+                                    {forgotStep === 'email' ? 'سنرسل رمز تحقق إلى بريدك' : forgotStep === 'token' ? 'أدخل الرمز وكلمة المرور الجديدة' : 'يمكنك تسجيل الدخول الآن'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {forgotError && (
+                            <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-2xl mb-4 text-sm font-bold flex items-center gap-2">
+                                <Shield className="w-4 h-4 shrink-0" /> {forgotError}
+                            </div>
+                        )}
+                        {forgotMsg && !forgotError && (
+                            <div className="bg-green-50 border border-green-100 text-green-700 p-3 rounded-2xl mb-4 text-sm font-bold flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 shrink-0" /> {forgotMsg}
+                            </div>
+                        )}
+
+                        {forgotStep === 'email' && (
+                            <div className="space-y-4">
+                                <div className="relative">
+                                    <Mail className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 pointer-events-none" />
+                                    <input type="email" placeholder="البريد الإلكتروني" required
+                                        className={`${inp} pr-12`}
+                                        value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleForgotSendCode()} />
+                                </div>
+                                <button type="button" onClick={handleForgotSendCode} disabled={forgotLoading}
+                                    className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all disabled:opacity-60">
+                                    {forgotLoading ? 'جاري الإرسال...' : 'إرسال رمز التحقق'}
+                                </button>
+                            </div>
+                        )}
+
+                        {forgotStep === 'token' && (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">رمز التحقق (6 أرقام)</label>
+                                    <input type="text" placeholder="000000" maxLength={6}
+                                        className={`${inp} text-center text-2xl tracking-[0.5em] font-black`}
+                                        value={forgotToken} onChange={e => setForgotToken(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">كلمة المرور الجديدة</label>
+                                    <div className="relative">
+                                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 pointer-events-none" />
+                                        <input type="password" placeholder="كلمة المرور الجديدة (6 أحرف على الأقل)"
+                                            className={`${inp} pr-12`}
+                                            value={forgotNewPass} onChange={e => setForgotNewPass(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && handleResetPassword()} />
+                                    </div>
+                                </div>
+                                <button type="button" onClick={handleResetPassword} disabled={forgotLoading}
+                                    className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black text-sm hover:bg-orange-600 transition-all disabled:opacity-60">
+                                    {forgotLoading ? 'جاري التحقق...' : 'تغيير كلمة المرور'}
+                                </button>
+                                <button type="button" onClick={handleForgotSendCode} disabled={forgotLoading}
+                                    className="w-full text-slate-400 text-xs font-bold hover:text-orange-600 transition-colors">
+                                    لم يصلك الرمز؟ أعد الإرسال
+                                </button>
+                            </div>
+                        )}
+
+                        {forgotStep === 'done' && (
+                            <button type="button" onClick={closeForgotPassword}
+                                className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all">
+                                العودة لتسجيل الدخول
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ── Left: Form Panel ── */}
             <div className="w-full lg:w-[45%] flex flex-col p-8 lg:p-14 overflow-y-auto">

@@ -57,8 +57,8 @@ export const WalletPage = () => {
         setLoading(true);
         try {
             const [wRes, txRes] = await Promise.all([
-                fetch(`/api/wallet/${currentUser.id}`),
-                fetch(`/api/wallet/${currentUser.id}/transactions`)
+                authFetch(`/api/wallet/${currentUser.id}`),
+                authFetch(`/api/wallet/${currentUser.id}/transactions`)
             ]);
             if (wRes.ok) setWallet(await wRes.json());
             if (txRes.ok) setTxs(await txRes.json());
@@ -72,7 +72,7 @@ export const WalletPage = () => {
         e.preventDefault();
         if (!currentUser || !topupAmount) return;
         setTopupLoading(true);
-        const res = await fetch('/api/wallet/topup', {
+        const res = await authFetch('/api/wallet/topup', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id, amount: Number(topupAmount), method: topupMethod, referenceNo: topupRef })
         });
@@ -89,7 +89,7 @@ export const WalletPage = () => {
         e.preventDefault();
         if (!currentUser || !wdAmount) return;
         setWdLoading(true);
-        const res = await fetch('/api/wallet/withdrawal', {
+        const res = await authFetch('/api/wallet/withdrawal', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id, amount: Number(wdAmount), iban: wdIban, bankName: wdBank })
         });
@@ -102,7 +102,7 @@ export const WalletPage = () => {
     const handlePayInvoice = async (invoiceId: string) => {
         if (!currentUser) return;
         setPayingInvId(invoiceId);
-        const res = await fetch('/api/wallet/pay-invoice', {
+        const res = await authFetch('/api/wallet/pay-invoice', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id, invoiceId })
         });
