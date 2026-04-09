@@ -111,7 +111,7 @@ export interface Invoice {
   year?: number;
 }
 
-export type ShipmentStatus = 'awaiting_payment' | 'paid' | 'in_transport' | 'in_warehouse' | 'in_shipping' | 'customs' | 'delivered';
+export type ShipmentStatus = 'awaiting_payment' | 'paid' | 'in_transit' | 'in_warehouse' | 'in_shipping' | 'customs' | 'delivered';
 
 export interface Shipment {
   id: string;
@@ -165,7 +165,7 @@ export interface Notification {
 export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
   'awaiting_payment': '⏳ بانتظار الدفع',
   'paid': '✅ تم الدفع',
-  'in_transport': '🚛 قيد النقل',
+  'in_transit': '🚛 قيد النقل',
   'in_warehouse': '🏭 في المستودع',
   'in_shipping': '🚢 جاري الشحن',
   'customs': '📋 التخليص الجمركي',

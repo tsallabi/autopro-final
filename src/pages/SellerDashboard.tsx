@@ -130,6 +130,38 @@ export const SellerDashboard = () => {
     availableBalance: 12500
   });
 
+  // Password change state
+  const [isChangingPass, setIsChangingPass] = useState(false);
+  const [passForm, setPassForm] = useState({ current: '', new: '', confirm: '' });
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passForm.new !== passForm.confirm) {
+      showAlert('كلمة المرور الجديدة غير متطابقة', 'error');
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      const res = await authFetch('/api/user/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentUser?.id, currentPassword: passForm.current, newPassword: passForm.new })
+      });
+      if (res.ok) {
+        showAlert('تم تغيير كلمة المرور بنجاح', 'success');
+        setIsChangingPass(false);
+        setPassForm({ current: '', new: '', confirm: '' });
+      } else {
+        const err = await res.json();
+        showAlert(err.error || 'فشل التغيير', 'error');
+      }
+    } catch {
+      showAlert('خطأ في الاتصال');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   // Modal States
   const [showAddCarModal, setShowAddCarModal] = useState(false);
   const [carImages, setCarImages] = useState<{ file?: File; preview: string; uploaded?: boolean; serverUrl?: string }[]>([]);
@@ -254,11 +286,11 @@ export const SellerDashboard = () => {
 
   useEffect(() => {
     // Fetch seller's specific cars
-    const filteredCars = cars.filter(c => c.sellerId === currentUser?.id || true); // Default true for demo
+    const filteredCars = cars.filter(c => c.sellerId === currentUser?.id);
     setSellerCars(filteredCars);
 
     if (inventoryTab === 'offers') {
-      authFetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
+      authFetch(`/api/seller/offer-market-cars/${currentUser?.id}`)
         .then(res => res.json())
         .then(data => setOfferMarketCars(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch offer market cars:', err));
@@ -267,7 +299,7 @@ export const SellerDashboard = () => {
     // Fetch invoice statuses for sold cars - MOVED TO SEPARATE EFFECT TO PREVENT INFINITE LOOP
 
 
-    if (view === 'logistics') {
+    if (view === 'logistics' || view === 'overview') {
       authFetch(`/api/shipments/seller/${currentUser?.id}`)
         .then(res => res.json())
         .then(setShipments)
@@ -281,8 +313,8 @@ export const SellerDashboard = () => {
         .catch(err => console.error('Failed to fetch seller invoices:', err));
     }
 
-    // ✅ PHASE 4: Fetch real seller wallet data
-    if (view === 'financials' && currentUser?.id) {
+    // Fetch real seller wallet data (for financials AND overview)
+    if ((view === 'financials' || view === 'overview') && currentUser?.id) {
       authFetch(`/api/seller/wallet/${currentUser.id}`)
         .then(res => res.json())
         .then(data => {
@@ -1275,7 +1307,7 @@ export const SellerDashboard = () => {
                       { key: 'awaiting_payment', label: 'بانتظار الدفع', icon: '💳' },
                       { key: 'paid', label: 'تم الدفع', icon: '✅' },
                       { key: 'shipping_requested', label: 'طلب الشحن', icon: '🚚' },
-                      { key: 'in_transport', label: 'قيد النقل', icon: '🚛' },
+                      { key: 'in_transit', label: 'قيد النقل', icon: '🚛' },
                       { key: 'in_warehouse', label: 'في المستودع', icon: '🏭' },
                       { key: 'in_shipping', label: 'جاري الشحن', icon: '🚢' },
                       { key: 'customs', label: 'التخليص الجمركي', icon: '📋' },
@@ -1864,6 +1896,48 @@ export const SellerDashboard = () => {
                 </div>
               </div>
             </div>
+
+            {/* Password Change Section */}
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm mt-8">
+              <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-orange-500" />
+                تغيير كلمة المرور
+              </h3>
+              {!isChangingPass ? (
+                <button onClick={() => setIsChangingPass(true)} className="bg-orange-50 text-orange-600 font-black text-sm px-6 py-3 rounded-xl hover:bg-orange-100 transition-colors">
+                  تغيير كلمة المرور
+                </button>
+              ) : (
+                <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase">كلمة المرور الحالية</label>
+                    <input type="password" aria-label="كلمة المرور الحالية" title="كلمة المرور الحالية" placeholder="كلمة المرور الحالية"
+                      className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
+                      value={passForm.current} onChange={e => setPassForm({ ...passForm, current: e.target.value })} required />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase">كلمة المرور الجديدة</label>
+                    <input type="password" aria-label="كلمة المرور الجديدة" title="كلمة المرور الجديدة" placeholder="كلمة المرور الجديدة"
+                      className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
+                      value={passForm.new} onChange={e => setPassForm({ ...passForm, new: e.target.value })} required />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase">تأكيد كلمة المرور</label>
+                    <input type="password" aria-label="تأكيد كلمة المرور" title="تأكيد كلمة المرور" placeholder="تأكيد كلمة المرور"
+                      className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
+                      value={passForm.confirm} onChange={e => setPassForm({ ...passForm, confirm: e.target.value })} required />
+                  </div>
+                  <div className="flex gap-3 pt-4 border-t border-slate-50">
+                    <button type="submit" disabled={isSavingProfile} className="flex-1 bg-orange-500 text-white py-3 rounded-xl font-black hover:bg-orange-600 transition-all disabled:opacity-50">
+                      {isSavingProfile ? 'جاري الحفظ...' : 'تحديث كلمة المرور'}
+                    </button>
+                    <button type="button" onClick={() => { setIsChangingPass(false); setPassForm({ current: '', new: '', confirm: '' }); }} className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-black hover:bg-slate-200 transition-all">
+                      إلغاء
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         );
 
@@ -1907,7 +1981,7 @@ export const SellerDashboard = () => {
                   <Gavel className="w-7 h-7" />
                 </div>
                 <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">مزايدات نشطة اليوم</div>
-                <div className="text-3xl font-black text-amber-600">24</div>
+                <div className="text-3xl font-black text-amber-600">{sellerCars.filter(c => ['live', 'ultimo', 'offer_market'].includes(c.status)).length}</div>
               </div>
 
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 hover:border-slate-200 transition-all group">
@@ -1915,7 +1989,7 @@ export const SellerDashboard = () => {
                   <Truck className="w-7 h-7" />
                 </div>
                 <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">بانتظار الشحن/التسليم</div>
-                <div className="text-3xl font-black text-blue-600">3</div>
+                <div className="text-3xl font-black text-blue-600">{shipments.filter(s => !['delivered', 'cancelled'].includes(s.status)).length}</div>
               </div>
             </div>
 
@@ -1924,7 +1998,17 @@ export const SellerDashboard = () => {
                 <h3 className="font-black text-lg text-slate-800 mb-6">أداء المبيعات (هذا الشهر)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={[{ n: 'أسبوع 1', v: 20000 }, { n: 'أسبوع 2', v: 15000 }, { n: 'أسبوع 3', v: 35000 }, { n: 'أسبوع 4', v: 28000 }]}>
+                    <AreaChart data={(() => {
+                      const now = new Date();
+                      const weeks = [0, 1, 2, 3].map(i => {
+                        const weekStart = new Date(now.getFullYear(), now.getMonth(), 1 + i * 7);
+                        const weekEnd = new Date(now.getFullYear(), now.getMonth(), Math.min(1 + (i + 1) * 7, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() + 1));
+                        const weekTotal = ledger.filter(t => t.type === 'credit' && new Date(t.createdAt) >= weekStart && new Date(t.createdAt) < weekEnd)
+                          .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+                        return { n: `أسبوع ${i + 1}`, v: weekTotal };
+                      });
+                      return weeks;
+                    })()}>
                       <defs>
                         <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
@@ -1944,33 +2028,36 @@ export const SellerDashboard = () => {
               <div className="bg-white rounded-[2rem] shadow-sm border border-slate-50 p-6">
                 <h3 className="font-black text-lg text-slate-800 mb-6">النشاط الأخير</h3>
                 <div className="space-y-6">
-                  <div className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center flex-shrink-0 text-emerald-600">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">تم بيع سيارة كامري 2021</p>
-                      <p className="text-xs text-slate-500 mt-1">منذ 2 ساعة • تمت الموافقة</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-600">
-                      <Gavel className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">مزايدة جديدة ($14,500)</p>
-                      <p className="text-xs text-slate-500 mt-1">منذ 5 ساعات • على Lot: 49281</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-2xl bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
-                      <MessageSquare className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">رسالة إدارية جديدة</p>
-                      <p className="text-xs text-slate-500 mt-1">منذ يوم • بخصوص الدفع المسبق</p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const activities: { icon: any; color: string; bg: string; text: string; time: string }[] = [];
+                    // Recent sold cars
+                    sellerCars.filter(c => c.status === 'sold').slice(0, 2).forEach(c => {
+                      activities.push({ icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100', text: `تم بيع ${c.year} ${c.make} ${c.model}`, time: c.auctionEndDate ? new Date(c.auctionEndDate).toLocaleDateString('ar-SA') : '' });
+                    });
+                    // Recent ledger transactions
+                    ledger.slice(0, 2).forEach(t => {
+                      activities.push({ icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-100', text: `${t.description || (t.type === 'credit' ? 'إيراد' : 'خصم')}: $${(t.amount || 0).toLocaleString()}`, time: t.createdAt ? new Date(t.createdAt).toLocaleDateString('ar-SA') : '' });
+                    });
+                    // Recent messages
+                    const sellerMsgs = messages.filter((m: any) => m.toUserId === currentUser?.id).slice(0, 1);
+                    sellerMsgs.forEach((m: any) => {
+                      activities.push({ icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-100', text: m.subject || 'رسالة جديدة', time: m.createdAt ? new Date(m.createdAt).toLocaleDateString('ar-SA') : '' });
+                    });
+                    if (activities.length === 0) {
+                      return <p className="text-sm text-slate-400">لا يوجد نشاط حديث</p>;
+                    }
+                    return activities.slice(0, 4).map((a, i) => (
+                      <div key={i} className="flex gap-4 items-start">
+                        <div className={`w-10 h-10 rounded-2xl ${a.bg} flex items-center justify-center flex-shrink-0 ${a.color}`}>
+                          <a.icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{a.text}</p>
+                          <p className="text-xs text-slate-500 mt-1">{a.time}</p>
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>

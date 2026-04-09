@@ -1824,12 +1824,15 @@ async function startServer() {
       io.emit("car_updated", { id: car.id, status: 'offer_market', offerMarketEndTime });
     });
 
-    // 2. Close expired Offer Market cars
-    const expiredOffers: any[] = db.prepare("SELECT id FROM cars WHERE status = 'offer_market' AND offerMarketEndTime < ?").all(now);
+    // 2. Mark expired Offer Market cars as unsold and notify seller
+    const expiredOffers: any[] = db.prepare("SELECT id, sellerId, make, model, year FROM cars WHERE status = 'offer_market' AND offerMarketEndTime < ?").all(now);
     expiredOffers.forEach((car: any) => {
-      db.prepare("UPDATE cars SET status = 'closed' WHERE id = ?").run(car.id);
-      io.emit("car_updated", { id: car.id, status: 'closed' });
-      console.log(`Car ${car.id} Offer Market period expired.`);
+      db.prepare("UPDATE cars SET status = 'unsold' WHERE id = ?").run(car.id);
+      io.emit("car_updated", { id: car.id, status: 'unsold' });
+      if (car.sellerId) {
+        sendNotification(car.sellerId, '⏰ انتهى سوق العروض', 'انتهى سوق العروض لسيارتك بدون بيع', 'warning', 'general_notification', {}, `/seller?view=inventory`);
+      }
+      console.log(`Car ${car.id} Offer Market period expired → unsold.`);
     });
   };
 
@@ -1899,7 +1902,7 @@ async function startServer() {
       // If purchase invoice paid → activate transport invoice
       if (invoice.type === 'purchase') {
         db.prepare("UPDATE invoices SET status='unpaid' WHERE userId=? AND carId=? AND type='transport'").run(userId, invoice.carId);
-        db.prepare("UPDATE shipments SET status='processing' WHERE carId=? AND userId=?").run(invoice.carId, userId);
+        db.prepare("UPDATE shipments SET status='paid' WHERE carId=? AND userId=?").run(invoice.carId, userId);
         sendNotification(userId, '✅ تم الدفع بنجاح', `تم دفع فاتورة الشراء. فاتورة النقل الداخلي أصبحت متاحة الآن.`, 'success', 'general_notification', {}, `/dashboard/invoices`);
       } else if (invoice.type === 'transport') {
         db.prepare("UPDATE invoices SET status='unpaid' WHERE userId=? AND carId=? AND type='shipping'").run(userId, invoice.carId);
@@ -1957,9 +1960,9 @@ async function startServer() {
         `تم تأكيد دفع فاتورة الشراء بنجاح!\n\nكود الاستلام: ${pickupCode}\n\n📋 الخطوة التالية: ستجد فاتورة النقل الداخلي جاهزة للدفع في قسم الفواتير.\n\nفريق أوتو برو 🚗`
       );
     } else if (invoice.type === 'transport') {
-      db.prepare("UPDATE shipments SET status = 'in_transport', updatedAt = ? WHERE carId = ? AND userId = ?")
+      db.prepare("UPDATE shipments SET status = 'in_transit', updatedAt = ? WHERE carId = ? AND userId = ?")
         .run(timestamp, invoice.carId, invoice.userId);
-      
+
       sendInternalMessage('admin-1', invoice.userId,
         '🚛 تم تأكيد دفع فاتورة النقل',
         `تم تأكيد دفع فاتورة النقل بنجاح! سيارتك الآن قيد النقل إلى المستودع.\n\nفريق أوتو برو 🚗`
@@ -2682,6 +2685,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       return res.status(400).json({ error: `VIN ${vin} is already registered in the system.` });
     }
 
+    // If user is a seller and no sellerId provided, auto-set from auth token
+    const effectiveSellerId = sellerId || ((req as any).user?.role === 'seller' ? (req as any).user.id : '');
+
     const id = Date.now().toString();
     try {
       db.prepare(`
@@ -2699,7 +2705,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
         currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || '', inspectionPdf || '', 'pending_approval',
-        auctionEndDate || '', sellerId || '', keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0
+        auctionEndDate || '', effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0
       );
       res.json({ id, ...req.body });
     } catch (e) {
@@ -3114,7 +3120,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           'awaiting_payment': 'بانتظار الدفع',
           'paid': 'تم الدفع',
           'shipping_requested': 'طلب الشحن 🚚',
-          'in_transport': 'قيد النقل',
+          'in_transit': 'قيد النقل',
           'in_warehouse': 'في المستودع',
           'in_shipping': 'جاري الشحن',
           'customs': 'التخليص الجمركي',
@@ -3253,7 +3259,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               sendNotification(invoice.sellerId, '💰 تم استلام دفعة سيارة', `المشتري قام بدفع ثمن سيارتك ${invoice.make} عبر المحفظة.`, 'success');
             }
           } else if (invoice.type === 'transport') {
-            db.prepare("UPDATE shipments SET status = 'in_transport', updatedAt = ? WHERE carId = ? AND userId = ?")
+            db.prepare("UPDATE shipments SET status = 'in_transit', updatedAt = ? WHERE carId = ? AND userId = ?")
               .run(timestamp, invoice.carId, userId);
           } else if (invoice.type === 'shipping') {
             db.prepare("UPDATE shipments SET status = 'in_shipping', updatedAt = ? WHERE carId = ? AND userId = ?")
