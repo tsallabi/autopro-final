@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { LiveAuction } from '../components/LiveAuction';
 import { Clock, Radio, MonitorPlay } from 'lucide-react';
@@ -158,12 +158,12 @@ export const LiveAuctionRoom = () => {
                             لا توجد أي سيارات مجدولة للمزاد المباشر في الوقت الحالي.
                         </p>
 
-                        <button
-                            onClick={() => navigate('/marketplace')}
-                            className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-full font-black transition-all w-full shadow-lg shadow-orange-600/20 active:scale-95"
+                        <Link
+                            to="/marketplace"
+                            className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-full font-black transition-all w-full shadow-lg shadow-orange-600/20 active:scale-95 block text-center"
                         >
                             استكشاف أسطول السيارات
-                        </button>
+                        </Link>
                     </div>
                 </div>
             )}

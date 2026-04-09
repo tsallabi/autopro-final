@@ -271,6 +271,7 @@ export const CarDetails = () => {
     { label: 'الموقع', value: car.location || `${car['Location city']}, ${car['Location state']}`, icon: MapPin },
     { label: 'VIN', value: car.vin || car.VIN, icon: Hash },
     { label: 'نوع الضرر', value: car.primaryDamage && car.primaryDamage !== 'None' ? car.primaryDamage : 'بدون ضرر', icon: AlertTriangle },
+    { label: 'تاريخ الاستيراد', value: car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleDateString('ar-LY', { year: 'numeric', month: 'long' }) : new Date().toLocaleDateString('ar-LY', { year: 'numeric', month: 'long' }), icon: Calendar },
     { label: 'بلد الاستيراد', value: (() => {
       const loc = (car.location || car['Location state'] || '').toLowerCase();
       if (['tx','ca','fl','nj','ga','il','md','co','wa','ny','oh','pa','mi','nc','az','nv','or','va','ma','ct','mn','wi','in','tn','mo','la','al','sc','ky','ok','ar','ms','ia','ks','ut','ne','nm','wv','id','hi','me','nh','ri','mt','de','sd','nd','ak','vt','wy','dc',
