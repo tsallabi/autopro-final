@@ -267,9 +267,23 @@ export const CarDetails = () => {
     { label: 'السنة', value: car.year || car.Year, icon: Calendar },
     { label: 'الماركة', value: car.make || car.Make, icon: Shield },
     { label: 'الموديل', value: car.model || car['Model Group'], icon: Info },
-    { label: 'العداد', value: `${(car.odometer || car.Odometer || 0).toLocaleString('en-US')} mi`, icon: Gauge },
+    { label: 'العداد', value: `${(car.odometer || car.Odometer || 0).toLocaleString('en-US')} ${car.mileageUnit || 'mi'}`, icon: Gauge },
     { label: 'الموقع', value: car.location || `${car['Location city']}, ${car['Location state']}`, icon: MapPin },
     { label: 'VIN', value: car.vin || car.VIN, icon: Hash },
+    { label: 'نوع الضرر', value: car.primaryDamage && car.primaryDamage !== 'None' ? car.primaryDamage : 'بدون ضرر', icon: AlertTriangle },
+    { label: 'بلد الاستيراد', value: (() => {
+      const loc = (car.location || car['Location state'] || '').toLowerCase();
+      if (['tx','ca','fl','nj','ga','il','md','co','wa','ny','oh','pa','mi','nc','az','nv','or','va','ma','ct','mn','wi','in','tn','mo','la','al','sc','ky','ok','ar','ms','ia','ks','ut','ne','nm','wv','id','hi','me','nh','ri','mt','de','sd','nd','ak','vt','wy','dc',
+        'texas','california','florida','georgia','illinois','new york','ohio','michigan','houston','los angeles','miami','atlanta','chicago','denver','seattle','newark','baltimore'].some(s => loc.includes(s)))
+        return 'الولايات المتحدة 🇺🇸';
+      if (['dubai','sharjah','abu dhabi','ajman','uae','emirates'].some(s => loc.includes(s))) return 'الإمارات 🇦🇪';
+      if (['germany','berlin','munich','bremen','hamburg'].some(s => loc.includes(s))) return 'ألمانيا 🇩🇪';
+      if (['canada','toronto','montreal','vancouver'].some(s => loc.includes(s))) return 'كندا 🇨🇦';
+      if (['uk','london','england','birmingham'].some(s => loc.includes(s))) return 'بريطانيا 🇬🇧';
+      if (['korea','seoul','busan'].some(s => loc.includes(s))) return 'كوريا 🇰🇷';
+      if (['japan','tokyo','osaka'].some(s => loc.includes(s))) return 'اليابان 🇯🇵';
+      return car.location || 'غير محدد';
+    })(), icon: Tag },
   ];
 
   // ============================================================
