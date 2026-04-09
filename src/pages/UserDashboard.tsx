@@ -454,7 +454,7 @@ export const UserDashboard = () => {
 
     setIsSubmittingDeposit(true);
     try {
-      const res = await fetch('/api/wallet/topup', {
+      const res = await authFetch('/api/wallet/topup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: effectiveUser.id, amount, method: 'bank_transfer' })
@@ -464,7 +464,7 @@ export const UserDashboard = () => {
         showAlert('تم إرسال طلب الشحن بنجاح! سيتم تحديث رصيدك بعد مراجعة الإدارة.', 'success');
         setShowDepositModal(false);
         // Refresh transaction list
-        fetch(`/api/wallet/${effectiveUser.id}/transactions`).then(r => r.json()).then(setTransactions);
+        authFetch(`/api/wallet/${effectiveUser.id}/transactions`).then(r => r.json()).then(setTransactions);
       } else {
         showAlert('فشل إتمام العملية. يرجى المحاولة لاحقاً.', 'error');
       }
@@ -482,7 +482,7 @@ export const UserDashboard = () => {
       return;
     }
 
-    const res = await fetch('/api/inspections', {
+    const res = await authFetch('/api/inspections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -511,7 +511,7 @@ export const UserDashboard = () => {
       return;
     }
     try {
-      const res = await fetch('/api/cars', {
+      const res = await authFetch('/api/cars', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...sellForm, sellerId: effectiveUser.id })
@@ -1878,7 +1878,7 @@ export const UserDashboard = () => {
                             return;
                           }
                           try {
-                            const res = await fetch('/api/messages', {
+                            const res = await authFetch('/api/messages', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
@@ -1987,7 +1987,7 @@ export const UserDashboard = () => {
                         setShowDetailedReport(true);
                         setLoadingMarketData(true);
                         try {
-                          const res = await fetch('/api/market-data?make=Toyota&model=Camry');
+                          const res = await authFetch('/api/market-data?make=Toyota&model=Camry');
                           const data = await res.json();
                           if (data.success) {
                             setMarketData(data);

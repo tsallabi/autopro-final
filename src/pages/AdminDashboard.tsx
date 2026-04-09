@@ -99,7 +99,7 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
 
   const handleAction = async (url: string, method: string, body?: any) => {
     try {
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined
@@ -557,7 +557,7 @@ const SystemSettingsPanel: React.FC = () => {
   const API_BASE = '';
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/admin/settings`)
+    authFetch(`${API_BASE}/api/admin/settings`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch');
         return res.json();
@@ -576,7 +576,7 @@ const SystemSettingsPanel: React.FC = () => {
   const updateSetting = async (key: string, value: string) => {
     setSavingKey(key);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/settings/update`, {
+      const res = await authFetch(`${API_BASE}/api/admin/settings/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value })
@@ -2922,7 +2922,7 @@ export const AdminDashboard = () => {
     }
     if (view === 'reports') {
       authFetch('/api/admin/reports-analytics').then(res => res.ok ? res.json() : null).then(setReportsAnalytics).catch(() => {});
-      fetch('/api/libyan-market').then(res => res.ok ? res.json() : []).then(data => setLibyanMarketPrices(Array.isArray(data) ? data : [])).catch(() => setLibyanMarketPrices([]));
+      authFetch('/api/libyan-market').then(res => res.ok ? res.json() : []).then(data => setLibyanMarketPrices(Array.isArray(data) ? data : [])).catch(() => setLibyanMarketPrices([]));
     }
     if (view === 'expenses') {
       setExpensesLoading(true);
@@ -3234,7 +3234,7 @@ export const AdminDashboard = () => {
         'مسؤول': 'admin'
       };
 
-      const res = await fetch('/api/auth/register', {
+      const res = await authFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3246,7 +3246,7 @@ export const AdminDashboard = () => {
 
       if (res.ok) {
         // Refresh users list
-        const usersRes = await fetch('/api/users');
+        const usersRes = await authFetch('/api/users');
         if (usersRes.ok) {
           const updatedUsers = await usersRes.json();
           setUsers(updatedUsers);
@@ -3284,7 +3284,7 @@ export const AdminDashboard = () => {
         'admin': 'admin'
       };
 
-      const res = await fetch(`/api/users/${selectedUser.id}`, {
+      const res = await authFetch(`/api/users/${selectedUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3294,7 +3294,7 @@ export const AdminDashboard = () => {
       });
 
       if (res.ok) {
-        const usersRes = await fetch('/api/users');
+        const usersRes = await authFetch('/api/users');
         if (usersRes.ok) {
           const updatedUsers = await usersRes.json();
           setUsers(updatedUsers);
@@ -6676,13 +6676,13 @@ export const AdminDashboard = () => {
               isSubmitting={false}
               initialData={editingCarId ? cars.find(c => c.id === editingCarId) : newCar}
               onCancel={() => setShowAddCarModal(false)}
-              onSubmit={async (data, images, media) => {
+              onSubmit={async (data, images, engineSound, inspectionReport) => {
                 try {
-                  const uploadedImages = [];
+                  const uploadedImages: string[] = [];
                   if (images && images.length > 0) {
                     const formData = new FormData();
-                    images.forEach(img => formData.append('images', img));
-                    const imgRes = await fetch('/api/upload/images', { method: 'POST', body: formData });
+                    images.forEach((img: File) => formData.append('images', img));
+                    const imgRes = await authFetch('/api/upload/images', { method: 'POST', body: formData });
                     if (imgRes.ok) {
                       const imgData = await imgRes.json();
                       if (imgData.urls) uploadedImages.push(...imgData.urls);
@@ -6692,21 +6692,28 @@ export const AdminDashboard = () => {
                     }
                   }
 
-                  let engineVideoUrl = '';
                   let engineAudioUrl = '';
                   let inspectionPdf = '';
-                  if (media) {
-                    const mediaData = new FormData();
-                    mediaData.append('media', media);
-                    const mediaRes = await fetch('/api/upload/media', { method: 'POST', body: mediaData });
-                    if (mediaRes.ok) {
-                      const mediaJson = await mediaRes.json();
-                      if (media.type.startsWith('video/')) engineVideoUrl = mediaJson.url;
-                      else if (media.type.startsWith('audio/')) engineAudioUrl = mediaJson.url;
-                      else if (media.type === 'application/pdf') inspectionPdf = mediaJson.url;
-                    } else {
-                      const errData = await mediaRes.json();
-                      throw new Error(errData.error || 'Failed to upload media');
+
+                  // Upload engine sound
+                  if (engineSound) {
+                    const soundData = new FormData();
+                    soundData.append('media', engineSound);
+                    const soundRes = await authFetch('/api/upload/media', { method: 'POST', body: soundData });
+                    if (soundRes.ok) {
+                      const soundJson = await soundRes.json();
+                      engineAudioUrl = soundJson.url || '';
+                    }
+                  }
+
+                  // Upload inspection PDF
+                  if (inspectionReport) {
+                    const pdfData = new FormData();
+                    pdfData.append('media', inspectionReport);
+                    const pdfRes = await authFetch('/api/upload/media', { method: 'POST', body: pdfData });
+                    if (pdfRes.ok) {
+                      const pdfJson = await pdfRes.json();
+                      inspectionPdf = pdfJson.url || '';
                     }
                   }
 
@@ -6734,7 +6741,7 @@ export const AdminDashboard = () => {
                     minPrice: data.minPrice,
                     specialNote: data.specialNote,
                     images: uploadedImages.length > 0 ? uploadedImages : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800'],
-                    engineVideoUrl,
+                    engineVideoUrl: data.youtubeVideoUrl || '',
                     engineAudioUrl,
                     inspectionPdf,
                     status: 'upcoming' as const,
@@ -7552,11 +7559,11 @@ export const AdminDashboard = () => {
                 try {
                   const url = libyanModalForm.id ? `/api/libyan-market/${libyanModalForm.id}` : '/api/libyan-market';
                   const method = libyanModalForm.id ? 'PUT' : 'POST';
-                  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(libyanModalForm) });
+                  const res = await authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(libyanModalForm) });
                   if (res.ok) {
                     showAlert(libyanModalForm.id ? 'تم التعديل بنجاح' : 'تمت الإضافة بنجاح', 'success');
                     setShowLibyanModal(false);
-                    fetch('/api/libyan-market').then(r => r.json()).then(setLibyanMarketPrices);
+                    authFetch('/api/libyan-market').then(r => r.json()).then(setLibyanMarketPrices);
                   }
                 } catch(e) { showAlert('حدث خطأ أثناء الاتصال بالخادم', 'error'); }
               }} className="px-5 py-2 flex gap-2 items-center rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-colors"><Check className="w-4 h-4" />{libyanModalForm.id ? 'حفظ التعديلات' : 'حفظ البيانات'}</button>

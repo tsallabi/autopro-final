@@ -72,7 +72,7 @@ const ComboSelect = ({ label, icon: Icon, value, options, onChange, required = f
 
 export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onSubmit, onCancel, isSubmitting }) => {
     const { showAlert } = useStore();
-    const [formData, setFormData] = useState<any>(initialData || {
+    const [formData, setFormData] = useState<any>({
         vin: '', make: '', model: '', year: new Date().getFullYear(), trim: '',
         odometer: '', actualOdometer: 'yes', engine: '', cylinders: '',
         transmission: TRANSMISSIONS[0], drive: DRIVETRAINS[0], fuelType: FUEL_TYPES[0],
@@ -80,14 +80,14 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         saleStatus: SALE_STATUSES[0], locationDetails: '', exchangeRate: '1', minPrice: '',
         specialNote: '', buyNowPrice: '', acceptedOfferPercentage: ACCEPTED_OFFER_OPTIONS[0],
         bodyType: BODY_TYPES[0], interiorColor: '', auctionLights: AUCTION_LIGHTS[0], conditionReportType: CONDITION_REPORT_TYPES[0],
-        youtubeVideoUrl: initialData?.youtubeVideoUrl || '',
-        isRecommended: initialData?.isRecommended || false,
+        youtubeVideoUrl: '', isRecommended: false,
+        ...(initialData || {}),
     });
 
     const [isDecodingVin, setIsDecodingVin] = useState(false);
 
     const handleDecodeVin = async () => {
-        if (!formData.vin || formData.vin.length < 11) {
+        if (!formData.vin || (formData.vin?.length || 0) < 11) {
             showAlert('يرجى إدخال رقم شاصي (VIN) صحيح قبل البحث', 'error');
             return;
         }
@@ -165,10 +165,19 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
     };
 
     const [mainImage, setMainImage] = useState<File | null>(null);
-    const [mainImagePreview, setMainImagePreview] = useState<string>(initialData?.images?.[0] || '');
+    // Parse images safely — could be JSON string or array
+    const parsedImages = (() => {
+        if (!initialData?.images) return [];
+        if (Array.isArray(initialData.images)) return initialData.images;
+        if (typeof initialData.images === 'string') {
+            try { return JSON.parse(initialData.images); } catch { return []; }
+        }
+        return [];
+    })();
+    const [mainImagePreview, setMainImagePreview] = useState<string>(parsedImages[0] || '');
 
     const [extraImages, setExtraImages] = useState<File[]>([]);
-    const [extraImagePreviews, setExtraImagePreviews] = useState<string[]>(initialData?.images?.slice(1) || []);
+    const [extraImagePreviews, setExtraImagePreviews] = useState<string[]>(parsedImages.slice(1) || []);
 
     const [engineSoundMedia, setEngineSoundMedia] = useState<File | null>(null);
     const [engineSoundMediaName, setEngineSoundMediaName] = useState<string>(initialData?.engineSoundUrl || '');
@@ -295,7 +304,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                         <button
                                             type="button"
                                             onClick={handleDecodeVin}
-                                            disabled={isDecodingVin || formData.vin.length < 11}
+                                            disabled={isDecodingVin || (formData.vin?.length || 0) < 11}
                                             className="bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white px-6 py-3 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap shadow-md"
                                         >
                                             {isDecodingVin ? <RefreshCw className="w-5 h-5 text-orange-400 animate-spin" /> : <Search className="w-5 h-5 text-orange-400" />}

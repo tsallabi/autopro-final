@@ -450,7 +450,7 @@ export const SellerDashboard = () => {
         auctionEndDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       };
 
-      const res = await fetch('/api/cars', {
+      const res = await authFetch('/api/cars', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(carData)
@@ -479,7 +479,7 @@ export const SellerDashboard = () => {
       });
 
       // Refresh seller cars
-      fetch(`/api/cars?sellerId=${currentUser?.id}`)
+      authFetch(`/api/cars?sellerId=${currentUser?.id}`)
         .then(res => res.json())
         .then(data => setSellerCars(Array.isArray(data) ? data : []));
 
@@ -490,7 +490,7 @@ export const SellerDashboard = () => {
 
   const handleAcceptOffer = async (carId: string) => {
     try {
-      const res = await fetch(`/api/offers/${carId}/accept`, {
+      const res = await authFetch(`/api/offers/${carId}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -599,7 +599,7 @@ export const SellerDashboard = () => {
                               <button
                                 onClick={async () => {
                                   try {
-                                    const res = await fetch(`/api/offers/${car.id}/accept`, {
+                                    const res = await authFetch(`/api/offers/${car.id}/accept`, {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -631,7 +631,7 @@ export const SellerDashboard = () => {
                                 onClick={() => {
                                   showConfirm('هل أنت متأكد من رفض هذا العرض؟ سيتم حذف العرض الحالي وتصبح السيارة (لم تباع).', async () => {
                                     try {
-                                      const res = await fetch(`/api/offers/${car.id}/reject`, {
+                                      const res = await authFetch(`/api/offers/${car.id}/reject`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -790,7 +790,7 @@ export const SellerDashboard = () => {
                                       <button
                                         onClick={async () => {
                                           try {
-                                            const res = await fetch(`/api/offers/${car.id}/accept`, {
+                                            const res = await authFetch(`/api/offers/${car.id}/accept`, {
                                               method: 'POST',
                                               headers: { 'Content-Type': 'application/json' },
                                               body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -821,7 +821,7 @@ export const SellerDashboard = () => {
                                         onClick={() => {
                                           showConfirm('هل أنت متأكد من رفض هذا العرض؟ سيتم حذف العرض الحالي وتصبح السيارة (لم تباع).', async () => {
                                             try {
-                                              const res = await fetch(`/api/offers/${car.id}/reject`, {
+                                              const res = await authFetch(`/api/offers/${car.id}/reject`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
@@ -1566,7 +1566,7 @@ export const SellerDashboard = () => {
                       <button
                         onClick={async () => {
                           if (!messageForm.content) return showAlert('يرجى كتابة الرسالة أولاً', 'error');
-                          const res = await fetch('/api/messages', {
+                          const res = await authFetch('/api/messages', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -2264,7 +2264,7 @@ export const SellerDashboard = () => {
                     return;
                   }
                   try {
-                    const res = await fetch(`/api/offers/${counterCar.id}/counter`, {
+                    const res = await authFetch(`/api/offers/${counterCar.id}/counter`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role, counterAmount: val })
