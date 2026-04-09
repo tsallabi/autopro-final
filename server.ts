@@ -414,6 +414,14 @@ db.exec(`
     db.prepare("ALTER TABLE libyan_market_prices ADD COLUMN city TEXT").run();
   } catch (_) {}
 
+  // Migration: add notes column to invoices
+  try { db.prepare("ALTER TABLE invoices ADD COLUMN notes TEXT").run(); } catch (_) {}
+  // Migration: add paidAt and viewedAt columns to invoices
+  try { db.prepare("ALTER TABLE invoices ADD COLUMN paidAt TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE invoices ADD COLUMN viewedAt TEXT").run(); } catch (_) {}
+  // Migration: add sellerId to invoices for seller invoice queries
+  try { db.prepare("ALTER TABLE invoices ADD COLUMN sellerId TEXT").run(); } catch (_) {}
+
   db.exec(`
   -- Consolidated external notifications table
 
@@ -1460,8 +1468,9 @@ async function startServer() {
     const shipId = `ship-${carId}`;
 
     db.transaction(() => {
-      // Purchase Invoice
-      db.prepare(`INSERT OR IGNORE INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'unpaid', 'purchase', ?, ?)`).run(inv1, userId, carId, amount + commission, now, dueDate7);
+      // Purchase Invoice — amount is the sale price only; commission deducted from seller payout
+      const buyerFee = commission;
+      db.prepare(`INSERT OR IGNORE INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate, notes) VALUES(?, ?, ?, ?, 'unpaid', 'purchase', ?, ?, ?)`).run(inv1, userId, carId, amount, now, dueDate7, `عمولة المنصة: $${buyerFee.toFixed(2)} (${(commissionRate * 100).toFixed(1)}%) — تُخصم من حساب البائع`);
 
       // Internal Transport Invoice (Pending)
       db.prepare(`INSERT OR IGNORE INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'transport', ?, ?)`).run(inv2, userId, carId, transportFee, now, dueDate7);
@@ -2121,6 +2130,11 @@ async function startServer() {
       const newDeposit = (user.deposit || 0) + Number(amount);
       const newBuyingPower = newDeposit * 10;
       db.prepare("UPDATE users SET deposit = ?, buyingPower = ? WHERE id = ?").run(newDeposit, newBuyingPower, userId);
+      // Update buyer_wallets
+      try {
+        db.prepare("UPDATE buyer_wallets SET balance = balance + ?, totalDeposited = totalDeposited + ?, updatedAt = ? WHERE userId = ?")
+          .run(Number(amount), Number(amount), new Date().toISOString(), userId);
+      } catch (_) {}
       try {
         const txId = `tx-stripe-${Date.now()}`;
         db.prepare(`INSERT INTO transactions (id, userId, amount, type, status, createdAt) VALUES (?,?,?,?,?,?)`)
@@ -2651,7 +2665,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
   });
 
-  app.post("/api/cars", (req, res) => {
+  app.post("/api/cars", requireAuth, (req, res) => {
     const {
       make, model, year, vin, lotNumber, location,
       odometer, primaryDamage, titleType, engine, drive,
@@ -2989,6 +3003,17 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     try {
       db.prepare("UPDATE cars SET status = 'upcoming' WHERE id = ? AND status = 'pending_approval'").run(id);
       io.emit("car_approved", { carId: id });
+
+      // Notify seller that their car was approved
+      const approvedCar: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (approvedCar?.sellerId) {
+        sendNotification(approvedCar.sellerId,
+          'تم اعتماد سيارتك!',
+          `تمت الموافقة على سيارتك ${approvedCar.make} ${approvedCar.model} (${approvedCar.year || ''}) وهي الآن في قائمة المزادات القادمة.`,
+          'success', `/dashboard/seller?view=inventory`
+        );
+      }
+
       res.json({ success: true, message: "تم اعتماد السيارة بنجاح" });
     } catch (e) {
       res.status(500).json({ error: "فشل اعتماد السيارة" });
@@ -3380,10 +3405,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       VALUES (?, ?, ?, 'sale', ?, ?, ?, 'pending', ?, ?)
     `).run(txId, sellerId, carId, soldAmount, commission, netAmount, carDescription, new Date().toISOString());
 
-    // Add to pending balance (becomes available after 3 days in real life)
+    // Add directly to available balance (3-day hold not implemented)
     db.prepare(`
       UPDATE seller_wallets
-      SET pendingBalance = pendingBalance + ?,
+      SET availableBalance = availableBalance + ?,
           totalEarned = totalEarned + ?,
           lastUpdated = ?
       WHERE sellerId = ?
@@ -3882,6 +3907,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         db.prepare("UPDATE transactions SET status = 'completed' WHERE id = ?").run(transactionId);
         db.prepare("UPDATE users SET deposit = deposit + ?, buyingPower = buyingPower + ? WHERE id = ?")
           .run(tx.amount, tx.amount * 10, tx.userId);
+        // Update buyer_wallets
+        try {
+          db.prepare("UPDATE buyer_wallets SET balance = balance + ?, totalDeposited = totalDeposited + ?, updatedAt = ? WHERE userId = ?")
+            .run(Number(tx.amount), Number(tx.amount), new Date().toISOString(), tx.userId);
+        } catch (_) {}
       });
       update();
 
@@ -4012,6 +4042,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         return res.json({ success: true, status: 'sold', message: "تم قبول العرض والبيع فوراً!" });
       }
 
+      // Notify seller about the new offer
+      if (car.sellerId) {
+        sendNotification(car.sellerId, `عرض جديد بقيمة $${amount} على سيارتك ${car.make} ${car.model}`, 'offer', `/dashboard/seller?view=inventory`);
+      }
+
       io.emit("car_updated", { id, currentBid: amount, winnerId: userId });
       res.json({ success: true, status: 'pending', message: "تم تقديم العرض بنجاح، بانتظار موافقة البائع" });
     } catch (err) {
@@ -4115,6 +4150,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         // 2. Update user deposit and buying power (deposit × 10)
         db.prepare("UPDATE users SET deposit = deposit + ?, buyingPower = (deposit + ?) * 10 WHERE id = ?")
           .run(tx.amount, tx.amount, tx.userId);
+
+        // 3. Update buyer_wallets
+        try {
+          db.prepare("UPDATE buyer_wallets SET balance = balance + ?, totalDeposited = totalDeposited + ?, updatedAt = ? WHERE userId = ?")
+            .run(Number(tx.amount), Number(tx.amount), new Date().toISOString(), tx.userId);
+        } catch (_) {}
       })();
 
       // 3. Notify user (outside transaction so DB is already committed)
@@ -4195,6 +4236,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
               db.prepare("UPDATE users SET deposit = deposit + ?, buyingPower = (deposit + ?) * 10 WHERE id = ?")
                 .run(amount, amount, userId);
+
+              // Update buyer_wallets
+              try {
+                db.prepare("UPDATE buyer_wallets SET balance = balance + ?, totalDeposited = totalDeposited + ?, updatedAt = ? WHERE userId = ?")
+                  .run(Number(amount), Number(amount), new Date().toISOString(), userId);
+              } catch (_) {}
             })();
 
             sendNotification(userId, '✅ تم استلام العربون عبر Stripe',
@@ -4221,7 +4268,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.put("/api/users/:id", (req, res) => {
+  app.put("/api/users/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     const {
       firstName, lastName, email, phone, role, status,
@@ -5115,10 +5162,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       db.prepare(`INSERT INTO cars (id, sellerId, lotNumber, make, model, year, vin, mileage, condition,
         description, startingBid, reservePrice, currentBid, auctionStart, auctionEnd, status, images, city, createdAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_approval',?,?,?)`
       ).run(carId, sellerId, lotNumber, make, model, year, vin||null, mileage||0, condition||'used',
         description||null, startingBid||0, reservePrice||0, startingBid||0,
         auctionStart||null, auctionEnd||null, imagesJson, city||null, new Date().toISOString());
+
+      // Notify seller when car is approved (handled in approve-car endpoint)
 
       sendNotification('admin-1', '🚗 سيارة جديدة بانتظار الموافقة',
         `${seller.firstName} أضاف ${make} ${model} ${year} للمزاد. لوت: ${lotNumber}`, 'info');
@@ -5701,6 +5750,250 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0'
       });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ======= MISSING ENDPOINTS =======
+
+  // 4a) POST /api/upload/media — engine sound + inspection PDF upload
+  const mediaDir = path.join(uploadsDir, 'media');
+  if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+
+  const mediaStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, mediaDir),
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+      const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+      cb(null, `media_${unique}${ext}`);
+    }
+  });
+  const uploadMedia = multer({
+    storage: mediaStorage,
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('audio/') || file.mimetype === 'application/pdf') cb(null, true);
+      else cb(new Error('Only audio and PDF files allowed'));
+    }
+  });
+
+  app.post('/api/upload/media', requireAuth, (uploadMedia.single('media') as any), ((req: any, res: any) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
+      const url = `/uploads/media/${req.file.filename}`;
+      res.json({ success: true, url, filename: req.file.filename });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || 'فشل رفع الملف' });
+    }
+  }) as any);
+
+  // 4b) PUT /api/cars/:id — update existing car
+  app.put("/api/cars/:id", requireAuth, (req, res) => {
+    const { id } = req.params;
+    const {
+      make, model, year, vin, lotNumber, location,
+      odometer, primaryDamage, titleType, engine, drive,
+      transmission, status, auctionEndDate, images,
+      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
+      acceptOffers, videoUrl, inspectionPdf,
+      trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
+      exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
+      actualOdometer, cylinders, auctionLane, showroomName, saleStatus,
+      locationDetails, exchangeRate, minPrice, specialNote, buyNowPrice,
+      acceptedOfferPercentage, youtubeVideoUrl, engineSoundUrl, inspectionReportUrl
+    } = req.body;
+
+    try {
+      const existing: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (!existing) return res.status(404).json({ error: "السيارة غير موجودة" });
+
+      db.prepare(`
+        UPDATE cars SET
+          make = ?, model = ?, year = ?, vin = ?, lotNumber = ?,
+          odometer = ?, engine = ?, transmission = ?, drive = ?, fuelType = ?,
+          reservePrice = ?, images = ?, videoUrl = ?, inspectionPdf = ?,
+          sellerId = ?, currency = ?, acceptOffers = ?, notes = ?,
+          exteriorColor = ?, interiorColor = ?, keys = ?, runsDrives = ?,
+          location = ?, primaryDamage = ?, secondaryDamage = ?, titleType = ?,
+          buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
+          drivetrain = ?, auctionEndDate = ?
+        WHERE id = ?
+      `).run(
+        make ?? existing.make, model ?? existing.model, year ?? existing.year,
+        vin ?? existing.vin, lotNumber ?? existing.lotNumber,
+        odometer ?? existing.odometer, engine ?? existing.engine,
+        transmission ?? existing.transmission, drive ?? existing.drive,
+        fuelType ?? existing.fuelType, reservePrice ?? existing.reservePrice,
+        JSON.stringify(images || JSON.parse(existing.images || '[]')),
+        videoUrl ?? youtubeVideoUrl ?? existing.videoUrl,
+        inspectionPdf ?? inspectionReportUrl ?? existing.inspectionPdf,
+        sellerId ?? existing.sellerId, currency ?? existing.currency,
+        acceptOffers !== undefined ? (acceptOffers ? 1 : 0) : existing.acceptOffers,
+        notes ?? specialNote ?? existing.notes,
+        exteriorColor ?? existing.exteriorColor, interiorColor ?? existing.interiorColor,
+        keys ?? existing.keys, runsDrives ?? existing.runsDrives,
+        location ?? locationDetails ?? existing.location,
+        primaryDamage ?? existing.primaryDamage, secondaryDamage ?? existing.secondaryDamage,
+        titleType ?? existing.titleType, buyItNow ?? buyNowPrice ?? existing.buyItNow,
+        trim ?? existing.trim, mileageUnit ?? existing.mileageUnit,
+        engineSize ?? existing.engineSize, horsepower ?? existing.horsepower,
+        drivetrain ?? existing.drivetrain, auctionEndDate ?? existing.auctionEndDate,
+        id
+      );
+
+      res.json({ success: true, id });
+    } catch (e: any) {
+      console.error('Car update error:', e);
+      res.status(400).json({ error: e.message || "فشل تحديث السيارة" });
+    }
+  });
+
+  // 4c) POST /api/kyc/upload — KYC document upload for buyers
+  const kycDir = path.join(uploadsDir, 'kyc');
+  if (!fs.existsSync(kycDir)) fs.mkdirSync(kycDir, { recursive: true });
+
+  const kycStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, kycDir),
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+      const ext = path.extname(file.originalname).toLowerCase() || '.pdf';
+      cb(null, `kyc_${unique}${ext}`);
+    }
+  });
+  const uploadKyc = multer({
+    storage: kycStorage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(new Error('Only images and PDFs allowed'));
+    }
+  });
+
+  app.post('/api/kyc/upload', requireAuth, (uploadKyc.single('document') as any), ((req: any, res: any) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
+      const { userId, docType } = req.body;
+      if (!userId) return res.status(400).json({ error: 'userId مطلوب' });
+
+      const docId = `kyc-${Date.now()}`;
+      const url = `/uploads/kyc/${req.file.filename}`;
+
+      db.prepare(`INSERT INTO kyc_documents (id, userId, docType, filename, url, status, uploadedAt)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?)`).run(docId, userId, docType || 'identity', req.file.originalname, url, new Date().toISOString());
+
+      res.json({ success: true, id: docId, url });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || 'فشل رفع مستند KYC' });
+    }
+  }) as any);
+
+  // 4d) POST /api/invoices/:id/cancel-transport — cancel transport invoice (buyer self-pickup)
+  app.post("/api/invoices/:id/cancel-transport", requireAuth, (req, res) => {
+    const { id } = req.params;
+    try {
+      const invoice: any = db.prepare("SELECT * FROM invoices WHERE id = ? AND type = 'transport'").get(id);
+      if (!invoice) return res.status(404).json({ error: "فاتورة النقل غير موجودة" });
+
+      db.prepare("UPDATE invoices SET status = 'cancelled' WHERE id = ?").run(id);
+
+      // Update associated shipment if exists
+      try {
+        db.prepare("UPDATE shipments SET status = 'self_pickup' WHERE carId = ? AND userId = ?").run(invoice.carId, invoice.userId);
+      } catch (_) {}
+
+      res.json({ success: true, message: "تم إلغاء فاتورة النقل — استلام ذاتي" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "فشل إلغاء فاتورة النقل" });
+    }
+  });
+
+  // 4e) PUT /api/invoices/:id/view — mark invoice as viewed
+  app.put("/api/invoices/:id/view", requireAuth, (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("UPDATE invoices SET viewedAt = ? WHERE id = ?").run(new Date().toISOString(), id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: "فشل تحديث حالة المشاهدة" });
+    }
+  });
+
+  // 4f) GET /api/seller/invoices/:sellerId — invoices for cars sold by this seller
+  app.get("/api/seller/invoices/:sellerId", requireAuth, (req, res) => {
+    const { sellerId } = req.params;
+    try {
+      const invoices: any[] = db.prepare(`
+        SELECT i.*, c.make, c.model, c.year, c.lotNumber, c.images,
+          u.firstName as buyerFirstName, u.lastName as buyerLastName
+        FROM invoices i
+        INNER JOIN cars c ON i.carId = c.id
+        LEFT JOIN users u ON i.userId = u.id
+        WHERE c.sellerId = ?
+        ORDER BY i.timestamp DESC
+      `).all(sellerId);
+      invoices.forEach(inv => { try { inv.images = JSON.parse(inv.images || '[]'); } catch { inv.images = []; } });
+      res.json(invoices);
+    } catch (e: any) {
+      res.status(500).json({ error: "فشل جلب فواتير البائع" });
+    }
+  });
+
+  // 4g) GET /api/invoices/car/:carId — invoices for a specific car
+  app.get("/api/invoices/car/:carId", requireAuth, (req, res) => {
+    const { carId } = req.params;
+    try {
+      const invoices: any[] = db.prepare("SELECT * FROM invoices WHERE carId = ? ORDER BY timestamp DESC").all(carId);
+      res.json(invoices);
+    } catch (e: any) {
+      res.status(500).json({ error: "فشل جلب فواتير السيارة" });
+    }
+  });
+
+  // 4h) POST /api/cars/:id/reschedule — reschedule unsold car back to upcoming
+  app.post("/api/cars/:id/reschedule", requireAuth, (req, res) => {
+    const { id } = req.params;
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+
+      const { newAuctionEnd } = req.body;
+      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = 0, winnerId = NULL WHERE id = ?")
+        .run(newAuctionEnd || '', id);
+      io.emit("car_updated", { id, status: 'upcoming' });
+      res.json({ success: true, message: "تمت إعادة جدولة السيارة" });
+    } catch (e: any) {
+      res.status(500).json({ error: "فشل إعادة الجدولة" });
+    }
+  });
+
+  // 4i) POST /api/cars/:id/notify-winner — send notification to the winner to pay
+  app.post("/api/cars/:id/notify-winner", requireAuth, (req, res) => {
+    const { id } = req.params;
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+      if (!car.winnerId) return res.status(400).json({ error: "لا يوجد فائز لهذه السيارة" });
+
+      sendNotification(car.winnerId,
+        'تهانينا! فزت بالمزاد',
+        `لقد فزت بالمزاد على ${car.make} ${car.model} (${car.year || ''}) بمبلغ $${(car.currentBid || 0).toLocaleString()}. يرجى إتمام الدفع خلال 7 أيام.`,
+        'success', `/dashboard/user`
+      );
+
+      res.json({ success: true, message: "تم إرسال إشعار الدفع للفائز" });
+    } catch (e: any) {
+      res.status(500).json({ error: "فشل إرسال الإشعار" });
+    }
+  });
+
+  // 8) GET /api/seller/offer-market-cars/:sellerId — seller's offer market cars
+  app.get("/api/seller/offer-market-cars/:sellerId", requireAuth, (req, res) => {
+    const { sellerId } = req.params;
+    try {
+      const cars: any[] = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerId = ?").all(sellerId);
+      res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
+    } catch (e) {
+      res.status(500).json({ error: "فشل جلب سيارات سوق العروض" });
+    }
   });
 
   // Detect production: NODE_ENV=production OR RENDER env var OR dist folder exists

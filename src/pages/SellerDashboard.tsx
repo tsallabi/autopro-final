@@ -7,7 +7,7 @@ import {
   LineChart as LineChartIcon, Send, ShieldCheck, Reply, Bell, Mail
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useStore } from '../context/StoreContext';
+import { useStore, authFetch } from '../context/StoreContext';
 import { IbanUpdateCard, KycUploadCard } from '../components/SellerKycComponents';
 import { UnifiedCarForm } from '../components/UnifiedCarForm';
 export const SellerDashboard = () => {
@@ -2075,10 +2075,11 @@ export const SellerDashboard = () => {
                     }
                   }
 
-                  const car = {
-                    id: Date.now().toString(),
-                    lotNumber: `LT-${Math.floor(100000 + Math.random() * 900000)}`,
-                    vin: data.vin || ('1G1' + Math.random().toString(36).substring(7).toUpperCase()),
+                  const isEditing = !!editingCar;
+                  const car: any = {
+                    id: isEditing ? editingCar.id : Date.now().toString(),
+                    lotNumber: isEditing ? editingCar.lotNumber : `LT-${Math.floor(100000 + Math.random() * 900000)}`,
+                    vin: data.vin || (isEditing ? editingCar.vin : '1G1' + Math.random().toString(36).substring(7).toUpperCase()),
                     make: data.make,
                     model: data.model,
                     year: data.year,
@@ -2100,26 +2101,33 @@ export const SellerDashboard = () => {
                     specialNote: data.specialNote,
                     buyNowPrice: data.buyNowPrice || 0,
                     acceptedOfferPercentage: data.acceptedOfferPercentage || '',
-                    images: uploadedImages.length > 0 ? uploadedImages : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800'],
+                    images: uploadedImages.length > 0 ? uploadedImages : (isEditing && editingCar.images?.length ? editingCar.images : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800']),
                     youtubeVideoUrl: data.youtubeVideoUrl || '',
-                    engineSoundUrl: engineAudioUrl,
-                    inspectionReportUrl: inspectionPdf,
-                    status: 'pending_approval',
+                    engineSoundUrl: engineAudioUrl || (isEditing ? editingCar.engineSoundUrl : ''),
+                    inspectionReportUrl: inspectionPdf || (isEditing ? editingCar.inspectionReportUrl : ''),
+                    status: isEditing ? editingCar.status : 'pending_approval',
                     acceptOffers: true,
                     currency: 'USD',
                     sellerId: currentUser?.id
                   };
 
-                  const res = await fetch('/api/cars', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(car)
-                  });
+                  const res = isEditing
+                    ? await authFetch(`/api/cars/${editingCar.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(car)
+                      })
+                    : await authFetch('/api/cars', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(car)
+                      });
 
                   if (!res.ok) throw new Error('فشل الحفظ');
 
                   setShowAddCarModal(false);
-                  showAlert('تم إضافة السيارة بنجاح، بانتظار موافقة الإدارة!', 'success');
+                  setEditingCar(null);
+                  showAlert(isEditing ? 'تم تحديث السيارة بنجاح!' : 'تم إضافة السيارة بنجاح، بانتظار موافقة الإدارة!', 'success');
                 } catch (err) {
                   showAlert('حدث خطأ أثناء الرفع أو الحفظ', 'error');
                 }
