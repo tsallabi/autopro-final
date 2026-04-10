@@ -3428,7 +3428,7 @@ export const AdminDashboard = () => {
         .catch(err => console.error('Withdrawal requests fetch error:', err));
     }
 
-    if (view === 'document_cycle' && adminInvoices.length === 0) {
+    if ((view === 'document_cycle' || view === 'all_invoices' || view === 'shipments_tracking') && adminInvoices.length === 0) {
       authFetch('/api/admin/invoices')
         .then(res => res.json())
         .then(data => setAdminInvoices(Array.isArray(data) ? data : []))
@@ -3544,7 +3544,7 @@ export const AdminDashboard = () => {
         setShowAddFeeModal(null);
         setFeeForm({ amount: '', type: 'storage_fine', dueDate: '' });
         // Refresh invoices
-        authFetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices);
+        authFetch('/api/admin/invoices').then(r => r.json()).then(data => setAdminInvoices(Array.isArray(data) ? data : []));
       } else {
         const err = await res.json();
         showAlert(err.error || 'فشل إصدار الفاتورة', 'error');
@@ -6184,7 +6184,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
               <button 
-                onClick={() => authFetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
+                onClick={() => authFetch('/api/admin/invoices').then(r => r.json()).then(data => setAdminInvoices(Array.isArray(data) ? data : []))}
                 className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all"
               >
                 <RefreshCw className="w-4 h-4" /> تحديث السجل
@@ -6285,7 +6285,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
               <button 
-                 onClick={() => authFetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
+                 onClick={() => authFetch('/api/admin/invoices').then(r => r.json()).then(data => setAdminInvoices(Array.isArray(data) ? data : []))}
                  className="bg-orange-50 text-orange-600 hover:bg-orange-100 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all border border-orange-200"
               >
                 <RefreshCw className="w-4 h-4" /> تحديث المواقع
