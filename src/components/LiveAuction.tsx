@@ -124,7 +124,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
       bid: '/sounds/others-bid.wav',    // مزايدات الآخرين — صوت خفيف (المستخدم متفرج)
       win: '/sounds/leading.wav',       // أنت المتصدر — صوت تقدم إيجابي
       outbid: '/sounds/outbid.wav',     // تم إخراجك — صوت خروج حاد
-      tick: 'https://assets.mixkit.co/active_storage/sfx/2816/2816-preview.mp3'  // تكات الساعة
+      tick: '/sounds/clock-tick.wav'  // دقات ساعة حائط حقيقية — آخر 50 ثانية
     };
     const audio = new Audio(audios[type]);
     audio.volume = type === 'tick' ? 0.3 : type === 'outbid' ? 0.9 : type === 'win' ? 0.7 : 0.5;
@@ -276,7 +276,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
           setTimeout(() => setShowAntiSniping(false), 3000);
         }
         // Play tick sound in last 30 seconds (every 2 seconds to avoid spam)
-        if (remainingSeconds <= 30 && remainingSeconds > 0 && remainingSeconds % 2 === 0) {
+        if (remainingSeconds <= 50 && remainingSeconds > 0 && remainingSeconds % 2 === 0) {
           playVoice('tick');
         }
         return remainingSeconds;
