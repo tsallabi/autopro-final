@@ -2153,6 +2153,110 @@ const CRMPanel: React.FC = () => {
   const [sending, setSending] = React.useState(false);
   const { showAlert } = useStore();
 
+  // --- Customer Detail Modal State ---
+  const [selectedCustomer, setSelectedCustomer] = React.useState<any>(null);
+  const [showCustomerModal, setShowCustomerModal] = React.useState(false);
+  const [customerBids, setCustomerBids] = React.useState<any[]>([]);
+  const [customerInvoices, setCustomerInvoices] = React.useState<any[]>([]);
+  const [customerShipments, setCustomerShipments] = React.useState<any[]>([]);
+  const [customerNotes, setCustomerNotes] = React.useState<any[]>([]);
+  const [modalLoading, setModalLoading] = React.useState(false);
+  const [newNote, setNewNote] = React.useState('');
+  const [addingNote, setAddingNote] = React.useState(false);
+  const [dmForm, setDmForm] = React.useState({ subject: '', content: '' });
+  const [showDmForm, setShowDmForm] = React.useState(false);
+  const [sendingDm, setSendingDm] = React.useState(false);
+  const [statusUpdating, setStatusUpdating] = React.useState(false);
+  const [modalTab, setModalTab] = React.useState<'info' | 'bids' | 'invoices' | 'shipments' | 'notes'>('info');
+
+  // Open customer detail modal and fetch all related data
+  const openCustomerDetail = async (customer: any) => {
+    setSelectedCustomer(customer);
+    setShowCustomerModal(true);
+    setModalTab('info');
+    setShowDmForm(false);
+    setDmForm({ subject: '', content: '' });
+    setNewNote('');
+    setModalLoading(true);
+    try {
+      const userId = customer.userId || customer.id;
+      const [bidsRes, invoicesRes, shipmentsRes, notesRes] = await Promise.all([
+        authFetch(`/api/bids/user/${userId}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        authFetch(`/api/invoices/user/${userId}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        authFetch(`/api/shipments/user/${userId}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        authFetch(`/api/crm/notes/${userId}`).then(r => r.ok ? r.json() : []).catch(() => []),
+      ]);
+      setCustomerBids(Array.isArray(bidsRes) ? bidsRes : []);
+      setCustomerInvoices(Array.isArray(invoicesRes) ? invoicesRes : []);
+      setCustomerShipments(Array.isArray(shipmentsRes) ? shipmentsRes : []);
+      setCustomerNotes(Array.isArray(notesRes) ? notesRes : []);
+    } catch { /* silently handle */ }
+    finally { setModalLoading(false); }
+  };
+
+  // Add a CRM note
+  const addNote = async () => {
+    if (!newNote.trim() || !selectedCustomer) return;
+    setAddingNote(true);
+    try {
+      const userId = selectedCustomer.userId || selectedCustomer.id;
+      const r = await authFetch('/api/crm/notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, note: newNote }),
+      });
+      if (r.ok) {
+        const saved = await r.json();
+        setCustomerNotes(prev => [saved, ...prev]);
+        setNewNote('');
+        showAlert('تم إضافة الملاحظة ✅', 'success');
+      } else { showAlert('فشل إضافة الملاحظة'); }
+    } finally { setAddingNote(false); }
+  };
+
+  // Send direct message
+  const sendDirectMessage = async () => {
+    if (!dmForm.subject || !dmForm.content || !selectedCustomer) return;
+    setSendingDm(true);
+    try {
+      const userId = selectedCustomer.userId || selectedCustomer.id;
+      const r = await authFetch('/api/messages', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senderId: 'admin-1', receiverId: userId, subject: dmForm.subject, content: dmForm.content, category: 'crm' }),
+      });
+      if (r.ok) {
+        showAlert('تم إرسال الرسالة ✅', 'success');
+        setDmForm({ subject: '', content: '' });
+        setShowDmForm(false);
+      } else { showAlert('فشل إرسال الرسالة'); }
+    } finally { setSendingDm(false); }
+  };
+
+  // Update lead status
+  const updateLeadStatus = async (newStatus: string) => {
+    if (!selectedCustomer) return;
+    setStatusUpdating(true);
+    try {
+      const userId = selectedCustomer.userId || selectedCustomer.id;
+      const r = await authFetch('/api/crm/update-status', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, status: newStatus }),
+      });
+      if (r.ok) {
+        showAlert('تم تحديث حالة العميل ✅', 'success');
+        setSelectedCustomer((prev: any) => ({ ...prev, leadStatus: newStatus }));
+        setLeads(prev => prev.map(l => (l.userId || l.id) === userId ? { ...l, leadStatus: newStatus } : l));
+      } else { showAlert('فشل تحديث الحالة'); }
+    } finally { setStatusUpdating(false); }
+  };
+
+  // Check if customer is inactive (no bids in 30 days)
+  const isInactive = (customer: any): boolean => {
+    if (!customer.lastBidDate) return true;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return new Date(customer.lastBidDate) < thirtyDaysAgo;
+  };
+
   React.useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -2267,7 +2371,7 @@ const CRMPanel: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {listByTab.map((c: any) => (
-                  <tr key={c.id} className="hover:bg-slate-50 transition-all">
+                  <tr key={c.id} className="hover:bg-slate-50 transition-all cursor-pointer" onClick={() => openCustomerDetail(c)}>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center text-white font-black text-sm">
@@ -2280,12 +2384,20 @@ const CRMPanel: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-black ${
-                        c.leadStatus === 'hot' ? 'bg-red-100 text-red-700' :
-                        c.leadStatus === 'warm' ? 'bg-amber-100 text-amber-700' :
-                        'bg-blue-100 text-blue-700'}`}>
-                        {c.leadStatus === 'hot' ? '🔥 ساخن' : c.leadStatus === 'warm' ? '🌡️ دافئ' : '❄️ بارد'}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-black ${
+                          c.leadStatus === 'hot' ? 'bg-red-100 text-red-700' :
+                          c.leadStatus === 'warm' ? 'bg-amber-100 text-amber-700' :
+                          c.leadStatus === 'vip' ? 'bg-purple-100 text-purple-700' :
+                          'bg-blue-100 text-blue-700'}`}>
+                          {c.leadStatus === 'hot' ? '🔥 ساخن' : c.leadStatus === 'warm' ? '🌡️ دافئ' : c.leadStatus === 'vip' ? '⭐ VIP' : '❄️ بارد'}
+                        </span>
+                        {isInactive(c) && (
+                          <span className="px-2 py-1 rounded-full text-[10px] font-black bg-orange-100 text-orange-700 border border-orange-200">
+                            غير نشط
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 font-mono font-black text-slate-700">{c.totalBids || 0}</td>
                     <td className="p-4 font-mono font-black text-emerald-600">${(c.deposit || 0).toLocaleString()}</td>
@@ -2299,6 +2411,264 @@ const CRMPanel: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========== Customer Detail Modal ========== */}
+      {showCustomerModal && selectedCustomer && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowCustomerModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 rounded-t-3xl p-6 flex items-center justify-between z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg">
+                  {(selectedCustomer.firstName || '?').charAt(0)}
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">{selectedCustomer.firstName} {selectedCustomer.lastName}</h2>
+                  <p className="text-sm text-slate-500">{selectedCustomer.email}</p>
+                </div>
+                <div className="flex items-center gap-2 mr-4">
+                  {/* Status Dropdown */}
+                  <select
+                    value={selectedCustomer.leadStatus || 'cold'}
+                    onChange={e => updateLeadStatus(e.target.value)}
+                    disabled={statusUpdating}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 outline-none transition-all cursor-pointer ${
+                      selectedCustomer.leadStatus === 'hot' ? 'border-red-300 bg-red-50 text-red-700' :
+                      selectedCustomer.leadStatus === 'warm' ? 'border-amber-300 bg-amber-50 text-amber-700' :
+                      selectedCustomer.leadStatus === 'vip' ? 'border-purple-300 bg-purple-50 text-purple-700' :
+                      'border-blue-300 bg-blue-50 text-blue-700'
+                    } disabled:opacity-50`}
+                  >
+                    <option value="hot">🔥 ساخن</option>
+                    <option value="warm">🌡️ دافئ</option>
+                    <option value="cold">❄️ بارد</option>
+                    <option value="vip">⭐ VIP</option>
+                  </select>
+                  {isInactive(selectedCustomer) && (
+                    <span className="px-2 py-1 rounded-full text-[10px] font-black bg-orange-100 text-orange-700 border border-orange-200">غير نشط</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowDmForm(!showDmForm)}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-purple-700 transition-all flex items-center gap-1.5">
+                  <Send className="w-3.5 h-3.5" /> رسالة مباشرة
+                </button>
+                <button onClick={() => setShowCustomerModal(false)}
+                  className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-all">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+            </div>
+
+            {/* Direct Message Form (collapsible) */}
+            {showDmForm && (
+              <div className="mx-6 mt-4 p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-3">
+                <h4 className="font-black text-sm text-purple-800">إرسال رسالة مباشرة</h4>
+                <input
+                  value={dmForm.subject} onChange={e => setDmForm(p => ({ ...p, subject: e.target.value }))}
+                  placeholder="الموضوع" className="w-full bg-white border border-purple-200 rounded-xl p-2.5 text-sm font-bold outline-none focus:border-purple-400"
+                />
+                <textarea
+                  value={dmForm.content} onChange={e => setDmForm(p => ({ ...p, content: e.target.value }))}
+                  placeholder="نص الرسالة..." rows={3}
+                  className="w-full bg-white border border-purple-200 rounded-xl p-2.5 text-sm font-bold outline-none focus:border-purple-400 resize-none"
+                />
+                <div className="flex gap-2">
+                  <button onClick={sendDirectMessage} disabled={sendingDm || !dmForm.subject || !dmForm.content}
+                    className="bg-purple-600 text-white px-5 py-2 rounded-xl text-xs font-black hover:bg-purple-700 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                    {sendingDm ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    {sendingDm ? 'جاري الإرسال...' : 'إرسال'}
+                  </button>
+                  <button onClick={() => { setShowDmForm(false); setDmForm({ subject: '', content: '' }); }}
+                    className="px-4 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">إلغاء</button>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Tabs */}
+            <div className="px-6 pt-4">
+              <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
+                {([
+                  ['info', 'المعلومات'],
+                  ['bids', 'المزايدات'],
+                  ['invoices', 'الفواتير'],
+                  ['shipments', 'الشحنات'],
+                  ['notes', 'الملاحظات'],
+                ] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setModalTab(k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${modalTab === k ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {modalLoading ? (
+                <div className="flex items-center justify-center h-32 text-slate-400 font-bold">
+                  <RefreshCw className="w-5 h-5 animate-spin ml-2" /> جاري تحميل البيانات...
+                </div>
+              ) : modalTab === 'info' ? (
+                /* --- Info Tab --- */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { label: 'الاسم الكامل', value: `${selectedCustomer.firstName || ''} ${selectedCustomer.lastName || ''}`.trim() || '—', icon: <User className="w-4 h-4" /> },
+                    { label: 'البريد الإلكتروني', value: selectedCustomer.email || '—', icon: <Mail className="w-4 h-4" /> },
+                    { label: 'الهاتف', value: selectedCustomer.phone || '—', icon: <Bell className="w-4 h-4" /> },
+                    { label: 'الدولة', value: selectedCustomer.country || '—', icon: <MapPin className="w-4 h-4" /> },
+                    { label: 'تاريخ التسجيل', value: selectedCustomer.joinDate ? new Date(selectedCustomer.joinDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }) : '—', icon: <Clock className="w-4 h-4" /> },
+                    { label: 'حالة KYC', value: selectedCustomer.kycStatus === 'approved' ? '✅ مُعتمد' : selectedCustomer.kycStatus === 'pending' ? '⏳ قيد المراجعة' : '❌ غير مكتمل', icon: <ShieldCheck className="w-4 h-4" /> },
+                    { label: 'إجمالي الإيداع', value: `$${(selectedCustomer.totalDeposited || selectedCustomer.deposit || 0).toLocaleString()}`, icon: <DollarSign className="w-4 h-4" /> },
+                    { label: 'قوة الشراء', value: `$${(selectedCustomer.buyingPower || 0).toLocaleString()}`, icon: <TrendingUp className="w-4 h-4" /> },
+                    { label: 'رصيد المحفظة', value: `$${(selectedCustomer.walletBalance || 0).toLocaleString()}`, icon: <Wallet className="w-4 h-4" /> },
+                    { label: 'عدد المزايدات', value: selectedCustomer.totalBids || 0, icon: <Gavel className="w-4 h-4" /> },
+                  ].map(item => (
+                    <div key={item.label} className="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-slate-500 shadow-sm">{item.icon}</div>
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold">{item.label}</div>
+                        <div className="text-sm font-black text-slate-800">{item.value}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+              ) : modalTab === 'bids' ? (
+                /* --- Bids Tab --- */
+                <div>
+                  {customerBids.length === 0 ? (
+                    <div className="text-center text-slate-400 font-bold py-12">لا توجد مزايدات لهذا العميل</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {customerBids.map((bid: any, i: number) => (
+                        <div key={bid.id || i} className="flex items-center justify-between bg-slate-50 rounded-xl p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                              <Gavel className="w-4 h-4 text-orange-600" />
+                            </div>
+                            <div>
+                              <div className="font-black text-sm text-slate-800">{bid.carTitle || bid.carId || `مزايدة #${i + 1}`}</div>
+                              <div className="text-[10px] text-slate-400">{bid.createdAt ? new Date(bid.createdAt).toLocaleDateString('ar-EG') : '—'}</div>
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <div className="font-black text-emerald-600">${(bid.amount || 0).toLocaleString()}</div>
+                            <div className={`text-[10px] font-bold ${bid.status === 'winning' ? 'text-emerald-500' : bid.status === 'outbid' ? 'text-red-500' : 'text-slate-400'}`}>
+                              {bid.status === 'winning' ? 'رابح' : bid.status === 'outbid' ? 'تم تجاوزه' : bid.status || '—'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              ) : modalTab === 'invoices' ? (
+                /* --- Invoices Tab --- */
+                <div>
+                  {customerInvoices.length === 0 ? (
+                    <div className="text-center text-slate-400 font-bold py-12">لا توجد فواتير لهذا العميل</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {customerInvoices.map((inv: any, i: number) => (
+                        <div key={inv.id || i} className="flex items-center justify-between bg-slate-50 rounded-xl p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <Receipt className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div>
+                              <div className="font-black text-sm text-slate-800">فاتورة #{inv.invoiceNumber || inv.id || i + 1}</div>
+                              <div className="text-[10px] text-slate-400">{inv.createdAt ? new Date(inv.createdAt).toLocaleDateString('ar-EG') : '—'}</div>
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <div className="font-black text-slate-800">${(inv.totalAmount || inv.amount || 0).toLocaleString()}</div>
+                            <div className={`text-[10px] font-bold ${inv.status === 'paid' ? 'text-emerald-500' : inv.status === 'pending' ? 'text-amber-500' : 'text-slate-400'}`}>
+                              {inv.status === 'paid' ? 'مدفوعة' : inv.status === 'pending' ? 'معلقة' : inv.status || '—'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              ) : modalTab === 'shipments' ? (
+                /* --- Shipments Tab --- */
+                <div>
+                  {customerShipments.length === 0 ? (
+                    <div className="text-center text-slate-400 font-bold py-12">لا توجد شحنات لهذا العميل</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {customerShipments.map((sh: any, i: number) => (
+                        <div key={sh.id || i} className="flex items-center justify-between bg-slate-50 rounded-xl p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
+                              <Ship className="w-4 h-4 text-teal-600" />
+                            </div>
+                            <div>
+                              <div className="font-black text-sm text-slate-800">{sh.trackingNumber || sh.carTitle || `شحنة #${i + 1}`}</div>
+                              <div className="text-[10px] text-slate-400">{sh.createdAt ? new Date(sh.createdAt).toLocaleDateString('ar-EG') : '—'}</div>
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-black ${
+                              sh.status === 'delivered' ? 'bg-emerald-100 text-emerald-700' :
+                              sh.status === 'in_transit' ? 'bg-blue-100 text-blue-700' :
+                              sh.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                              {sh.status === 'delivered' ? 'تم التسليم' : sh.status === 'in_transit' ? 'في الطريق' : sh.status === 'pending' ? 'قيد الانتظار' : sh.status || '—'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              ) : modalTab === 'notes' ? (
+                /* --- Notes Tab --- */
+                <div className="space-y-4">
+                  {/* Add new note */}
+                  <div className="flex gap-2">
+                    <input
+                      value={newNote} onChange={e => setNewNote(e.target.value)}
+                      placeholder="أضف ملاحظة جديدة..."
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-purple-400"
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote(); } }}
+                    />
+                    <button onClick={addNote} disabled={addingNote || !newNote.trim()}
+                      className="bg-purple-600 text-white px-5 py-3 rounded-xl text-xs font-black hover:bg-purple-700 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                      {addingNote ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <PlusCircle className="w-3.5 h-3.5" />}
+                      إضافة
+                    </button>
+                  </div>
+                  {/* Notes list */}
+                  {customerNotes.length === 0 ? (
+                    <div className="text-center text-slate-400 font-bold py-12">لا توجد ملاحظات لهذا العميل</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {customerNotes.map((note: any, i: number) => (
+                        <div key={note.id || i} className="bg-slate-50 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] text-slate-400 font-bold">
+                              {note.createdBy || 'مدير'} — {note.createdAt ? new Date(note.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-700 font-bold leading-relaxed">{note.note || note.content || note.text || '—'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       )}
