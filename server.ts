@@ -2514,29 +2514,35 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
         // === WELCOME NOTIFICATIONS FOR NEW USER ===
 
-        // 1. Welcome notification
-        sendNotification(id,
-          `🎉 مرحباً ${firstName}! حسابك جاهز في أوتو برو. ابدأ باستكشاف المزادات الآن.`,
-          'info', '/marketplace');
-
-        // 2. Deposit reminder notification
-        sendNotification(id,
-          `💰 لبدء المزايدة، تحتاج إيداع عربون (الحد الأدنى $500 أو 1,000 د.ل). ادفع الآن واحصل على قوة شرائية 10 أضعاف!`,
-          'warning', '/deposit');
-
-        // 3. Welcome internal message with tips
+        // 1. Rich welcome internal message — full onboarding guide
         sendInternalMessage('admin-1', id,
-          '🚀 مرحباً بك في أوتو برو — دليل البداية السريعة',
-          `أهلاً ${firstName}! 👋\n\nشكراً لانضمامك لمنصة أوتو برو للمزادات.\n\n📋 خطوات البداية:\n1️⃣ ادفع العربون من صفحة الإيداع\n2️⃣ وثّق هويتك (KYC) لرفع حدود المزايدة\n3️⃣ تصفّح السيارات واختر المزاد\n4️⃣ زايد واربح!\n\n💡 نصيحة: القوة الشرائية = 10 أضعاف العربون. إيداع $1,000 يعطيك قوة $10,000!\n\n🏷️ عمولة المنصة 3% فقط — أقل عمولة في السوق.\n\nفريق أوتو برو 🧡`,
+          '🎉 مرحباً بك في أوتو برو — دليلك الكامل للبدء',
+          `أهلاً ${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: $500 أو 1,000 دينار ليبي\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع $1,000 = قوة شرائية $10,000\n• رابط الدفع: ${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: ${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: ${SITE_URL}/marketplace\n• المزادات المباشرة: ${SITE_URL}/live-auction\n• سوق العروض: ${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: ${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`,
           'general'
         );
 
-        // 4. Marketing notification about savings
+        // 2. Welcome notification
+        sendNotification(id,
+          `🎉 مرحباً ${firstName}! حسابك جاهز. ابدأ بدفع العربون للمزايدة → ${SITE_URL}/deposit`,
+          'info', '/deposit');
+
+        // 3. Deposit reminder notification
+        sendNotification(id,
+          `💰 ادفع العربون الآن واحصل على قوة شرائية 10 أضعاف! الحد الأدنى $500 أو 1,000 د.ل`,
+          'warning', '/deposit');
+
+        // 4. Delayed marketing notification about savings
         setTimeout(() => {
           sendNotification(id,
-            `📊 هل تعلم؟ عملاؤنا يوفرون 30-50% مقارنة بأسعار السوق المحلي. تصفّح أسعار السوق الليبي الآن!`,
+            `📊 وفّر 30-50% على سيارتك القادمة! تصفّح المزادات الآن`,
             'info', '/marketplace');
-        }, 5000);
+        }, 3000);
+
+        // 5. Auto-create buyer wallet for new user
+        try {
+          db.prepare("INSERT OR IGNORE INTO buyer_wallets (userId, balance, reservedAmount, totalDeposited, totalSpent, updatedAt) VALUES (?, 0, 0, 0, 0, ?)")
+            .run(id, new Date().toISOString());
+        } catch(_) {}
 
         // Notify all admins about new registration
         const admins: any[] = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
