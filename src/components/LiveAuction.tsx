@@ -121,13 +121,13 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
   }, [isTvMode]);
   const playVoice = React.useCallback((type: 'bid' | 'win' | 'outbid' | 'tick') => {
     const audios = {
-      bid: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',     // Quick ding — someone placed a bid
-      win: 'https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3',     // Rising success chime — you're leading!
-      outbid: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',  // Sharp DING alert — Copart-style outbid!
-      tick: 'https://assets.mixkit.co/active_storage/sfx/2816/2816-preview.mp3'     // Tick tock — timer warning
+      bid: '/sounds/others-bid.wav',    // مزايدات الآخرين — صوت خفيف (المستخدم متفرج)
+      win: '/sounds/leading.wav',       // أنت المتصدر — صوت تقدم إيجابي
+      outbid: '/sounds/outbid.wav',     // تم إخراجك — صوت خروج حاد
+      tick: 'https://assets.mixkit.co/active_storage/sfx/2816/2816-preview.mp3'  // تكات الساعة
     };
     const audio = new Audio(audios[type]);
-    audio.volume = type === 'tick' ? 0.3 : type === 'outbid' ? 0.9 : type === 'win' ? 0.7 : 0.4;
+    audio.volume = type === 'tick' ? 0.3 : type === 'outbid' ? 0.9 : type === 'win' ? 0.7 : 0.5;
     audio.play().catch(() => { });
     return audio;
   }, []);
