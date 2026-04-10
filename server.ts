@@ -1046,6 +1046,19 @@ db.exec(`
   );
 `);
 
+// API keys for external partners
+db.exec(`
+  CREATE TABLE IF NOT EXISTS api_keys (
+    key TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    website TEXT,
+    active INTEGER DEFAULT 1,
+    usageCount INTEGER DEFAULT 0,
+    createdAt TEXT NOT NULL,
+    lastUsedAt TEXT
+  );
+`);
+
 // Expenses table for operational cost tracking
 db.exec(`
   CREATE TABLE IF NOT EXISTS expenses (
@@ -6019,6 +6032,211 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) {
       res.status(500).json({ error: "فشل جلب سيارات سوق العروض" });
     }
+  });
+
+  // =====================================================================
+  // PUBLIC API — للمواقع الخارجية لعرض سيارات أوتو برو
+  // =====================================================================
+
+  // API Key validation middleware
+  const validateApiKey = (req: any, res: any, next: any) => {
+    const apiKey = req.headers['x-api-key'] || req.query.api_key;
+    if (!apiKey) return res.status(401).json({ error: 'API key required', docs: `${SITE_URL}/api/v1/docs` });
+
+    const validKey: any = db.prepare("SELECT * FROM api_keys WHERE key = ? AND active = 1").get(apiKey);
+    if (!validKey) return res.status(403).json({ error: 'Invalid or disabled API key' });
+
+    // Track usage
+    db.prepare("UPDATE api_keys SET usageCount = usageCount + 1, lastUsedAt = ? WHERE key = ?")
+      .run(new Date().toISOString(), apiKey);
+
+    req.apiClient = validKey;
+    next();
+  };
+
+  // ── PUBLIC API v1 ──
+
+  // API Documentation
+  app.get("/api/v1/docs", (_req, res) => {
+    res.json({
+      name: "AutoPro Libya Public API",
+      version: "1.0",
+      description: "عرض سيارات مزادات أوتو برو على موقعك",
+      baseUrl: `${SITE_URL}/api/v1`,
+      authentication: "أضف X-API-KEY في الـ header أو ?api_key= في الرابط",
+      endpoints: {
+        "GET /api/v1/cars": "قائمة السيارات المتاحة (مع فلاتر)",
+        "GET /api/v1/cars/:id": "تفاصيل سيارة واحدة",
+        "GET /api/v1/cars/live": "السيارات في المزاد المباشر الآن",
+        "GET /api/v1/cars/upcoming": "السيارات القادمة للمزاد",
+        "GET /api/v1/cars/offers": "سيارات سوق العروض",
+        "GET /api/v1/stats": "إحصائيات المنصة",
+        "GET /api/v1/market-prices": "أسعار السوق الليبي"
+      },
+      filters: {
+        make: "الماركة (Toyota, BMW...)",
+        model: "الموديل",
+        year_min: "أقل سنة",
+        year_max: "أعلى سنة",
+        price_min: "أقل سعر",
+        price_max: "أعلى سعر",
+        status: "الحالة (live, upcoming, offer_market, closed)",
+        limit: "عدد النتائج (افتراضي 20، أقصى 100)",
+        offset: "بداية النتائج (للـ pagination)"
+      },
+      example: `curl -H "X-API-KEY: YOUR_KEY" ${SITE_URL}/api/v1/cars?make=Toyota&limit=10`,
+      rateLimit: "1000 طلب/ساعة"
+    });
+  });
+
+  // List cars with filters
+  app.get("/api/v1/cars", validateApiKey, (req, res) => {
+    try {
+      const { make, model, year_min, year_max, price_min, price_max, status, limit, offset, sort } = req.query;
+
+      let where = "WHERE 1=1";
+      const params: any[] = [];
+
+      if (make) { where += " AND LOWER(c.make) LIKE ?"; params.push(`%${(make as string).toLowerCase()}%`); }
+      if (model) { where += " AND LOWER(c.model) LIKE ?"; params.push(`%${(model as string).toLowerCase()}%`); }
+      if (year_min) { where += " AND c.year >= ?"; params.push(Number(year_min)); }
+      if (year_max) { where += " AND c.year <= ?"; params.push(Number(year_max)); }
+      if (price_min) { where += " AND c.currentBid >= ?"; params.push(Number(price_min)); }
+      if (price_max) { where += " AND c.currentBid <= ?"; params.push(Number(price_max)); }
+      if (status) { where += " AND c.status = ?"; params.push(status); }
+      else { where += " AND c.status IN ('live', 'upcoming', 'offer_market')"; }
+
+      const lim = Math.min(Number(limit) || 20, 100);
+      const off = Number(offset) || 0;
+      const orderBy = sort === 'price_asc' ? 'c.currentBid ASC' : sort === 'price_desc' ? 'c.currentBid DESC' : sort === 'year_desc' ? 'c.year DESC' : 'c.id DESC';
+
+      const total = (db.prepare(`SELECT COUNT(*) as c FROM cars c ${where}`).get(...params) as any)?.c || 0;
+      const cars = db.prepare(`
+        SELECT c.id, c.lotNumber, c.vin, c.make, c.model, c.trim, c.year, c.odometer, c.mileageUnit,
+               c.engine, c.transmission, c.drive, c.fuelType, c.exteriorColor, c.primaryDamage,
+               c.titleType, c.location, c.currentBid, c.reservePrice, c.currency, c.images,
+               c.status, c.auctionEndDate, c.acceptOffers
+        FROM cars c ${where}
+        ORDER BY ${orderBy} LIMIT ? OFFSET ?
+      `).all(...params, lim, off);
+
+      // Parse images JSON
+      const parsed = cars.map((c: any) => ({
+        ...c,
+        images: (() => { try { return JSON.parse(c.images); } catch { return []; } })(),
+        url: `${SITE_URL}/car-details/${c.id}`,
+        bidUrl: c.status === 'live' ? `${SITE_URL}/live-auction` : `${SITE_URL}/car-details/${c.id}`
+      }));
+
+      res.json({
+        success: true,
+        total,
+        limit: lim,
+        offset: off,
+        count: parsed.length,
+        cars: parsed
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Single car details
+  app.get("/api/v1/cars/:id", validateApiKey, (req, res) => {
+    try {
+      const car: any = db.prepare(`
+        SELECT c.*,
+          (SELECT COUNT(*) FROM bids WHERE carId = c.id) as bidCount,
+          (SELECT MAX(amount) FROM bids WHERE carId = c.id) as highestBid
+        FROM cars c WHERE c.id = ?
+      `).get(req.params.id);
+
+      if (!car) return res.status(404).json({ error: 'Car not found' });
+
+      car.images = (() => { try { return JSON.parse(car.images); } catch { return []; } })();
+      car.url = `${SITE_URL}/car-details/${car.id}`;
+      car.bidUrl = car.status === 'live' ? `${SITE_URL}/live-auction` : `${SITE_URL}/car-details/${car.id}`;
+
+      res.json({ success: true, car });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Live auction cars
+  app.get("/api/v1/cars/live", validateApiKey, (_req, res) => {
+    try {
+      const cars = db.prepare("SELECT id, lotNumber, make, model, year, currentBid, auctionEndDate, images, location FROM cars WHERE status = 'live'").all();
+      res.json({ success: true, count: cars.length, cars: cars.map((c: any) => ({ ...c, images: (() => { try { return JSON.parse(c.images); } catch { return []; } })(), url: `${SITE_URL}/live-auction` })) });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Upcoming cars
+  app.get("/api/v1/cars/upcoming", validateApiKey, (_req, res) => {
+    try {
+      const cars = db.prepare("SELECT id, lotNumber, make, model, year, currentBid, auctionEndDate, images, location FROM cars WHERE status = 'upcoming'").all();
+      res.json({ success: true, count: cars.length, cars: cars.map((c: any) => ({ ...c, images: (() => { try { return JSON.parse(c.images); } catch { return []; } })(), url: `${SITE_URL}/car-details/${c.id}` })) });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Offer market cars
+  app.get("/api/v1/cars/offers", validateApiKey, (_req, res) => {
+    try {
+      const cars = db.prepare("SELECT id, lotNumber, make, model, year, currentBid, reservePrice, offerMarketEndTime, images, location FROM cars WHERE status = 'offer_market'").all();
+      res.json({ success: true, count: cars.length, cars: cars.map((c: any) => ({ ...c, images: (() => { try { return JSON.parse(c.images); } catch { return []; } })(), url: `${SITE_URL}/car-details/${c.id}` })) });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Platform stats
+  app.get("/api/v1/stats", validateApiKey, (_req, res) => {
+    try {
+      const totalCars = (db.prepare("SELECT COUNT(*) as c FROM cars").get() as any)?.c || 0;
+      const liveCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'live'").get() as any)?.c || 0;
+      const upcomingCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status = 'upcoming'").get() as any)?.c || 0;
+      const soldCars = (db.prepare("SELECT COUNT(*) as c FROM cars WHERE status IN ('closed', 'sold')").get() as any)?.c || 0;
+      const totalBids = (db.prepare("SELECT COUNT(*) as c FROM bids").get() as any)?.c || 0;
+      const totalUsers = (db.prepare("SELECT COUNT(*) as c FROM users WHERE role != 'admin'").get() as any)?.c || 0;
+      res.json({ success: true, stats: { totalCars, liveCars, upcomingCars, soldCars, totalBids, totalUsers } });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Libyan market prices
+  app.get("/api/v1/market-prices", validateApiKey, (req, res) => {
+    try {
+      const { make, model, year } = req.query;
+      let where = "WHERE 1=1";
+      const params: any[] = [];
+      if (make) { where += " AND LOWER(make) LIKE ?"; params.push(`%${(make as string).toLowerCase()}%`); }
+      if (model) { where += " AND LOWER(model) LIKE ?"; params.push(`%${(model as string).toLowerCase()}%`); }
+      if (year) { where += " AND year = ?"; params.push(Number(year)); }
+
+      const prices = db.prepare(`SELECT make, model, year, price_usd, price_lyd FROM libyan_market_prices ${where} ORDER BY make, model, year LIMIT 50`).all(...params);
+      res.json({ success: true, count: prices.length, prices });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Admin: Generate API key
+  app.post("/api/admin/api-keys", requireAdmin, (req, res) => {
+    try {
+      const { name, website } = req.body;
+      if (!name) return res.status(400).json({ error: "اسم التطبيق مطلوب" });
+      const key = `autopro_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      db.prepare("INSERT INTO api_keys (key, name, website, active, usageCount, createdAt, lastUsedAt) VALUES (?, ?, ?, 1, 0, ?, ?)")
+        .run(key, name, website || '', new Date().toISOString(), new Date().toISOString());
+      res.json({ success: true, key, name, website });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Admin: List API keys
+  app.get("/api/admin/api-keys", requireAdmin, (_req, res) => {
+    try {
+      const keys = db.prepare("SELECT * FROM api_keys ORDER BY createdAt DESC").all();
+      res.json(keys);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Admin: Toggle API key
+  app.put("/api/admin/api-keys/:key/toggle", requireAdmin, (req, res) => {
+    try {
+      db.prepare("UPDATE api_keys SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END WHERE key = ?").run(req.params.key);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // =====================================================================
