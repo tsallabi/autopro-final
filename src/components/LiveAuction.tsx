@@ -275,6 +275,10 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
           setShowAntiSniping(true);
           setTimeout(() => setShowAntiSniping(false), 3000);
         }
+        // Play tick sound in last 30 seconds (every 2 seconds to avoid spam)
+        if (remainingSeconds <= 30 && remainingSeconds > 0 && remainingSeconds % 2 === 0) {
+          playVoice('tick');
+        }
         return remainingSeconds;
       });
     };
