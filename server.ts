@@ -4461,24 +4461,34 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         return;
       }
 
-      // Shift time for live car and all upcoming cars (15 seconds increment)
+      // Anti-sniping: ensure at least 15 seconds remain after each bid
       if (car.status === 'live' && car.auctionEndDate) {
           const currentEndDate = new Date(car.auctionEndDate).getTime();
-          // Always add exactly 15 seconds to current end date (or current Date if somehow passed)
-          const newEndDate = new Date(Math.max(currentEndDate, Date.now()) + 15000).toISOString();
-          db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, carId);
-          io.to(carId).emit("car_updated", { id: carId, auctionEndDate: newEndDate });
+          const now = Date.now();
+          const remaining = currentEndDate - now;
+          const ANTI_SNIPE_MS = 15000; // 15 seconds
 
-          // Also shift upcoming cars by 15 seconds in the db
-          db.prepare(`
-              UPDATE cars 
-              SET auctionEndDate = datetime(auctionEndDate, '+15 seconds'),
-                  auctionStartTime = datetime(auctionStartTime, '+15 seconds')
-              WHERE status = 'upcoming'
-          `).run();
-          
-          io.emit("upcoming_cars_shifted", { shiftMs: 15000 });
-          console.log(`Bid placed: Live car ${carId} extended by 15s. All upcoming cars shifted.`);
+          // Only extend if less than 15 seconds remain
+          if (remaining < ANTI_SNIPE_MS) {
+            const newEndDate = new Date(now + ANTI_SNIPE_MS).toISOString();
+            const addedMs = (now + ANTI_SNIPE_MS) - currentEndDate;
+            db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, carId);
+            io.to(carId).emit("car_updated", { id: carId, auctionEndDate: newEndDate });
+
+            // Also shift upcoming cars by the same amount
+            const addedSec = Math.ceil(addedMs / 1000);
+            db.prepare(`
+                UPDATE cars
+                SET auctionEndDate = datetime(auctionEndDate, '+${addedSec} seconds'),
+                    auctionStartTime = datetime(auctionStartTime, '+${addedSec} seconds')
+                WHERE status = 'upcoming'
+            `).run();
+
+            io.emit("upcoming_cars_shifted", { shiftMs: addedMs });
+            console.log(`Bid placed: Live car ${carId} — only ${Math.round(remaining/1000)}s left, extended to 15s.`);
+          } else {
+            console.log(`Bid placed: Live car ${carId} — ${Math.round(remaining/1000)}s remaining, no extension needed.`);
+          }
       }
 
       const prevWinnerId = car.winnerId;

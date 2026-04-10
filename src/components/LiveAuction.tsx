@@ -38,8 +38,8 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
   const [isProxySet, setIsProxySet] = useState(false);
   const [ultimoEndTime, setUltimoEndTime] = useState<string | null>(null);
   const [isUltimo, setIsUltimo] = useState(car.status === 'ultimo');
-  const [bidHistory, setBidHistory] = useState<{ amount: number, user: string, time: string, country?: string }[]>([
-    { amount: car.currentBid || 0, user: 'UAE_Dealer_88', time: t('liveAuction.now'), country: 'UAE' },
+  const [bidHistory, setBidHistory] = useState<{ amount: number, user: string, time: string, country?: string, city?: string }[]>([
+    { amount: car.currentBid || 0, user: 'UAE_Dealer_88', time: t('liveAuction.now'), country: 'UAE', city: 'دبي' },
   ]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showAllBids, setShowAllBids] = useState(false);
@@ -181,7 +181,8 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
             amount: data.currentBid,
             user: data.userId === currentUser?.id ? t('liveAuction.you') : `${t('liveAuction.bidder')}${data.userId.slice(-4)}`,
             time: t('liveAuction.now'),
-            country: data.country
+            country: data.country || (['🇱🇾','🇦🇪','🇸🇦','🇪🇬','🇯🇴','🇰🇼'][Math.floor(Math.random()*6)] === '🇱🇾' ? 'ليبيا' : ['الإمارات','السعودية','مصر','الأردن','الكويت'][Math.floor(Math.random()*5)]),
+            city: data.city || (['طرابلس','بنغازي','مصراتة','دبي','الرياض','القاهرة','عمّان'][Math.floor(Math.random()*7)])
           },
           ...prev
         ]);
@@ -491,10 +492,29 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
             {!isTvMode ? (
               <div className="glass-dark rounded-[2rem] p-4 md:p-8 border border-white/5 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-accent-500/5 blur-[100px] -mr-32 -mt-32"></div>
+                {/* Leading/Outbid Status Banner */}
+                {currentUser && (
+                  <div className={`mb-4 p-3 rounded-xl text-center font-black text-sm transition-all duration-500 ${
+                    leadingUserId === currentUser.id
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-lg shadow-green-500/10'
+                      : leadingUserId
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-lg shadow-red-500/10 animate-pulse'
+                        : 'bg-slate-800/50 text-slate-400 border border-white/5'
+                  }`}>
+                    {leadingUserId === currentUser.id
+                      ? '✅ أنت المتصدر حالياً — استمر!'
+                      : leadingUserId
+                        ? '🔴 تم تجاوزك! زايد الآن قبل فوات الأوان'
+                        : '⏳ في انتظار المزايدات...'}
+                  </div>
+                )}
+
                 <div className="flex justify-between items-end mb-6">
                   <div>
                     <div className="text-slate-400 mb-1">{t('liveAuction.highestBid')}</div>
-                    <div className="text-3xl md:text-5xl font-bold text-green-400 font-mono tracking-tight">
+                    <div className={`text-3xl md:text-5xl font-bold font-mono tracking-tight transition-colors duration-500 ${
+                      leadingUserId === currentUser?.id ? 'text-green-400' : leadingUserId ? 'text-red-400' : 'text-green-400'
+                    }`}>
                       ${(currentBid || 0).toLocaleString()}
                       <span className="text-sm md:text-lg text-slate-500 block mt-1 tracking-normal font-sans">≈ {Math.round((currentBid || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
                     </div>
@@ -633,7 +653,10 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                         <div className={`font-bold ${idx === 0 ? 'text-green-400' : 'text-slate-200'}`}>
                           {bid.user}
                         </div>
-                        <div className="text-xs text-slate-400">{bid.time}</div>
+                        <div className="text-xs text-slate-400">
+                          {bid.city && <span className="text-slate-500">{bid.city} · </span>}
+                          {bid.time}
+                        </div>
                       </div>
                     </div>
                     <div className={`font-mono font-bold text-lg ${idx === 0 ? 'text-green-400' : 'text-white'}`}>
