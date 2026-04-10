@@ -59,6 +59,7 @@ export const UserDashboard = () => {
 
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showDetailedReport, setShowDetailedReport] = useState(false);
   const [showInspectionModal, setShowInspectionModal] = useState(false);
@@ -1801,39 +1802,50 @@ export const UserDashboard = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-50">
-                  {messages.map((msg: any) => (
+                  {messages.map((msg: any) => {
+                    const isExpanded = expandedMessageId === msg.id;
+                    return (
                     <div
                       key={msg.id}
-                      onClick={() => !msg.isRead && markMessageAsRead(msg.id)}
-                      className={`p-8 hover:bg-slate-50/50 transition-all flex justify-between items-center group cursor-pointer ${!msg.isRead ? 'bg-orange-50/20 border-r-4 border-orange-500' : ''
-                        }`}
+                      onClick={() => {
+                        if (!msg.isRead) markMessageAsRead(msg.id);
+                        setExpandedMessageId(isExpanded ? null : msg.id);
+                      }}
+                      className={`p-8 hover:bg-slate-50/50 transition-all group cursor-pointer ${!msg.isRead ? 'bg-orange-50/20 border-r-4 border-orange-500' : ''}`}
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-sm">
-                            {msg.senderFirstName?.[0] || 'إ'}
-                          </div>
-                          <div>
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
-                              {msg.category === 'registration' ? 'فريق التسجيل' :
-                                msg.category === 'accounting' ? 'فريق المحاسبة' :
-                                  msg.category === 'purchasing' ? 'فريق الشراء' :
-                                    msg.category === 'transport' ? 'فريق النقل' :
-                                      msg.category === 'clearance' ? 'فريق التخليص الجمركي' :
-                                        msg.category === 'shipping' ? 'فريق الشحن' :
-                                          msg.category === 'complaints' ? 'فريق الشكاوي والجودة' : 'عام'}
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-sm">
+                              {msg.senderFirstName?.[0] || 'إ'}
                             </div>
-                            <div className="text-sm font-black text-slate-900">{msg.senderFirstName} {msg.senderLastName}</div>
+                            <div>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+                                {msg.category === 'registration' ? 'فريق التسجيل' :
+                                  msg.category === 'accounting' ? 'فريق المحاسبة' :
+                                    msg.category === 'purchasing' ? 'فريق الشراء' :
+                                      msg.category === 'transport' ? 'فريق النقل' :
+                                        msg.category === 'clearance' ? 'فريق التخليص الجمركي' :
+                                          msg.category === 'shipping' ? 'فريق الشحن' :
+                                            msg.category === 'complaints' ? 'فريق الشكاوي والجودة' : 'عام'}
+                              </div>
+                              <div className="text-sm font-black text-slate-900">{msg.senderFirstName} {msg.senderLastName}</div>
+                            </div>
                           </div>
+                          <h4 className={`text-lg transition-colors ${!msg.isRead ? 'font-black text-slate-900' : 'font-bold text-slate-600 group-hover:text-slate-900'}`}>{msg.subject}</h4>
+                          {!isExpanded && <p className="text-sm text-slate-500 font-medium line-clamp-2 max-w-2xl">{msg.content}</p>}
                         </div>
-                        <h4 className={`text-lg transition-colors ${!msg.isRead ? 'font-black text-slate-900' : 'font-bold text-slate-600 group-hover:text-slate-900'
-                          }`}>{msg.subject}</h4>
-                        <p className="text-sm text-slate-500 font-medium line-clamp-2 max-w-2xl">{msg.content}</p>
-                        <div className="text-[10px] font-bold text-slate-400 mt-4">{new Date(msg.timestamp).toLocaleString('ar-LY')}</div>
+                        <ChevronDown className={`w-6 h-6 text-slate-300 transition-transform ${isExpanded ? 'rotate-180 text-orange-500' : ''}`} />
                       </div>
-                      <ChevronRight className="w-6 h-6 text-slate-200 group-hover:text-slate-900 group-hover:rtl:-translate-x-2 transition-all" />
+                      {isExpanded && (
+                        <div className="mt-4 p-6 bg-slate-50 rounded-2xl border border-slate-100 whitespace-pre-wrap text-sm text-slate-700 leading-relaxed">
+                          {msg.content}
+                        </div>
+                      )}
+                      <div className="text-[10px] font-bold text-slate-400 mt-4">{new Date(msg.timestamp).toLocaleString('ar-LY')}</div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
