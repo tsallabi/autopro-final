@@ -546,6 +546,137 @@ const ExternalLogsViewer: React.FC = () => {
 };
 
 /* ============================================================
+   WelcomeSettingsPanel — Admin-editable welcome message settings
+   ============================================================ */
+const WelcomeSettingsPanel: React.FC = () => {
+  const [form, setForm] = useState({
+    welcome_message_subject: '',
+    welcome_message_content: '',
+    deposit_reminder_text: '',
+    company_address: '',
+    company_phones: '',
+    company_google_maps: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    authFetch('/api/admin/welcome-settings')
+      .then(r => r.json())
+      .then(data => { setForm(prev => ({ ...prev, ...data })); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await authFetch('/api/admin/welcome-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
+  if (loading) return <div className="text-center py-12 text-slate-500">جاري التحميل...</div>;
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-800">رسالة الترحيب</h2>
+        <p className="text-sm text-slate-500 mt-1">تعديل رسالة الترحيب التي تُرسل للمستخدمين الجدد عند التسجيل</p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-1">عنوان رسالة الترحيب</label>
+          <input
+            className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+            value={form.welcome_message_subject}
+            onChange={e => setForm(f => ({ ...f, welcome_message_subject: e.target.value }))}
+            placeholder="🎉 مرحباً بك في أوتو برو — دليلك الكامل للبدء"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-1">محتوى رسالة الترحيب</label>
+          <p className="text-xs text-slate-400 mb-2">استخدم {'${firstName}'} لاسم المستخدم و {'${SITE_URL}'} لرابط الموقع</p>
+          <textarea
+            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none min-h-[250px] font-mono"
+            value={form.welcome_message_content}
+            onChange={e => setForm(f => ({ ...f, welcome_message_content: e.target.value }))}
+            placeholder="أهلاً ${firstName}! مرحباً بك في منصة أوتو برو..."
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-1">نص تذكير العربون</label>
+          <input
+            className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+            value={form.deposit_reminder_text}
+            onChange={e => setForm(f => ({ ...f, deposit_reminder_text: e.target.value }))}
+            placeholder="💰 ادفع العربون الآن واحصل على قوة شرائية 10 أضعاف!"
+          />
+        </div>
+
+        <div className="border-t border-slate-200 pt-5">
+          <h3 className="text-lg font-bold text-slate-700 mb-4">معلومات الشركة</h3>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">عنوان الشركة</label>
+              <input
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                value={form.company_address}
+                onChange={e => setForm(f => ({ ...f, company_address: e.target.value }))}
+                placeholder="طرابلس، ليبيا"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">أرقام الهاتف</label>
+              <input
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                value={form.company_phones}
+                onChange={e => setForm(f => ({ ...f, company_phones: e.target.value }))}
+                placeholder="+218 91 000 0000 / +1 555 000 0000"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">رابط خرائط Google</label>
+              <input
+                className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                value={form.company_google_maps}
+                onChange={e => setForm(f => ({ ...f, company_google_maps: e.target.value }))}
+                placeholder="https://maps.google.com/..."
+                dir="ltr"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-8 py-3 rounded-xl font-bold transition-colors"
+          >
+            {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+          </button>
+          {saved && <span className="text-green-600 font-bold text-sm">تم الحفظ بنجاح ✓</span>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================
    SystemSettingsPanel — Global fees and system behavior
    ============================================================ */
 const SystemSettingsPanel: React.FC = () => {
@@ -3317,7 +3448,7 @@ export const AdminDashboard = () => {
         { group: 'Vehicles & Auctions', items: ['cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'inspections'] },
         { group: 'Treasury & Accounting', items: ['financial_approvals', 'payment_requests', 'withdrawal_requests', 'all_invoices', 'financial_ledger', 'expenses', 'payment_gateways'] },
         { group: 'Logistics & Shipping', items: ['inventory_review', 'shipments_tracking', 'shipping_settings', 'calculator'] },
-        { group: 'Platform Settings', items: ['system_global', 'marketing', 'offices', 'footer_settings', 'api_keys'] }
+        { group: 'Platform Settings', items: ['system_global', 'marketing', 'offices', 'footer_settings', 'api_keys', 'welcome_settings'] }
       ];
       const activeGroup = groups.find(g => g.items.includes(view));
       if (activeGroup) {
@@ -5590,6 +5721,9 @@ export const AdminDashboard = () => {
       case 'system_global':
         return <SystemSettingsPanel />;
 
+      case 'welcome_settings':
+        return <WelcomeSettingsPanel />;
+
       case 'api_keys':
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
@@ -6985,6 +7119,7 @@ export const AdminDashboard = () => {
                 { id: 'offices', label: 'إدارة الفروع والمكاتب', icon: Building2 },
                 { id: 'footer_settings', label: 'إعدادات الفوتر والروابط', icon: Settings },
                 { id: 'api_keys', label: 'مفاتيح API', icon: Key },
+                { id: 'welcome_settings', label: 'رسالة الترحيب', icon: MessageSquare },
               ]
             }
           ]

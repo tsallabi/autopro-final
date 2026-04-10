@@ -62,6 +62,7 @@ export const UserDashboard = () => {
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showDetailedReport, setShowDetailedReport] = useState(false);
+  const [showSalesReport, setShowSalesReport] = useState(false);
   const [showInspectionModal, setShowInspectionModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -1956,7 +1957,7 @@ export const UserDashboard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
                   { title: 'تحليل أسعار السوق', desc: 'قارن أسعار السيارات المشابهة في السوق المحلي والدولي.', icon: TrendingUp, action: () => navigate('/marketplace') },
-                  { title: 'تقرير مبيعات الشهر', desc: 'إحصائيات تفصيلية عن حركة المبيعات والأصناف الأكثر طلباً.', icon: BarChart3, action: () => alert('قريباً') },
+                  { title: 'تقرير مبيعات الشهر', desc: 'إحصائيات تفصيلية عن حركة المبيعات والأصناف الأكثر طلباً.', icon: BarChart3, action: () => setShowSalesReport(true) },
                   { title: 'أسعار الشحن المحدثة', desc: 'آخر تحديثات تكاليف الشحن من الموانئ الأمريكية والخليجية.', icon: Ship, action: () => navigate('/shipping') },
                 ].map((report, i) => (
                   <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl hover:shadow-2xl transition-all group">
@@ -1974,6 +1975,129 @@ export const UserDashboard = () => {
                   </div>
                 ))}
               </div>
+
+              {showSalesReport && (() => {
+                const soldCars = cars.filter((c: any) => c.status === 'closed' || c.status === 'sold');
+                const thisMonth = soldCars.filter((c: any) => {
+                  const d = new Date(c.updatedAt || c.createdAt);
+                  const now = new Date();
+                  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                });
+                const displayCars = thisMonth.length > 0 ? thisMonth : soldCars;
+                const avgPrice = displayCars.length ? Math.round(displayCars.reduce((s: number, c: any) => s + (c.currentBid || 0), 0) / displayCars.length) : 0;
+                const totalBids = displayCars.reduce((s: number, c: any) => s + (c.bidCount || 0), 0);
+                const makeCount: Record<string, number> = {};
+                displayCars.forEach((c: any) => { makeCount[c.make] = (makeCount[c.make] || 0) + 1; });
+                const topMakes = Object.entries(makeCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                const prices = displayCars.map((c: any) => c.currentBid || 0).filter((p: number) => p > 0);
+                const minPrice = prices.length ? Math.min(...prices) : 0;
+                const maxPrice = prices.length ? Math.max(...prices) : 0;
+                const topMakeName = topMakes.length > 0 ? topMakes[0][0] : '—';
+
+                return (
+                  <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 text-right" dir="rtl">
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                        <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600">
+                          <BarChart3 className="w-6 h-6" />
+                        </div>
+                        تقرير مبيعات الشهر
+                      </h3>
+                      <button
+                        onClick={() => setShowSalesReport(false)}
+                        className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-sm transition-all flex items-center gap-2"
+                      >
+                        <X className="w-4 h-4" /> العودة للتقارير
+                      </button>
+                    </div>
+
+                    {displayCars.length === 0 ? (
+                      <div className="text-center py-16">
+                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <BarChart3 className="w-10 h-10 text-slate-300" />
+                        </div>
+                        <p className="text-lg font-bold text-slate-400">لا توجد مبيعات مسجلة حالياً</p>
+                        <p className="text-sm text-slate-300 mt-2">ستظهر الإحصائيات بمجرد إتمام عمليات بيع على المنصة</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                          <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-6 rounded-[2rem] border border-orange-100 text-center">
+                            <div className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-2">إجمالي المباع</div>
+                            <div className="text-3xl font-black text-orange-600">{displayCars.length}</div>
+                            <div className="text-xs font-bold text-orange-400 mt-1">سيارة</div>
+                          </div>
+                          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-6 rounded-[2rem] border border-emerald-100 text-center">
+                            <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-2">متوسط السعر</div>
+                            <div className="text-3xl font-black text-emerald-600">${avgPrice.toLocaleString()}</div>
+                            <div className="text-xs font-bold text-emerald-400 mt-1">دولار</div>
+                          </div>
+                          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 p-6 rounded-[2rem] border border-blue-100 text-center">
+                            <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">الأكثر طلباً</div>
+                            <div className="text-2xl font-black text-blue-600">{topMakeName}</div>
+                            <div className="text-xs font-bold text-blue-400 mt-1">ماركة</div>
+                          </div>
+                          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 p-6 rounded-[2rem] border border-purple-100 text-center">
+                            <div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-2">إجمالي المزايدات</div>
+                            <div className="text-3xl font-black text-purple-600">{totalBids}</div>
+                            <div className="text-xs font-bold text-purple-400 mt-1">مزايدة</div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                          <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                            <h4 className="text-sm font-black text-slate-500 mb-4 flex items-center gap-2">
+                              <TrendingUp className="w-4 h-4" /> نطاق الأسعار
+                            </h4>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-[10px] font-black text-slate-400 uppercase mb-1">أقل سعر</div>
+                                <div className="text-xl font-black text-slate-800">${minPrice.toLocaleString()}</div>
+                              </div>
+                              <div className="h-px flex-1 bg-slate-200 mx-4" />
+                              <div className="text-left">
+                                <div className="text-[10px] font-black text-slate-400 uppercase mb-1">أعلى سعر</div>
+                                <div className="text-xl font-black text-slate-800">${maxPrice.toLocaleString()}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                            <h4 className="text-sm font-black text-slate-500 mb-4 flex items-center gap-2">
+                              <Car className="w-4 h-4" /> أكثر 5 ماركات مبيعاً
+                            </h4>
+                            <div className="space-y-3">
+                              {topMakes.map(([make, count], idx) => (
+                                <div key={make} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-6 h-6 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center text-xs font-black">{idx + 1}</span>
+                                    <span className="text-sm font-bold text-slate-700">{make}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 bg-orange-200 rounded-full" style={{ width: `${Math.max(20, (count / displayCars.length) * 100)}px` }} />
+                                    <span className="text-sm font-black text-slate-500">{count}</span>
+                                  </div>
+                                </div>
+                              ))}
+                              {topMakes.length === 0 && (
+                                <p className="text-sm text-slate-400 font-medium">لا توجد بيانات كافية</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-center">
+                          <p className="text-xs text-slate-400 font-medium">
+                            {thisMonth.length > 0
+                              ? `البيانات خاصة بشهر ${new Date().toLocaleDateString('ar-LY', { month: 'long', year: 'numeric' })}`
+                              : 'يتم عرض جميع المبيعات المسجلة (لا توجد مبيعات لهذا الشهر بعد)'}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {showReportModal && selectedReport && !showDetailedReport && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 text-right" dir="rtl">

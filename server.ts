@@ -1900,6 +1900,8 @@ async function startServer() {
       db.prepare(`INSERT INTO payment_requests (id, userId, type, amount, method, referenceNo, status, requestedAt)
         VALUES (?,?,?,?,?,?,?,?)`).run(id, userId, 'topup', amount, method || 'bank_transfer', referenceNo || null, 'pending', new Date().toISOString());
       sendNotification('admin-1', '💰 طلب شحن محفظة جديد', `المستخدم ${userId} يطلب شحن محفظته بمبلغ $${Number(amount).toLocaleString()}`, 'info');
+      // Notify the user that their top-up request was submitted
+      sendNotification(userId, '📩 تم استلام طلب شحن المحفظة', `تم إرسال طلب شحن محفظتك بمبلغ $${Number(amount).toLocaleString()} للمراجعة. سيتم إعلامك فور الموافقة.`, 'info', 'general_notification', {}, '/dashboard/user?view=wallet');
       res.json({ success: true, requestId: id, message: "تم إرسال طلب الشحن — سيُراجَع خلال 24 ساعة" });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2024,6 +2026,23 @@ async function startServer() {
         db.prepare("UPDATE payment_requests SET status='approved', adminNote=?, processedAt=? WHERE id=?")
           .run(adminNote || null, timestamp, id);
       })();
+
+      // Send receipt internal message after transaction commits
+      const walletAfter: any = db.prepare("SELECT balance FROM buyer_wallets WHERE userId = ?").get(pr.userId);
+      const newBalance = walletAfter ? Number(walletAfter.balance).toLocaleString() : '—';
+      if (pr.type === 'topup') {
+        sendInternalMessage('admin-1', pr.userId,
+          '✅ إيصال شحن محفظة — تم قبول طلبك',
+          `إيصال شحن محفظة\n\nالمبلغ: $${Number(pr.amount).toLocaleString()}\nالطريقة: ${pr.method || 'تحويل بنكي'}\nالمرجع: ${pr.referenceNo || id}\nالتاريخ: ${new Date().toLocaleString('ar-LY')}\nرصيد المحفظة الجديد: $${newBalance}\n\nشكراً لثقتك في أوتو برو! 🧡`,
+          'accounting'
+        );
+      } else if (pr.type === 'invoice_payment') {
+        sendInternalMessage('admin-1', pr.userId,
+          '✅ إيصال دفع فاتورة — تم تأكيد الدفع',
+          `إيصال دفع فاتورة\n\nرقم الفاتورة: ${pr.invoiceId}\nالمبلغ: $${Number(pr.amount).toLocaleString()}\nالطريقة: ${pr.method || 'تحويل بنكي'}\nالمرجع: ${pr.referenceNo || id}\nالتاريخ: ${new Date().toLocaleString('ar-LY')}\n\nشكراً لثقتك في أوتو برو! 🧡`,
+          'accounting'
+        );
+      }
 
       res.json({ success: true });
     } catch (err: any) { 
@@ -2515,12 +2534,29 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
         // === WELCOME NOTIFICATIONS FOR NEW USER ===
 
+        // Read welcome message settings from DB (fallback to hardcoded defaults)
+        const defaultWelcomeContent = `أهلاً \${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: $500 أو 1,000 دينار ليبي\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع $1,000 = قوة شرائية $10,000\n• رابط الدفع: \${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: \${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: \${SITE_URL}/marketplace\n• المزادات المباشرة: \${SITE_URL}/live-auction\n• سوق العروض: \${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: \${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`;
+        const defaultWelcomeSubject = '🎉 مرحباً بك في أوتو برو — دليلك الكامل للبدء';
+        const defaultDepositReminder = '💰 ادفع العربون الآن واحصل على قوة شرائية 10 أضعاف! الحد الأدنى $500 أو 1,000 د.ل';
+
+        const getWelcomeSetting = (key: string) => {
+          try {
+            const row: any = db.prepare("SELECT value FROM system_settings WHERE key = ?").get(key);
+            return row?.value || '';
+          } catch { return ''; }
+        };
+
+        const welcomeSubject = getWelcomeSetting('welcome_message_subject') || defaultWelcomeSubject;
+        let welcomeContent = getWelcomeSetting('welcome_message_content') || defaultWelcomeContent;
+        const depositReminder = getWelcomeSetting('deposit_reminder_text') || defaultDepositReminder;
+
+        // Replace placeholders in welcome content
+        welcomeContent = welcomeContent
+          .replace(/\$\{firstName\}/g, firstName)
+          .replace(/\$\{SITE_URL\}/g, SITE_URL);
+
         // 1. Rich welcome internal message — full onboarding guide
-        sendInternalMessage('admin-1', id,
-          '🎉 مرحباً بك في أوتو برو — دليلك الكامل للبدء',
-          `أهلاً ${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: $500 أو 1,000 دينار ليبي\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع $1,000 = قوة شرائية $10,000\n• رابط الدفع: ${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: ${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: ${SITE_URL}/marketplace\n• المزادات المباشرة: ${SITE_URL}/live-auction\n• سوق العروض: ${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: ${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`,
-          'general'
-        );
+        sendInternalMessage('admin-1', id, welcomeSubject, welcomeContent, 'general');
 
         // 2. Welcome notification
         sendNotification(id,
@@ -2528,9 +2564,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           'info', '/deposit');
 
         // 3. Deposit reminder notification
-        sendNotification(id,
-          `💰 ادفع العربون الآن واحصل على قوة شرائية 10 أضعاف! الحد الأدنى $500 أو 1,000 د.ل`,
-          'warning', '/deposit');
+        sendNotification(id, depositReminder, 'warning', '/deposit');
 
         // 4. Delayed marketing notification about savings
         setTimeout(() => {
@@ -3341,7 +3375,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
         // Notify Admin
         sendNotification('admin-1', '🧾 طلب تأكيد دفع فاتورة', `قام المستخدم بدفع فاتورة ${invoice.type} بمبلغ $${invoice.amount.toLocaleString()} عبر ${method}. يرجى التأكيد.`, 'info');
-        
+        // Notify the user that their invoice payment request was submitted
+        sendNotification(userId, '📋 تم إرسال طلب دفع الفاتورة', `تم إرسال طلب دفع الفاتورة ${id} للمراجعة. سنُعلمك فور الموافقة.`, 'info', 'general_notification', {}, '/dashboard/user?view=invoices');
+
         return res.json({ success: true, status: 'pending_confirmation', message: "تم إرسال طلب الدفع للإدارة للمراجعة" });
       }
 
@@ -3768,6 +3804,33 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { res.status(500).json({ error: "Failed to update setting" }); }
   });
 
+  // ── Welcome Message Settings ──────────────────────────────────────────────
+  app.get("/api/admin/welcome-settings", requireAdmin, (_req, res) => {
+    try {
+      const keys = ['welcome_message_subject', 'welcome_message_content', 'deposit_reminder_text', 'company_address', 'company_phones', 'company_google_maps'];
+      const settings: Record<string, string> = {};
+      keys.forEach(key => {
+        const row: any = db.prepare("SELECT value FROM system_settings WHERE key = ?").get(key);
+        settings[key] = row?.value || '';
+      });
+      res.json(settings);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/admin/welcome-settings", requireAdmin, (req, res) => {
+    try {
+      const allowed = ['welcome_message_subject', 'welcome_message_content', 'deposit_reminder_text', 'company_address', 'company_phones', 'company_google_maps'];
+      const now = new Date().toISOString();
+      const stmt = db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updatedAt) VALUES (?, ?, ?)");
+      for (const [key, value] of Object.entries(req.body)) {
+        if (allowed.includes(key)) {
+          stmt.run(key, String(value), now);
+        }
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get("/api/admin/external-notifications", requireAdmin, (req, res) => {
     try {
       const logs = db.prepare("SELECT * FROM external_notifications ORDER BY timestamp DESC LIMIT 100").all();
@@ -4186,6 +4249,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `قام العميل ${userName} (${userRow?.email || userId}) بطلب إيداع مبلغ ${currency === 'LYD' ? amount.toLocaleString() + ' د.ل' : '$' + Number(amount).toLocaleString()} عبر ${methodLabel}.\n${referenceNo ? 'رقم المرجع: ' + referenceNo + '\n' : ''}يرجى مراجعة التحويل وتأكيده في لوحة تحكم الإدارة.`
       );
 
+      // Notify the user that their deposit request was received
+      sendNotification(userId, '📩 تم استلام طلب إيداعك', `تم استلام طلب إيداعك بمبلغ ${currency === 'LYD' ? amount.toLocaleString() + ' د.ل' : '$' + Number(amount).toLocaleString()}. سيتم مراجعته خلال 24 ساعة.`, 'info', 'general_notification', {}, '/dashboard/user?view=wallet');
+
       res.json({ success: true, message: "تم إرسال طلب الإيداع بنجاح. سيتم تحديث رصيدك بعد مراجعة الإدارة.", txId });
     } catch (err) {
       console.error('[DEPOSIT]', err);
@@ -4219,15 +4285,22 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         } catch (_) {}
       })();
 
-      // 3. Notify user (outside transaction so DB is already committed)
+      // 3. Fetch updated balances for receipt
+      const updatedUser: any = db.prepare("SELECT deposit, buyingPower FROM users WHERE id = ?").get(tx.userId);
+      const newDeposit = updatedUser ? Number(updatedUser.deposit).toLocaleString() : '—';
+      const newBuyingPower = updatedUser ? Number(updatedUser.buyingPower).toLocaleString() : '—';
+      const currSymbol = tx.currency === 'LYD' ? 'د.ل' : '$';
+
+      // 4. Notify user (outside transaction so DB is already committed)
       sendNotification(tx.userId,
-        '✅ تم تأكيد العربون!',
-        `تم قبول إيداع ${amtLabel}. القوة الشرائية الجديدة: ${(Number(tx.amount) * 10).toLocaleString()} ${tx.currency === 'LYD' ? 'د.ل' : '$'}. يمكنك المزايدة الآن!`,
-        'success', '/marketplace'
+        '🎉 تمت الموافقة على إيداعك!',
+        `تمت الموافقة على إيداعك بمبلغ ${amtLabel}! رصيدك الجديد: ${newDeposit} ${currSymbol}. قوتك الشرائية: ${newBuyingPower} ${currSymbol}`,
+        'success', 'general_notification', {}, '/dashboard/user?view=wallet'
       );
       sendInternalMessage('admin-1', tx.userId,
-        '✅ تم تأكيد استلام العربون',
-        `تم تأكيد إيداع ${amtLabel}.\nقوتك الشرائية الآن تجاوزت ${(Number(tx.amount) * 10).toLocaleString()} ${tx.currency === 'LYD' ? 'د.ل' : '$'}.\nيمكنك المشاركة في أي مزاد على المنصة — حظ سعيد!`
+        '✅ إيصال إيداع — تم قبول طلبك',
+        `إيصال إيداع\n\nالمبلغ: ${amtLabel}\nالطريقة: ${tx.method || 'تحويل بنكي'}\nالمرجع: ${tx.referenceNo || txId}\nالتاريخ: ${new Date().toLocaleString('ar-LY')}\nالرصيد الجديد: ${newDeposit} ${currSymbol}\nالقوة الشرائية: ${newBuyingPower} ${currSymbol}\n\nشكراً لثقتك في أوتو برو! 🧡`,
+        'accounting'
       );
 
       res.json({ success: true });
