@@ -2512,6 +2512,32 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           console.error(`[EMAIL ERROR] Failed to send verification to ${email}:`, mailErr);
         }
 
+        // === WELCOME NOTIFICATIONS FOR NEW USER ===
+
+        // 1. Welcome notification
+        sendNotification(id,
+          `🎉 مرحباً ${firstName}! حسابك جاهز في أوتو برو. ابدأ باستكشاف المزادات الآن.`,
+          'info', '/marketplace');
+
+        // 2. Deposit reminder notification
+        sendNotification(id,
+          `💰 لبدء المزايدة، تحتاج إيداع عربون (الحد الأدنى $500 أو 1,000 د.ل). ادفع الآن واحصل على قوة شرائية 10 أضعاف!`,
+          'warning', '/deposit');
+
+        // 3. Welcome internal message with tips
+        sendInternalMessage('admin-1', id,
+          '🚀 مرحباً بك في أوتو برو — دليل البداية السريعة',
+          `أهلاً ${firstName}! 👋\n\nشكراً لانضمامك لمنصة أوتو برو للمزادات.\n\n📋 خطوات البداية:\n1️⃣ ادفع العربون من صفحة الإيداع\n2️⃣ وثّق هويتك (KYC) لرفع حدود المزايدة\n3️⃣ تصفّح السيارات واختر المزاد\n4️⃣ زايد واربح!\n\n💡 نصيحة: القوة الشرائية = 10 أضعاف العربون. إيداع $1,000 يعطيك قوة $10,000!\n\n🏷️ عمولة المنصة 3% فقط — أقل عمولة في السوق.\n\nفريق أوتو برو 🧡`,
+          'general'
+        );
+
+        // 4. Marketing notification about savings
+        setTimeout(() => {
+          sendNotification(id,
+            `📊 هل تعلم؟ عملاؤنا يوفرون 30-50% مقارنة بأسعار السوق المحلي. تصفّح أسعار السوق الليبي الآن!`,
+            'info', '/marketplace');
+        }, 5000);
+
         // Notify all admins about new registration
         const admins: any[] = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
         admins.forEach((admin: any) => {
