@@ -2465,9 +2465,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       const verifyLink = `${SITE_URL}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
-      // Return user data IMMEDIATELY — don't wait for email
+      // Return user data + JWT token IMMEDIATELY — don't wait for email
       const newUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-      res.json(newUser);
+      const authToken = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '24h' });
+      const { password: _p, ...userWithoutPassword } = newUser;
+      res.json({ ...userWithoutPassword, token: authToken });
 
       // Send email & notifications in background (non-blocking)
       setImmediate(async () => {
