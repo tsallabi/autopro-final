@@ -351,15 +351,15 @@ export const UserDashboard = () => {
         return;
       }
 
-      // MyFatoorah redirect flow
-      if (paymentMethod === 'myfatoorah') {
-        const res = await authFetch('/api/payments/myfatoorah/create', {
+      // Plutu bank card redirect flow
+      if (paymentMethod === 'plutu') {
+        const res = await authFetch('/api/payments/plutu/localbank/create', {
           method: 'POST',
-          body: JSON.stringify({ amount: selectedInvoice.amount, currency: 'USD', invoiceId: selectedInvoice.id, type: 'invoice_payment' })
+          body: JSON.stringify({ amount: selectedInvoice.amount, invoiceId: selectedInvoice.id, type: 'invoice_payment' })
         });
         const data = await res.json();
-        if (data.paymentUrl) {
-          window.location.href = data.paymentUrl;
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url;
           return;
         } else {
           showAlert(data.error || 'فشل الدفع', 'error');
@@ -2691,7 +2691,7 @@ export const UserDashboard = () => {
                       { id: 'bank_transfer', label: 'تحويل بنكي', icon: Building2, desc: 'يتطلب مراجعة الإدارة' },
                       { id: 'cash', label: 'دفع نقدي', icon: DollarSign, desc: 'في أقرب مكتب لنا' },
                       { id: 'card', label: 'بطاقة إئتمان', icon: CreditCard, desc: 'دفع إلكتروني سريع' },
-                      { id: 'myfatoorah', label: 'MyFatoorah', icon: CreditCard, desc: 'دفع إلكتروني آمن' },
+                      { id: 'plutu', label: 'Plutu', icon: CreditCard, desc: 'دفع إلكتروني آمن' },
                     ].map((m) => (
                       <button
                         key={m.id}
