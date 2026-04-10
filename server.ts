@@ -18,9 +18,10 @@ import Stripe from "stripe";
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
 
 // Plutu Payment Gateway (Libya) — https://docs.plutu.ly
-const PLUTU_API_KEY = process.env.PLUTU_API_KEY || '984adf4c-44e1-418f-829b';
-const PLUTU_ACCESS_TOKEN = process.env.PLUTU_ACCESS_TOKEN || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiZjU4Y2I5ZDBiMzVlOGM3N2M5YzAxZDA1MjkwYmFkNDY0Y2Y1NDE0YWUzYzE5ZTRjZjAzZTYwNDM0ODhkMjJmZDA3NTRmYWEwOTRmZTM1NDYiLCJpYXQiOjE3NzU4MzgyMjAuNjAxODYyLCJuYmYiOjE3NzU4MzgyMjAuNjAxODY3LCJleHAiOjIwOTE0NTc0MjAuNTkwOTI5LCJzdWIiOiIxODUxIiwic2NvcGVzIjpbInNhbmRib3giXX0.PD-JcX4kMQur0Z-hi2_OobVwsXzJ1605RMKwkJwonKv9nMb1a2sZThePV1zdqt3GBQnIpYe6G1loarYWrUsftGyQJCqisW_jqR8cnQpd_nWYcMy3Mh8WKdhX_dp3Dsca-JAM52zd61aB9mug0cfp2e3iwsI_pnR72e__aiuw_3zM12Qx8q1tFTWpWTC2Zx1b5N94pKHiZVtomT6rZCewZxVpn26p382_I-nDY_bcX839FQY-uTylIZLBwnLIsFUORwso2VusjGgc82mjAylQWJlSjSig5WwOOe_SBT96j7-zSDNjIcjArLB9Pi0Eaoa4LhaQOqL4W0HIyxbqbs6ix90o3Byed7NncL2NVimcWjL7ALF4jnOs9gW5r-4JJA9ytFpb3WLYwsDZPHFNyWAGQrHRE5hUJKyXUs36RxLaPhUaQu4cMPsTvAt8d98mE7sNoCU1iQmBXUjNGsNi8Oli4UufusMz1pmdytlVZh1oditLaRHN8nNDuXzlgDVlveQ0MHi0vKLE04eOgBn_FI86c4lw9gIIWZ0ASPWM0DU5O8ns4_MBHPYFFEtmBriMznMEuBHDeXJb_G0iK1x3dcErTzMnFoq09Fvyr-WOQzK9S4gNnIK14FTvgKNZ_1iaFjYs3jBuVL0uX4jpovqN418iNqJsLyR2zQMAwdWb1tP0F-s';
-const PLUTU_SECRET_KEY = process.env.PLUTU_SECRET_KEY || 'sk_ab99c3643efac5d39f171501628544fa3cf3a0e9';
+// IMPORTANT: Set these as environment variables in Render, NOT in code
+const PLUTU_API_KEY = process.env.PLUTU_API_KEY || '';
+const PLUTU_ACCESS_TOKEN = process.env.PLUTU_ACCESS_TOKEN || '';
+const PLUTU_SECRET_KEY = process.env.PLUTU_SECRET_KEY || '';
 const PLUTU_BASE_URL = 'https://api.plutus.ly/api/v1';
 const PLUTU_ENABLED = !!PLUTU_ACCESS_TOKEN;
 const SALT_ROUNDS = 10;
