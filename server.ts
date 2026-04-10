@@ -16,6 +16,12 @@ import { Resend } from "resend";
 import Stripe from "stripe";
 
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
+
+// MyFatoorah Payment Gateway
+const MYFATOORAH_API_KEY = process.env.MYFATOORAH_API_KEY || '984adf4c-44e1-418f-829b';
+const MYFATOORAH_SECRET_KEY = process.env.MYFATOORAH_SECRET_KEY || '';
+const MYFATOORAH_BASE_URL = process.env.MYFATOORAH_API_URL || 'https://apitest.myfatoorah.com';
+const MYFATOORAH_ENABLED = !!MYFATOORAH_API_KEY;
 const SALT_ROUNDS = 10;
 
 // ── Auth Middleware ──
@@ -6012,6 +6018,149 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) {
       res.status(500).json({ error: "فشل جلب سيارات سوق العروض" });
     }
+  });
+
+  // =====================================================================
+  // MYFATOORAH PAYMENT GATEWAY
+  // =====================================================================
+
+  // Check MyFatoorah status
+  app.get("/api/payments/myfatoorah-status", (_req, res) => {
+    res.json({ enabled: MYFATOORAH_ENABLED, mode: MYFATOORAH_BASE_URL.includes('apitest') ? 'sandbox' : 'production' });
+  });
+
+  // Create MyFatoorah payment session
+  app.post("/api/payments/myfatoorah/create", requireAuth, async (req, res) => {
+    try {
+      const { amount, currency, invoiceId, type } = req.body;
+      const userId = (req as any).user?.id;
+      if (!amount || amount <= 0) return res.status(400).json({ error: "المبلغ غير صحيح" });
+
+      const user: any = db.prepare("SELECT firstName, lastName, email, phone FROM users WHERE id = ?").get(userId);
+      if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+
+      const callbackUrl = `${SITE_URL}/api/payments/myfatoorah/callback`;
+      const errorUrl = `${SITE_URL}/api/payments/myfatoorah/error`;
+
+      const response = await fetch(`${MYFATOORAH_BASE_URL}/v2/SendPayment`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${MYFATOORAH_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          NotificationOption: 'LNK',
+          InvoiceValue: Number(amount),
+          DisplayCurrencyIso: currency || 'USD',
+          CustomerName: `${user.firstName} ${user.lastName}`,
+          CustomerEmail: user.email || 'customer@autopro.ac',
+          CustomerMobile: user.phone?.replace(/\D/g, '') || '0911234567',
+          CallBackUrl: callbackUrl,
+          ErrorUrl: errorUrl,
+          Language: 'AR',
+          CustomerReference: invoiceId || `dep-${userId}-${Date.now()}`,
+          UserDefinedField: JSON.stringify({ userId, invoiceId, type: type || 'deposit', amount })
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.IsSuccess && data.Data) {
+        // Store pending transaction
+        const txId = `mf-${Date.now()}`;
+        db.prepare("INSERT INTO transactions (id, userId, amount, type, status, method, referenceNo, currency, timestamp) VALUES (?, ?, ?, ?, 'pending', 'myfatoorah', ?, ?, ?)")
+          .run(txId, userId, Number(amount), type || 'deposit', data.Data.InvoiceId?.toString() || txId, currency || 'USD', new Date().toISOString());
+
+        res.json({
+          success: true,
+          paymentUrl: data.Data.InvoiceURL,
+          invoiceId: data.Data.InvoiceId,
+          transactionId: txId
+        });
+      } else {
+        console.error('[MYFATOORAH ERROR]', data);
+        res.status(400).json({ error: data.Message || 'فشل إنشاء عملية الدفع', details: data.ValidationErrors });
+      }
+    } catch (e: any) {
+      console.error('[MYFATOORAH ERROR]', e.message);
+      res.status(500).json({ error: 'خطأ في الاتصال ببوابة الدفع' });
+    }
+  });
+
+  // MyFatoorah callback (success)
+  app.get("/api/payments/myfatoorah/callback", async (req, res) => {
+    try {
+      const paymentId = req.query.paymentId || req.query.Id;
+      if (!paymentId) return res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=error`);
+
+      // Verify payment status
+      const statusRes = await fetch(`${MYFATOORAH_BASE_URL}/v2/GetPaymentStatus`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${MYFATOORAH_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ Key: paymentId.toString(), KeyType: 'PaymentId' })
+      });
+
+      const statusData = await statusRes.json();
+
+      if (statusData.IsSuccess && statusData.Data) {
+        const payment = statusData.Data;
+        const invoiceStatus = payment.InvoiceStatus;
+        const paidAmount = payment.InvoiceValue;
+        const customerRef = payment.CustomerReference || '';
+        let userData: any = {};
+        try { userData = JSON.parse(payment.UserDefinedField || '{}'); } catch (_) { }
+
+        const userId = userData.userId;
+        const invoiceId = userData.invoiceId;
+        const type = userData.type || 'deposit';
+
+        if (invoiceStatus === 'Paid' && userId) {
+          // Update transaction to completed
+          db.prepare("UPDATE transactions SET status = 'completed' WHERE userId = ? AND method = 'myfatoorah' AND status = 'pending' ORDER BY timestamp DESC LIMIT 1")
+            .run(userId);
+
+          if (type === 'deposit' || !invoiceId) {
+            // Deposit — credit wallet
+            const userRow: any = db.prepare("SELECT deposit FROM users WHERE id = ?").get(userId);
+            const newDeposit = (userRow?.deposit || 0) + Number(paidAmount);
+            db.prepare("UPDATE users SET deposit = ?, buyingPower = ? WHERE id = ?").run(newDeposit, newDeposit * 10, userId);
+            db.prepare("UPDATE buyer_wallets SET balance = balance + ?, totalDeposited = totalDeposited + ?, updatedAt = ? WHERE userId = ?")
+              .run(Number(paidAmount), Number(paidAmount), new Date().toISOString(), userId);
+
+            sendNotification(userId, `تم إيداع $${paidAmount} في محفظتك عبر MyFatoorah بنجاح`, 'payment', '/dashboard/user?view=wallet');
+            sendInternalMessage('admin-1', userId, 'إيداع ناجح عبر MyFatoorah', `تم إيداع $${paidAmount} في حسابك. مرجع الدفع: ${paymentId}`, 'accounting');
+          } else if (invoiceId) {
+            // Invoice payment — mark paid
+            db.prepare("UPDATE invoices SET status = 'paid', paidAt = ?, paidVia = 'myfatoorah' WHERE id = ?")
+              .run(new Date().toISOString(), invoiceId);
+
+            sendNotification(userId, `تم دفع الفاتورة ${invoiceId} عبر MyFatoorah بنجاح`, 'payment', '/dashboard/user?view=invoices');
+
+            // Trigger invoice chain (activate next invoice)
+            try { completeInvoicePayment(invoiceId, userId); } catch (_) { }
+          }
+
+          console.log(`[MYFATOORAH] Payment successful: $${paidAmount} by ${userId} — PaymentId: ${paymentId}`);
+          res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=success&amount=${paidAmount}`);
+        } else {
+          console.log(`[MYFATOORAH] Payment not completed: status=${invoiceStatus}`);
+          res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=pending`);
+        }
+      } else {
+        res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=error`);
+      }
+    } catch (e: any) {
+      console.error('[MYFATOORAH CALLBACK ERROR]', e.message);
+      res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=error`);
+    }
+  });
+
+  // MyFatoorah error callback
+  app.get("/api/payments/myfatoorah/error", (_req, res) => {
+    res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=failed`);
   });
 
   // Detect production: NODE_ENV=production OR RENDER env var OR dist folder exists

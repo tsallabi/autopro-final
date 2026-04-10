@@ -138,6 +138,13 @@ export const DepositPage: React.FC = () => {
       badge: stripeAvailable ? 'متاح' : 'قريباً', badgeColor: stripeAvailable ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400',
       currencies: ['USD'], available: true,
     },
+    {
+      id: 'myfatoorah', label: 'بطاقة بنكية / MyFatoorah', labelEn: 'MyFatoorah',
+      desc: 'دفع إلكتروني آمن عبر MyFatoorah',
+      icon: <CreditCard className="w-6 h-6" />,
+      badge: 'متاح', badgeColor: 'bg-green-500/20 text-green-400',
+      currencies: ['USD', 'LYD'], available: true,
+    },
   ];
 
   const availableMethods = PAY_METHODS.filter(m => m.currencies.includes(finalCurrency));
@@ -187,6 +194,27 @@ export const DepositPage: React.FC = () => {
     await submitDeposit(demoId, true, 'tadawul');
     setStep('success');
     setLoading(false);
+  };
+
+  // ── MyFatoorah payment ──
+  const proceedToMyFatoorah = async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch('/api/payments/myfatoorah/create', {
+        method: 'POST',
+        body: JSON.stringify({ amount: finalAmount, currency: finalCurrency, type: 'deposit' })
+      });
+      const data = await res.json();
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl; // Redirect to MyFatoorah payment page
+      } else {
+        showAlert(data.error || 'فشل إنشاء عملية الدفع', 'error');
+      }
+    } catch (e) {
+      showAlert('خطأ في الاتصال ببوابة الدفع', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── Stripe card payment ──
@@ -628,6 +656,26 @@ export const DepositPage: React.FC = () => {
                   <button onClick={handleBankTransfer} disabled={loading}
                     className="flex-[2] py-3.5 bg-gradient-to-l from-purple-500 to-purple-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
                     {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Submitting...</> : '✅ Confirm Transfer'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── MYFATOORAH ── */}
+            {payMethod === 'myfatoorah' && (
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CreditCard className="w-5 h-5 text-orange-400" />
+                  <h3 className="text-white font-semibold">بطاقة بنكية / MyFatoorah</h3>
+                  <Lock className="w-3.5 h-3.5 text-green-400 mr-auto" />
+                </div>
+                <p className="text-gray-400 text-sm">سيتم تحويلك إلى بوابة MyFatoorah لإتمام الدفع بشكل آمن.</p>
+                {paymentError && <div className="flex items-center gap-2 text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3"><AlertCircle className="w-4 h-4" /><span className="text-sm">{paymentError}</span></div>}
+                <div className="flex gap-3">
+                  <button onClick={() => setStep('method')} className="flex-1 py-3.5 border border-gray-600 text-gray-300 font-semibold rounded-xl">رجوع</button>
+                  <button onClick={proceedToMyFatoorah} disabled={loading}
+                    className="flex-[2] py-3.5 bg-gradient-to-l from-orange-500 to-orange-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
+                    {loading ? <><Loader2 className="w-5 h-5 animate-spin" />جاري التحويل...</> : <><Lock className="w-4 h-4" />الدفع عبر MyFatoorah — {formatCurrency(finalAmount)}</>}
                   </button>
                 </div>
               </div>

@@ -351,6 +351,23 @@ export const UserDashboard = () => {
         return;
       }
 
+      // MyFatoorah redirect flow
+      if (paymentMethod === 'myfatoorah') {
+        const res = await authFetch('/api/payments/myfatoorah/create', {
+          method: 'POST',
+          body: JSON.stringify({ amount: selectedInvoice.amount, currency: 'USD', invoiceId: selectedInvoice.id, type: 'invoice_payment' })
+        });
+        const data = await res.json();
+        if (data.paymentUrl) {
+          window.location.href = data.paymentUrl;
+          return;
+        } else {
+          showAlert(data.error || 'فشل الدفع', 'error');
+          setPaymentLoading(false);
+          return;
+        }
+      }
+
       const res = await authFetch(`/api/invoices/${selectedInvoice.id}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2674,6 +2691,7 @@ export const UserDashboard = () => {
                       { id: 'bank_transfer', label: 'تحويل بنكي', icon: Building2, desc: 'يتطلب مراجعة الإدارة' },
                       { id: 'cash', label: 'دفع نقدي', icon: DollarSign, desc: 'في أقرب مكتب لنا' },
                       { id: 'card', label: 'بطاقة إئتمان', icon: CreditCard, desc: 'دفع إلكتروني سريع' },
+                      { id: 'myfatoorah', label: 'MyFatoorah', icon: CreditCard, desc: 'دفع إلكتروني آمن' },
                     ].map((m) => (
                       <button
                         key={m.id}
