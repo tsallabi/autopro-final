@@ -29,7 +29,15 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
 
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { socket, currentUser, placeBid, showAlert, exchangeRate, marketEstimates, branchConfig } = useStore();
+  const { socket, currentUser, placeBid, showAlert: _showAlert, exchangeRate, marketEstimates, branchConfig } = useStore();
+
+  // Inline toast instead of blocking modal during auction
+  const [auctionToast, setAuctionToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const showAuctionToast = React.useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setAuctionToast({ msg, type });
+    setTimeout(() => setAuctionToast(null), 4000);
+  }, []);
+
   const [currentBid, setCurrentBid] = useState(car.currentBid || 0);
   const [bidders, setBidders] = useState(12);
   const [timeLeft, setTimeLeft] = useState(15);
@@ -223,14 +231,14 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
     socket.on('auction_closed', (data) => {
       if (data.carId === car.id) {
         setTimeLeft(0);
-        showAlert(t('liveAuction.auctionEnded'), 'info');
+        showAuctionToast(t('liveAuction.auctionEnded'), 'info');
       }
     });
 
     socket.on('proxy_bid_set', (data) => {
       if (data.carId === car.id) {
         setIsProxySet(true);
-        showAlert(`${t('liveAuction.proxySet')}${data.maxAmount}`, 'success');
+        showAuctionToast(`${t('liveAuction.proxySet')}${data.maxAmount}`, 'success');
       }
     });
 
@@ -238,7 +246,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
       if (data.carId === car.id) {
         setIsUltimo(true);
         setUltimoEndTime(data.ultimoEndTime);
-        showAlert(data.winnerId === currentUser?.id ? t('liveAuction.ultimoWinnerMsg') : t('liveAuction.ultimoOthersMsg'), 'info');
+        showAuctionToast(data.winnerId === currentUser?.id ? t('liveAuction.ultimoWinnerMsg') : t('liveAuction.ultimoOthersMsg'), 'info');
       }
     });
 
@@ -246,7 +254,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
       socket.off('bid_updated');
       socket.off('auction_closed');
     };
-  }, [socket, car.id, currentUser?.id, showAlert]);
+  }, [socket, car.id, currentUser?.id, showAuctionToast]);
 
   // Unified Local Ticker explicitly tied strictly to the absolute UTC target set on the backend
   useEffect(() => {
@@ -288,7 +296,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
 
   const handleBid = () => {
     if (!canBid) {
-      showAlert(bidBlockReason || t('liveAuction.notEligible'), 'error');
+      showAuctionToast(bidBlockReason || t('liveAuction.notEligible'), 'error');
       return;
     }
     placeBid(car.id, nextBidAmount, currentUser!.id);
@@ -374,6 +382,19 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
       className={`bg-slate-950 text-white selection:bg-accent-500/30 transition-all duration-300 ${outbidFlash ? 'shadow-[inset_0_0_150px_rgba(239,68,68,0.3)] bg-slate-900 border-x-4 border-red-500' : ''} pt-4 md:pt-20 pb-24 md:pb-12`}
       dir="rtl"
     >
+      {/* Inline Toast — non-blocking notification strip */}
+      {auctionToast && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[999] px-6 py-3 rounded-2xl font-black text-sm shadow-2xl animate-in slide-in-from-top-4 fade-in duration-300 flex items-center gap-3 ${
+          auctionToast.type === 'success' ? 'bg-green-500 text-white' :
+          auctionToast.type === 'error' ? 'bg-red-500 text-white' :
+          'bg-orange-500 text-white'
+        }`}>
+          <span>{auctionToast.type === 'success' ? '✅' : auctionToast.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+          <span>{auctionToast.msg}</span>
+          <button onClick={() => setAuctionToast(null)} className="mr-2 opacity-70 hover:opacity-100">✕</button>
+        </div>
+      )}
+
       <div className={`mx-auto w-full ${isTvMode ? 'max-w-[1920px] h-full flex flex-col' : 'max-w-7xl px-4 sm:px-6 lg:px-8'}`}>
 
         {/* Header */}
@@ -622,13 +643,13 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                     <button
                       onClick={() => {
                         if (!currentUser) {
-                          showAlert(t('liveAuction.loginProxy'), 'error');
+                          showAuctionToast(t('liveAuction.loginProxy'), 'error');
                           return;
                         }
                         if (maxBid && maxBid > currentBid) {
                           socket?.emit('set_proxy_bid', { carId: car.id, userId: currentUser?.id, maxAmount: maxBid });
                         } else {
-                          showAlert(t('liveAuction.maxHigherThanCurrent'), 'error');
+                          showAuctionToast(t('liveAuction.maxHigherThanCurrent'), 'error');
                         }
                       }}
                       className={`text-[10px] font-bold py-1 px-2 rounded-md transition-all ${isProxySet ? 'bg-accent-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
