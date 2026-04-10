@@ -1955,9 +1955,9 @@ export const UserDashboard = () => {
               <h2 className="text-3xl font-black text-slate-900">تقارير السوق والأسعار 📊</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
-                  { title: 'تحليل أسعار السوق', desc: 'قارن أسعار السيارات المشابهة في السوق المحلي والدولي.', icon: TrendingUp },
-                  { title: 'تقرير مبيعات الشهر', desc: 'إحصائيات تفصيلية عن حركة المبيعات والأصناف الأكثر طلباً.', icon: BarChart3 },
-                  { title: 'أسعار الشحن المحدثة', desc: 'آخر تحديثات تكاليف الشحن من الموانئ الأمريكية والخليجية.', icon: Ship },
+                  { title: 'تحليل أسعار السوق', desc: 'قارن أسعار السيارات المشابهة في السوق المحلي والدولي.', icon: TrendingUp, action: () => navigate('/marketplace') },
+                  { title: 'تقرير مبيعات الشهر', desc: 'إحصائيات تفصيلية عن حركة المبيعات والأصناف الأكثر طلباً.', icon: BarChart3, action: () => alert('قريباً') },
+                  { title: 'أسعار الشحن المحدثة', desc: 'آخر تحديثات تكاليف الشحن من الموانئ الأمريكية والخليجية.', icon: Ship, action: () => navigate('/shipping') },
                 ].map((report, i) => (
                   <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl hover:shadow-2xl transition-all group">
                     <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 mb-6 group-hover:bg-orange-600 group-hover:text-white transition-all">
@@ -1966,10 +1966,7 @@ export const UserDashboard = () => {
                     <h3 className="text-xl font-black text-slate-900 mb-2">{report.title}</h3>
                     <p className="text-sm text-slate-500 font-medium mb-6 leading-relaxed">{report.desc}</p>
                     <button
-                      onClick={() => {
-                        setSelectedReport(report);
-                        setShowReportModal(true);
-                      }}
+                      onClick={report.action}
                       className="text-xs font-black text-orange-600 hover:text-orange-700 flex items-center gap-2"
                     >
                       عرض التقرير التفصيلي <ArrowUpRight className="w-4 h-4" />
@@ -2068,7 +2065,7 @@ export const UserDashboard = () => {
                       <textarea
                         rows={3}
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-orange-500 transition-all font-bold"
-                        placeholder="Ex: Toyota Camry 2024 - VIN: 1234..."
+                        placeholder="رقم VIN أو رقم اللوت"
                         value={inspectionForm.carDetails}
                         onChange={e => setInspectionForm(prev => ({ ...prev, carDetails: e.target.value }))}
                       />
@@ -2076,7 +2073,7 @@ export const UserDashboard = () => {
 
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 mr-1">موقع تواجد السيارة</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
+                      <input aria-label="ملاحظات إضافية" title="ملاحظات إضافية" placeholder="ملاحظات إضافية (اختياري)"
                         type="text"
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-orange-500 transition-all font-bold"
                         value={inspectionForm.location}
