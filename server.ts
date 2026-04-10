@@ -4388,9 +4388,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("join_auction", (carId) => {
+    socket.on("join_auction", (data) => {
+      const carId = typeof data === 'string' ? data : data?.carId;
+      if (!carId) return;
       socket.join(carId);
-      console.log(`User joined auction: ${carId} `);
+      console.log(`User joined auction: ${carId}`);
 
       // The frontend uses car.auctionEndDate directly, no need for active timer sync
       const car: any = db.prepare("SELECT status, auctionEndDate FROM cars WHERE id = ?").get(carId);
