@@ -8,7 +8,7 @@ import {
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -3263,6 +3263,9 @@ export const AdminDashboard = () => {
   const [libyanModalForm, setLibyanModalForm] = useState<any>({ make: '', model: '', year: 2024, price: '' });
   const [showReportModal, setShowReportModal] = useState<{ title: string; data: any } | null>(null);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [apiKeys, setApiKeys] = useState<any[]>([]);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [newApiKeyForm, setNewApiKeyForm] = useState({ name: '', website: '' });
 
   // Auto-fetch data based on view
   useEffect(() => {
@@ -3314,7 +3317,7 @@ export const AdminDashboard = () => {
         { group: 'Vehicles & Auctions', items: ['cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'inspections'] },
         { group: 'Treasury & Accounting', items: ['financial_approvals', 'payment_requests', 'withdrawal_requests', 'all_invoices', 'financial_ledger', 'expenses', 'payment_gateways'] },
         { group: 'Logistics & Shipping', items: ['inventory_review', 'shipments_tracking', 'shipping_settings', 'calculator'] },
-        { group: 'Platform Settings', items: ['system_global', 'marketing', 'offices', 'footer_settings'] }
+        { group: 'Platform Settings', items: ['system_global', 'marketing', 'offices', 'footer_settings', 'api_keys'] }
       ];
       const activeGroup = groups.find(g => g.items.includes(view));
       if (activeGroup) {
@@ -3426,6 +3429,10 @@ export const AdminDashboard = () => {
         .then(res => res.json())
         .then(data => setWithdrawalRequests(Array.isArray(data) ? data : []))
         .catch(err => console.error('Withdrawal requests fetch error:', err));
+    }
+
+    if (view === 'api_keys') {
+      authFetch('/api/admin/api-keys').then(r => r.json()).then(data => setApiKeys(Array.isArray(data) ? data : [])).catch(err => console.error('API keys fetch error:', err));
     }
 
     if ((view === 'document_cycle' || view === 'all_invoices' || view === 'shipments_tracking') && adminInvoices.length === 0) {
@@ -5583,6 +5590,181 @@ export const AdminDashboard = () => {
       case 'system_global':
         return <SystemSettingsPanel />;
 
+      case 'api_keys':
+        return (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800">مفاتيح API</h2>
+                <p className="text-sm text-slate-500 mt-1">إدارة مفاتيح الوصول للتطبيقات الخارجية</p>
+              </div>
+              <button
+                onClick={() => setShowApiKeyModal(true)}
+                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium transition-colors"
+              >
+                <PlusCircle className="w-4 h-4" />
+                إنشاء مفتاح جديد
+              </button>
+            </div>
+
+            {/* API Docs URL */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
+              <Code2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-800">رابط توثيق الـ API</p>
+                <p className="text-xs text-blue-600 mt-0.5 font-mono" dir="ltr">{window.location.origin}/api/v1/docs</p>
+              </div>
+              <button
+                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/v1/docs`)}
+                className="mr-auto text-blue-600 hover:text-blue-800 text-xs font-medium"
+              >
+                نسخ
+              </button>
+            </div>
+
+            {/* Keys Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">الاسم</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">الموقع</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">المفتاح</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">الاستخدام</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">الحالة</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apiKeys.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-slate-400">
+                          <Key className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                          <p>لا توجد مفاتيح API بعد</p>
+                        </td>
+                      </tr>
+                    ) : apiKeys.map((k: any, idx: number) => (
+                      <tr key={k.key || idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-800">{k.name}</td>
+                        <td className="px-4 py-3 text-slate-500">{k.website || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-slate-100 px-2 py-1 rounded font-mono" dir="ltr">
+                              {k.key ? `${k.key.slice(0, 8)}...${k.key.slice(-4)}` : '—'}
+                            </code>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(k.key || '')}
+                              className="text-slate-400 hover:text-orange-500 transition-colors"
+                              title="نسخ المفتاح"
+                            >
+                              <ClipboardCheck className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{k.usageCount ?? 0}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            k.active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${k.active !== false ? 'bg-green-500' : 'bg-red-500'}`} />
+                            {k.active !== false ? 'مفعّل' : 'معطّل'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await authFetch(`/api/admin/api-keys/${k.key}/toggle`, { method: 'PUT' });
+                                const res = await authFetch('/api/admin/api-keys');
+                                const data = await res.json();
+                                setApiKeys(Array.isArray(data) ? data : []);
+                              } catch (err) { console.error('Toggle error:', err); }
+                            }}
+                            className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                              k.active !== false
+                                ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                : 'bg-green-50 text-green-600 hover:bg-green-100'
+                            }`}
+                          >
+                            {k.active !== false ? 'تعطيل' : 'تفعيل'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Create Modal */}
+            {showApiKeyModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold text-slate-800">إنشاء مفتاح API جديد</h3>
+                    <button onClick={() => { setShowApiKeyModal(false); setNewApiKeyForm({ name: '', website: '' }); }} className="text-slate-400 hover:text-slate-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">اسم التطبيق</label>
+                      <input
+                        type="text"
+                        value={newApiKeyForm.name}
+                        onChange={e => setNewApiKeyForm(f => ({ ...f, name: e.target.value }))}
+                        className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                        placeholder="مثال: تطبيق الجوال"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">رابط الموقع</label>
+                      <input
+                        type="text"
+                        value={newApiKeyForm.website}
+                        onChange={e => setNewApiKeyForm(f => ({ ...f, website: e.target.value }))}
+                        className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                        placeholder="https://example.com"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={async () => {
+                        if (!newApiKeyForm.name.trim()) return;
+                        try {
+                          await authFetch('/api/admin/api-keys', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: newApiKeyForm.name, website: newApiKeyForm.website })
+                          });
+                          const res = await authFetch('/api/admin/api-keys');
+                          const data = await res.json();
+                          setApiKeys(Array.isArray(data) ? data : []);
+                          setShowApiKeyModal(false);
+                          setNewApiKeyForm({ name: '', website: '' });
+                        } catch (err) { console.error('Create API key error:', err); }
+                      }}
+                      className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl font-medium transition-colors"
+                    >
+                      إنشاء المفتاح
+                    </button>
+                    <button
+                      onClick={() => { setShowApiKeyModal(false); setNewApiKeyForm({ name: '', website: '' }); }}
+                      className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-medium transition-colors"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
       case 'system':
         return renderSystemSettings();
 
@@ -6802,6 +6984,7 @@ export const AdminDashboard = () => {
                 { id: 'audit_log', label: 'سجل الأمان والعمليات', icon: Shield },
                 { id: 'offices', label: 'إدارة الفروع والمكاتب', icon: Building2 },
                 { id: 'footer_settings', label: 'إعدادات الفوتر والروابط', icon: Settings },
+                { id: 'api_keys', label: 'مفاتيح API', icon: Key },
               ]
             }
           ]
