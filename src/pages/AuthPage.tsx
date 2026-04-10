@@ -4,7 +4,7 @@ import {
     User, Phone, Building2, FileText, CheckCircle2, ChevronRight,
     Eye, EyeOff, Store, Gavel, X, Sparkles, KeyRound
 } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 
 declare global {
@@ -31,8 +31,9 @@ export const AuthPage = () => {
     const navigate = useNavigate();
     const { currentUser, setCurrentUser, branchConfig, showAlert } = useStore();
 
-    /* ── mode ── */
-    const [isLogin, setIsLogin] = useState(true);
+    /* ── mode — read from URL ?mode=register ── */
+    const [searchParams] = useSearchParams();
+    const [isLogin, setIsLogin] = useState(searchParams.get('mode') !== 'register');
     const [accountType, setAccountType] = useState<AccountType>('buyer');
     const [step, setStep] = useState(0);   // seller onboarding step
     const [showPass, setShowPass] = useState(false);
