@@ -113,14 +113,14 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
   }, [isTvMode]);
   const playVoice = React.useCallback((type: 'bid' | 'win' | 'outbid' | 'tick') => {
     const audios = {
-      bid: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3', // Cashing
-      win: 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3', // Win/Success
-      outbid: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3', // Buzzer/Loss
-      tick: 'https://assets.mixkit.co/active_storage/sfx/2816/2816-preview.mp3' // Tick Tock
+      bid: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3',     // Soft cash register — new bid
+      win: 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3',     // Pleasant success chime — you're leading
+      outbid: 'https://assets.mixkit.co/active_storage/sfx/2221/2221-preview.mp3',  // Sharp alert tone — you've been outbid!
+      tick: 'https://assets.mixkit.co/active_storage/sfx/2816/2816-preview.mp3'     // Tick tock — timer warning
     };
     const audio = new Audio(audios[type]);
-    audio.volume = type === 'tick' ? 0.3 : 0.6;
-    audio.play().catch(() => { }); // Ignore autoplay blocks
+    audio.volume = type === 'tick' ? 0.3 : type === 'outbid' ? 0.8 : 0.6;
+    audio.play().catch(() => { });
     return audio;
   }, []);
 
