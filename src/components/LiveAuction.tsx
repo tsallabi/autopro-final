@@ -149,31 +149,42 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
     }
   };
 
-  const getFlagEmoji = (country?: string) => {
-    if (!country) return '🇱🇾';
-    const flags: Record<string, string> = {
-      'Libya': '🇱🇾', 'ليبيا': '🇱🇾', 'LY': '🇱🇾',
-      'UAE': '🇦🇪', 'الإمارات': '🇦🇪', 'AE': '🇦🇪',
-      'السعودية': '🇸🇦', 'Saudi Arabia': '🇸🇦', 'SA': '🇸🇦',
-      'الكويت': '🇰🇼', 'Kuwait': '🇰🇼', 'KW': '🇰🇼',
-      'قطر': '🇶🇦', 'Qatar': '🇶🇦', 'QA': '🇶🇦',
-      'عمان': '🇴🇲', 'Oman': '🇴🇲', 'OM': '🇴🇲',
-      'الأردن': '🇯🇴', 'Jordan': '🇯🇴', 'JO': '🇯🇴',
-      'مصر': '🇪🇬', 'Egypt': '🇪🇬', 'EG': '🇪🇬',
-      'تونس': '🇹🇳', 'Tunisia': '🇹🇳', 'TN': '🇹🇳',
-      'المغرب': '🇲🇦', 'Morocco': '🇲🇦', 'MA': '🇲🇦',
-      'الجزائر': '🇩🇿', 'Algeria': '🇩🇿', 'DZ': '🇩🇿',
-      'العراق': '🇮🇶', 'Iraq': '🇮🇶', 'IQ': '🇮🇶',
-      'أمريكا': '🇺🇸', 'USA': '🇺🇸', 'US': '🇺🇸',
-      'ألمانيا': '🇩🇪', 'Germany': '🇩🇪', 'DE': '🇩🇪',
-      'اليابان': '🇯🇵', 'Japan': '🇯🇵', 'JP': '🇯🇵',
-      'كوريا': '🇰🇷', 'Korea': '🇰🇷', 'KR': '🇰🇷',
-      'بريطانيا': '🇬🇧', 'UK': '🇬🇧', 'GB': '🇬🇧',
-      'كندا': '🇨🇦', 'Canada': '🇨🇦', 'CA': '🇨🇦',
-      'تركيا': '🇹🇷', 'Turkey': '🇹🇷', 'TR': '🇹🇷',
+  // Country → ISO code mapping for flag images (emoji flags broken on Windows)
+  const getCountryCode = (country?: string): string => {
+    if (!country) return 'ly';
+    const codes: Record<string, string> = {
+      'Libya': 'ly', 'ليبيا': 'ly', 'LY': 'ly',
+      'UAE': 'ae', 'الإمارات': 'ae', 'AE': 'ae',
+      'السعودية': 'sa', 'Saudi Arabia': 'sa', 'SA': 'sa',
+      'الكويت': 'kw', 'Kuwait': 'kw', 'KW': 'kw',
+      'قطر': 'qa', 'Qatar': 'qa', 'QA': 'qa',
+      'عمان': 'om', 'Oman': 'om', 'OM': 'om',
+      'الأردن': 'jo', 'Jordan': 'jo', 'JO': 'jo',
+      'مصر': 'eg', 'Egypt': 'eg', 'EG': 'eg',
+      'تونس': 'tn', 'Tunisia': 'tn', 'TN': 'tn',
+      'المغرب': 'ma', 'Morocco': 'ma', 'MA': 'ma',
+      'الجزائر': 'dz', 'Algeria': 'dz', 'DZ': 'dz',
+      'العراق': 'iq', 'Iraq': 'iq', 'IQ': 'iq',
+      'أمريكا': 'us', 'USA': 'us', 'US': 'us',
+      'ألمانيا': 'de', 'Germany': 'de', 'DE': 'de',
+      'اليابان': 'jp', 'Japan': 'jp', 'JP': 'jp',
+      'كوريا': 'kr', 'Korea': 'kr', 'KR': 'kr',
+      'بريطانيا': 'gb', 'UK': 'gb', 'GB': 'gb',
+      'كندا': 'ca', 'Canada': 'ca', 'CA': 'ca',
+      'تركيا': 'tr', 'Turkey': 'tr', 'TR': 'tr',
     };
-    return flags[country] || '🇱🇾';
+    return codes[country] || 'ly';
   };
+  const FlagImg = ({ country, size = 24 }: { country?: string; size?: number }) => (
+    <img
+      src={`https://flagcdn.com/w40/${getCountryCode(country)}.png`}
+      alt={country || 'LY'}
+      width={size}
+      height={Math.round(size * 0.75)}
+      className="rounded-sm shadow-sm inline-block"
+      style={{ minWidth: size }}
+    />
+  );
 
   // Audio effects removed in favor of SpeechSynthesis.
 
@@ -688,7 +699,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                 {bidHistory.slice(0, showAllBids ? bidHistory.length : 5).map((bid, idx) => (
                   <div key={idx} className={`p-3 rounded-lg flex justify-between items-center ${idx === 0 ? 'bg-green-500/10 border border-green-500/30' : 'bg-slate-700/50'}`}>
                     <div className="flex items-center gap-3">
-                      <span className="text-xl" title={bid.country}>{getFlagEmoji(bid.country)}</span>
+                      <FlagImg country={bid.country} size={28} />
                       <div>
                         <div className={`font-bold ${idx === 0 ? 'text-green-400' : 'text-slate-200'}`}>
                           {bid.user}
