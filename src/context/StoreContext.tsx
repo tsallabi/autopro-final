@@ -96,6 +96,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const showAlert = (message: string, type: 'error' | 'success' | 'info' = 'error') => {
     setAlertConfig({ isOpen: true, message, type });
+    // Auto-dismiss after 5 seconds to prevent blocking the UI
+    setTimeout(() => setAlertConfig(prev => prev.isOpen ? { ...prev, isOpen: false } : prev), 5000);
   };
 
   const showConfirm = (message: string, onConfirm: () => void, title?: string) => {
