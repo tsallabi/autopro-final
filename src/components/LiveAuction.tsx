@@ -16,7 +16,17 @@ interface LiveAuctionProps {
   onBack: () => void;
 }
 
-export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onBack }) => {
+export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingCars, onBack }) => {
+  // Parse images safely — could be JSON string or array
+  const car = React.useMemo(() => {
+    const c = { ...rawCar };
+    if (typeof c.images === 'string') {
+      try { c.images = JSON.parse(c.images); } catch { c.images = [c.images]; }
+    }
+    if (!Array.isArray(c.images)) c.images = [];
+    return c;
+  }, [rawCar]);
+
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { socket, currentUser, placeBid, showAlert, exchangeRate, marketEstimates, branchConfig } = useStore();

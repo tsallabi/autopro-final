@@ -1649,8 +1649,8 @@ async function startServer() {
     if (liveRow && liveRow.count === 0) {
       const next: any = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' ORDER BY auctionEndDate ASC, id ASC LIMIT 1").get();
       if (next) {
-        // Auction duration exactly 2 minutes
-        const newEndDate = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+        // Auction duration: 5 minutes
+        const newEndDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
         db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
         io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
         io.emit("auction_started", { carId: next.id });
@@ -1663,10 +1663,10 @@ async function startServer() {
     if (isTransitioning) return;
     const now = new Date().toISOString();
 
-    // AUTO REPAIR: Any live car missing an end date gets exactly 2 minutes from NOW.
+    // AUTO REPAIR: Any live car missing an end date gets exactly 5 minutes from NOW.
     const nullEndDateCars: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND (auctionEndDate IS NULL OR auctionEndDate = '')").all();
     if (nullEndDateCars.length > 0) {
-      const newEndDate = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+      const newEndDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       nullEndDateCars.forEach((car: any) => {
         db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, car.id);
         io.emit("car_updated", { id: car.id, auctionEndDate: newEndDate });

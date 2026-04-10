@@ -87,7 +87,7 @@ export const UpcomingCarsQueue: React.FC<UpcomingCarsQueueProps> = ({ cars, onCa
 
                             <div className="w-full aspect-video rounded-xl bg-slate-900 overflow-hidden mb-4 relative border border-white/5">
                                 <img
-                                    src={(car.images && car.images[0]) || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80'}
+                                    src={(() => { const imgs = typeof car.images === 'string' ? (()=>{ try{ return JSON.parse(car.images); }catch{ return []; } })() : (car.images || []); return (Array.isArray(imgs) && imgs[0]) || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80'; })()}
                                     alt={car.model}
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                 />
