@@ -4404,25 +4404,37 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.put("/api/users/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
-    const {
-      firstName, lastName, email, phone, role, status,
-      deposit, commission, manager, office, companyName,
-      country, address1, address2
-    } = req.body;
+    const updates = req.body;
 
     try {
-      db.prepare(`
-        UPDATE users SET
-      firstName = ?, lastName = ?, email = ?, phone = ?,
-        role = ?, status = ?, deposit = ?, commission = ?,
-        manager = ?, office = ?, companyName = ?, country = ?,
-        address1 = ?, address2 = ?, buyingPower = ?
-          WHERE id = ?
-            `).run(
-        firstName, lastName, email, phone, role, status,
-        deposit, commission, manager, office, companyName,
-        country, address1, address2, (deposit || 0) * 10, id
-      );
+      // Only update fields that were actually sent
+      const current: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      if (!current) return res.status(404).json({ error: "المستخدم غير موجود" });
+
+      const fields = ['firstName', 'lastName', 'email', 'phone', 'role', 'status',
+        'deposit', 'buyingPower', 'commission', 'manager', 'office', 'companyName',
+        'country', 'address1', 'address2', 'kycStatus'];
+
+      const setClauses: string[] = [];
+      const values: any[] = [];
+
+      for (const field of fields) {
+        if (updates[field] !== undefined) {
+          setClauses.push(`${field} = ?`);
+          values.push(updates[field]);
+        }
+      }
+
+      // Auto-calculate buyingPower if deposit changed but buyingPower not specified
+      if (updates.deposit !== undefined && updates.buyingPower === undefined) {
+        setClauses.push('buyingPower = ?');
+        values.push(Number(updates.deposit) * 10);
+      }
+
+      if (setClauses.length === 0) return res.json({ success: true, message: "لا توجد تغييرات" });
+
+      values.push(id);
+      db.prepare(`UPDATE users SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
       res.json({ success: true });
     } catch (err) {
       console.error(err);
