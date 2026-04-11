@@ -100,6 +100,7 @@ export const LandingPage = () => {
                                 src="/logo_on_dark.png?v=3"
                                 alt="AutoPro Logo"
                                 className="h-20 lg:h-28 w-auto object-contain transition-transform hover:scale-105 duration-700"
+                                style={{ mixBlendMode: 'lighten' }}
                             />
                         </div>
 
