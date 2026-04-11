@@ -5343,7 +5343,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         SELECT c.*,
           (SELECT COUNT(*) FROM bids WHERE carId = c.id) as bidCount,
           (SELECT MAX(amount) FROM bids WHERE carId = c.id) as highestBid
-        FROM cars c WHERE c.sellerId = ? ORDER BY c.createdAt DESC`).all(req.params.sellerId);
+        FROM cars c WHERE c.sellerId = ? ORDER BY c.id DESC`).all(req.params.sellerId);
       cars.forEach(c => { try { c.images = JSON.parse(c.images || '[]'); } catch { c.images = []; } });
       res.json(cars);
     } catch (e) { res.status(500).json({ error: "فشل جلب سيارات البائع" }); }
