@@ -67,10 +67,22 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cars, setCars] = useState<Car[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+  const [currentUser, setCurrentUserState] = useState<User | null>(() => {
     const saved = localStorage.getItem('currentUser');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      // Reject if it's an error object or missing required fields
+      if (parsed.error || !parsed.id || !parsed.role) return null;
+      return parsed;
+    } catch { return null; }
   });
+  const setCurrentUser = (user: User | null) => {
+    if (user && (user as any).error) return; // Never store error responses
+    setCurrentUserState(user);
+    if (user) localStorage.setItem('currentUser', JSON.stringify(user));
+    else localStorage.removeItem('currentUser');
+  };
   const [socket, setSocket] = useState<Socket | null>(null);
   const [csvData, setCsvData] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
