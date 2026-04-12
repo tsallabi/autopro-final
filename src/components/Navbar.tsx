@@ -58,7 +58,7 @@ export const Navbar = () => {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
-    localStorage.removeItem('token');
+    localStorage.removeItem('authToken');
     setShowDropdown(false);
     navigate('/');
   };

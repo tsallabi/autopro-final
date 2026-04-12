@@ -1,13 +1,10 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Home } from './pages/Home';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
-import { UserDashboard } from './pages/UserDashboard';
-import { AdminDashboard } from './pages/AdminDashboard';
-import { SellerDashboard } from './pages/SellerDashboard';
 import { CarDetails } from './pages/CarDetails';
 import { LiveAuctionRoom } from './pages/LiveAuctionRoom';
 import { CostCalculator } from './pages/CostCalculator';
@@ -26,6 +23,34 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { AdminErrorBoundary } from './components/AdminErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
 
+// Lazy-load heavy dashboard pages for code splitting
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const SellerDashboard = lazy(() => import('./pages/SellerDashboard').then(m => ({ default: m.SellerDashboard })));
+const UserDashboard = lazy(() => import('./pages/UserDashboard').then(m => ({ default: m.UserDashboard })));
+
+const DashboardFallback = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+    <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
+      <div>جاري التحميل...</div>
+    </div>
+  </div>
+);
+
+// Route guard — requires authentication
+const RequireAuth = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useStore();
+  if (!currentUser) return <Navigate to="/auth" replace />;
+  return <>{children}</>;
+};
+
+// Route guard — requires specific role
+const RequireRole = ({ children, role }: { children: React.ReactNode; role: string }) => {
+  const { currentUser } = useStore();
+  if (!currentUser) return <Navigate to="/auth" replace />;
+  if (currentUser.role !== role) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+};
 
 const DashboardRedirect = () => {
   const { currentUser } = useStore();
@@ -69,12 +94,28 @@ export default function App() {
           <Route path="/admin" element={<Navigate to="/dashboard/admin" replace />} />
           <Route path="/seller" element={<Navigate to="/dashboard/seller" replace />} />
 
-          {/* Dashboard Routes (Admin, User, Seller) */}
-          <Route path="/dashboard" element={<DashboardLayout />}>
+          {/* Dashboard Routes — protected with role-based access */}
+          <Route path="/dashboard" element={<RequireAuth><DashboardLayout /></RequireAuth>}>
             <Route index element={<DashboardRedirect />} />
-            <Route path="user" element={<UserDashboard />} />
-            <Route path="admin" element={<AdminErrorBoundary><AdminDashboard /></AdminErrorBoundary>} />
-            <Route path="seller" element={<SellerDashboard />} />
+            <Route path="user" element={
+              <Suspense fallback={<DashboardFallback />}>
+                <UserDashboard />
+              </Suspense>
+            } />
+            <Route path="admin" element={
+              <RequireRole role="admin">
+                <Suspense fallback={<DashboardFallback />}>
+                  <AdminErrorBoundary><AdminDashboard /></AdminErrorBoundary>
+                </Suspense>
+              </RequireRole>
+            } />
+            <Route path="seller" element={
+              <RequireRole role="seller">
+                <Suspense fallback={<DashboardFallback />}>
+                  <SellerDashboard />
+                </Suspense>
+              </RequireRole>
+            } />
           </Route>
         </Routes>
         <MobileBottomNav />
@@ -82,4 +123,3 @@ export default function App() {
     </StoreProvider>
   );
 }
-

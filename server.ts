@@ -26,7 +26,13 @@ import { Resend } from "resend";
 import Stripe from "stripe";
 import crypto from "crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[FATAL] JWT_SECRET environment variable is required in production!');
+    process.exit(1);
+  }
+  return "autopro-dev-secret-DO-NOT-USE-IN-PROD";
+})();
 
 // Plutu Payment Gateway (Libya) — https://docs.plutu.ly
 // IMPORTANT: Set these as environment variables in Render, NOT in code
@@ -89,7 +95,7 @@ const transporter = nodemailer.createTransport({
   secure: (process.env.SMTP_PORT || '465') === '465',
   auth: {
     user: process.env.SMTP_USER || 'info@autopro.ac',
-    pass: process.env.SMTP_PASS?.replace(/"/g, '') || 'T1234567t'
+    pass: process.env.SMTP_PASS?.replace(/"/g, '') || ''
   },
   tls: { rejectUnauthorized: false }
 });
@@ -475,13 +481,13 @@ db.exec(`
 
   -- Insert default admin if not exists (INSERT OR IGNORE so we never overwrite an already-hashed password)
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit)
-  VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.com', '01000000000', 'admin123', 'admin', 'active', '2024-01-01', 1000000, 100000);
+  VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.com', '01000000000', '${bcrypt.hashSync('admin123', 10)}', 'admin', 'active', '2024-01-01', 1000000, 100000);
 
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
-  VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', 'user123', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
+  VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', '${bcrypt.hashSync('user123', 10)}', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
 
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
-  VALUES ('seller-1', 'أحمد', 'المعرض', 'seller-1@autopro.com', '0112233445', 'seller123', 'seller', 'active', '2024-02-01', 0, 0, 3);
+  VALUES ('seller-1', 'أحمد', 'المعرض', 'seller-1@autopro.com', '0112233445', '${bcrypt.hashSync('seller123', 10)}', 'seller', 'active', '2024-02-01', 0, 0, 3);
 
   -- Seed Default Notification Templates
   INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
@@ -1256,13 +1262,27 @@ async function startServer() {
   console.log("🚀 Starting Server Initialization...");
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-  });
 
   const PORT = Number(process.env.PORT) || 3005;
 
-  app.use(cors());
+  const allowedOrigins = [
+    SITE_URL,
+    'http://localhost:3005',
+    'http://localhost:5173',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean) as string[];
+
+  const io = new Server(httpServer, {
+    cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true }
+  });
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server)
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -1270,8 +1290,12 @@ async function startServer() {
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' wss: https:; frame-ancestors 'self';");
+    }
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     next();
   });
 
@@ -1637,13 +1661,14 @@ async function startServer() {
     return newBalance;
   }
 
-  function walletDebit(userId: string, amount: number, description: string, refId?: string) {
-    const wallet: any = db.prepare("SELECT balance FROM buyer_wallets WHERE userId = ?").get(userId) as any;
-    if (!wallet || wallet.balance < amount) throw new Error("رصيد غير كافٍ في المحفظة");
-    const newBalance = wallet.balance - amount;
+  // Atomic wallet debit — prevents double-spending via single UPDATE with balance check
+  const walletDebitTransaction = db.transaction((userId: string, amount: number, description: string, refId?: string) => {
+    const result = db.prepare("UPDATE buyer_wallets SET balance = balance - ?, totalSpent = totalSpent + ?, updatedAt = ? WHERE userId = ? AND balance >= ?")
+      .run(amount, amount, new Date().toISOString(), userId, amount);
+    if (result.changes === 0) throw new Error("رصيد غير كافٍ في المحفظة");
 
-    db.prepare("UPDATE buyer_wallets SET balance = balance - ?, totalSpent = totalSpent + ?, updatedAt = ? WHERE userId = ?")
-      .run(amount, amount, new Date().toISOString(), userId);
+    const wallet: any = db.prepare("SELECT balance FROM buyer_wallets WHERE userId = ?").get(userId) as any;
+    const newBalance = wallet.balance;
 
     const txId = `wt-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
     db.prepare(`INSERT INTO wallet_transactions (id, userId, type, amount, balanceAfter, description, refId, timestamp) VALUES (?,?,?,?,?,?,?,?)`)
@@ -1651,6 +1676,10 @@ async function startServer() {
 
     db.prepare("UPDATE users SET deposit = ?, buyingPower = ? WHERE id = ?").run(newBalance, newBalance * 10, userId);
     return newBalance;
+  });
+
+  function walletDebit(userId: string, amount: number, description: string, refId?: string) {
+    return walletDebitTransaction(userId, amount, description, refId);
   }
 
   let isTransitioning = false;
@@ -2175,7 +2204,7 @@ async function startServer() {
   });
 
   // POST /api/payments/create-intent — create Stripe PaymentIntent for deposit
-  app.post("/api/payments/create-intent", async (req, res) => {
+  app.post("/api/payments/create-intent", requireAuth, async (req, res) => {
     try {
       const { amount, currency, type } = req.body;
       if (!amount || amount <= 0) return res.status(400).json({ error: "مبلغ غير صالح" });
@@ -2536,7 +2565,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         'info', '/deposit');
 
       // Generate Verification Token
-      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const token = crypto.randomBytes(20).toString('hex');
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h
 
       db.prepare(`INSERT OR REPLACE INTO verification_codes(email, code, expiresAt) VALUES(?, ?, ?)`).run(email, token, expiresAt);
@@ -2747,7 +2776,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         });
       }
 
-      res.json(user);
+      // Generate JWT for authenticated session
+      const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+      res.json({ ...user, token: authToken });
     } catch (err: any) {
       console.error('[GOOGLE AUTH ERROR]', err?.message);
       res.status(401).json({ error: 'فشل التحقق من حساب Google: ' + (err?.message || 'خطأ غير معروف') });
@@ -3066,6 +3097,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= USER SETTINGS =======
   app.get("/api/user/settings/:id", requireAuth, (req, res) => {
     const { id } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== id && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح بالوصول لإعدادات مستخدم آخر" });
+    }
     try {
       let settings: any = db.prepare("SELECT * FROM user_settings WHERE userId = ?").get(id);
       if (!settings) {
@@ -3080,6 +3115,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/user/settings/:id", requireAuth, (req, res) => {
     const { id } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== id && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح بتعديل إعدادات مستخدم آخر" });
+    }
     const { emailNotifications, whatsappNotifications } = req.body;
     try {
       db.prepare(`
@@ -3315,7 +3354,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/shipments/:carId/request", requireAuth, (req, res) => {
     const { carId } = req.params;
-    const { userId } = req.body;
+    const userId = (req as any).user.id; // Use authenticated user
     try {
       const now = new Date().toISOString();
       // Ensure shipment record exists (UPSERT)
@@ -3386,13 +3425,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/invoices/:id/pay", requireAuth, (req, res) => {
     const { id } = req.params;
-    const { method, referenceNo, receiptUrl, userId } = req.body;
+    const { method, referenceNo, receiptUrl } = req.body;
+    const userId = (req as any).user.id; // Use authenticated user, not body param
 
     if (!method) return res.status(400).json({ error: "يرجى اختيار طريقة الدفع أولاً" });
 
     try {
       const invoice: any = db.prepare("SELECT i.*, c.sellerId, c.make, c.model, c.year FROM invoices i LEFT JOIN cars c ON i.carId = c.id WHERE i.id = ?").get(id) as any;
       if (!invoice) return res.status(404).json({ error: "الفاتورة غير موجودة" });
+      if (invoice.userId !== userId) return res.status(403).json({ error: "هذه الفاتورة لا تخصك" });
       if (invoice.status === 'paid') return res.status(400).json({ error: "الفاتورة مدفوعة بالفعل" });
       if (invoice.status === 'pending_confirmation') return res.status(400).json({ error: "هذه الفاتورة بانتظار تأكيد الإدارة" });
 
@@ -3601,6 +3642,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // GET /api/seller/wallet/:sellerId - Full wallet summary
   app.get("/api/seller/wallet/:sellerId", requireAuth, (req, res) => {
     const { sellerId } = req.params;
+    const reqUser = (req as any).user;
+    if (reqUser.id !== sellerId && reqUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح بالوصول لمحفظة بائع آخر" });
+    }
     try {
       ensureSellerWallet(sellerId);
       const wallet: any = db.prepare("SELECT * FROM seller_wallets WHERE sellerId = ?").get(sellerId) as any;
@@ -3626,6 +3671,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // GET /api/seller/transactions/:sellerId - Seller transaction ledger
   app.get("/api/seller/transactions/:sellerId", requireAuth, (req, res) => {
     const { sellerId } = req.params;
+    const reqUser = (req as any).user;
+    if (reqUser.id !== sellerId && reqUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح بالوصول لمعاملات بائع آخر" });
+    }
     try {
       const txs: any[] = db.prepare(`
         SELECT st.*, c.make, c.model, c.year, c.lotNumber
@@ -3642,7 +3691,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   // POST /api/seller/withdraw - Request withdrawal
   app.post("/api/seller/withdraw", requireAuth, (req, res) => {
-    const { sellerId, amount, iban, bankName } = req.body;
+    const reqUser = (req as any).user;
+    const sellerId = reqUser.id; // Use authenticated user, not body param
+    const { amount, iban, bankName } = req.body;
     try {
       ensureSellerWallet(sellerId);
       const wallet: any = db.prepare("SELECT availableBalance FROM seller_wallets WHERE sellerId = ?").get(sellerId) as any;
@@ -4271,14 +4322,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/cars/:id/re-list", requireAuth, (req, res) => {
     const { id } = req.params;
-    const { userId, userRole, nextAuctionDate } = req.body;
+    const { nextAuctionDate } = req.body;
+    const reqUser = (req as any).user;
 
     try {
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
 
-      // RBAC check
-      if (userRole !== 'admin' && car.sellerId !== userId) {
+      // RBAC check — use JWT role, not body param
+      if (reqUser.role !== 'admin' && car.sellerId !== reqUser.id) {
         return res.status(403).json({ error: "ليس لديك صلاحية لإعادة إدراج هذه السيارة" });
       }
 
@@ -4304,12 +4356,13 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   app.post("/api/deposit", requireAuth, (req, res) => {
-    const { userId, amount, method = 'bank_transfer', referenceNo, currency = 'USD', notes } = req.body;
+    const { amount, method = 'bank_transfer', referenceNo, currency = 'USD', notes } = req.body;
+    const userId = (req as any).user.id; // Use authenticated user
     const now = new Date().toISOString();
     const txId = `tx-dep-${Date.now()}`;
 
     try {
-      if (!userId || !amount || Number(amount) <= 0) {
+      if (!amount || Number(amount) <= 0) {
         return res.status(400).json({ error: "بيانات غير مكتملة" });
       }
 
@@ -4617,9 +4670,27 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // Socket.io JWT authentication middleware
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    if (!token) {
+      // Allow unauthenticated connections for public auction viewing
+      (socket as any).user = null;
+      return next();
+    }
+    try {
+      const decoded: any = jwt.verify(token as string, JWT_SECRET);
+      (socket as any).user = decoded;
+      next();
+    } catch {
+      next(new Error('Authentication failed'));
+    }
+  });
+
   // Socket.io for Bidding
   io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
+    const socketUser = (socket as any).user;
+    console.log("User connected:", socket.id, socketUser ? `(${socketUser.email})` : '(anonymous)');
 
     socket.on("join_auction", (data) => {
       const carId = typeof data === 'string' ? data : data?.carId;
@@ -4635,19 +4706,22 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     });
 
     socket.on("join_user_room", (userId) => {
-      socket.join(`user_${userId} `);
-      console.log(`User joined personal room: user_${userId} `);
+      // Only allow joining your own room
+      if (socketUser && socketUser.id !== userId) return;
+      socket.join(`user_${userId}`);
+      console.log(`User joined personal room: user_${userId}`);
     });
 
     socket.on("send_message", (data) => {
-      const { senderId, receiverId, subject, content, category = 'general' } = data;
+      if (!socketUser) return socket.emit("bid_error", { message: "يجب تسجيل الدخول" });
+      const { receiverId, subject, content, category = 'general' } = data;
+      const senderId = socketUser.id; // Use authenticated user, not client-supplied
       try {
         const id = sendInternalMessage(senderId, receiverId, subject, content, category);
 
-        // Also send a notification for the message
         const sender: any = db.prepare("SELECT firstName, lastName FROM users WHERE id = ?").get(senderId);
-        const senderName = sender ? `${sender.firstName} ${sender.lastName} ` : 'النظام';
-        sendNotification(receiverId, `رسالة جديدة: ${subject} `, `لديك رسالة جديدة من ${senderName} `, 'info');
+        const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'النظام';
+        sendNotification(receiverId, `رسالة جديدة: ${subject}`, `لديك رسالة جديدة من ${senderName}`, 'info');
 
       } catch (err) {
         console.error("Socket message error:", err);
@@ -4655,44 +4729,57 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     });
 
     socket.on("place_bid", (data) => {
-      const { carId, userId, amount, type } = data;
+      if (!socketUser) return socket.emit("bid_error", { message: "يجب تسجيل الدخول للمزايدة" });
+      const { carId, amount, type } = data;
+      const userId = socketUser.id; // Use authenticated user from JWT
       const timestamp = new Date().toISOString();
       const bidId = Date.now().toString();
 
-      // Update car current bid
-      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
-      const user: any = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+      // Wrap all bid validation + placement in a transaction for atomicity
+      let car: any, user: any, prevWinnerId: string | null;
+      try {
+        const bidResult = db.transaction(() => {
+          const c: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
+          const u: any = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
 
-      if (!car || (car.status !== 'live' && car.status !== 'ultimo')) {
-        socket.emit("bid_error", { message: "المزاد غير متاح حالياً" });
+          if (!c || (c.status !== 'live' && c.status !== 'ultimo')) {
+            throw new Error("المزاد غير متاح حالياً");
+          }
+          if (c.status === 'ultimo' && userId !== c.winnerId) {
+            throw new Error("نافذة Ultimo متاحة فقط لأعلى مزايد حالياً");
+          }
+          if (amount <= c.currentBid) {
+            throw new Error("يجب أن تكون المزايدة أعلى من القيمة الحالية");
+          }
+          if (!u) {
+            throw new Error("المستخدم غير موجود");
+          }
+
+          // Calculate total exposure atomically inside transaction
+          const totalLeadingBids: any = (db.prepare("SELECT SUM(currentBid) as total FROM cars WHERE winnerId = ? AND status = 'live' AND id != ?").get(userId, carId) as any)?.total || 0;
+          const totalExposurePlusNewBid = totalLeadingBids + amount;
+
+          if (totalExposurePlusNewBid > u.buyingPower) {
+            throw new Error(`إجمالي التزاماتك($${totalLeadingBids.toLocaleString()} + $${amount.toLocaleString()}) يتجاوز سقفك المالي($${u.buyingPower.toLocaleString()})`);
+          }
+
+          const prev = c.winnerId;
+          db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(amount, userId, carId);
+          db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp, type) VALUES (?, ?, ?, ?, ?, ?)").run(bidId, carId, userId, amount, timestamp, type || 'manual');
+
+          return { car: c, user: u, prevWinnerId: prev };
+        })();
+
+        car = bidResult.car;
+        user = bidResult.user;
+        prevWinnerId = bidResult.prevWinnerId;
+      } catch (err: any) {
+        socket.emit("bid_error", { message: err.message });
         return;
       }
 
-      if (car.status === 'ultimo' && userId !== car.winnerId) {
-        socket.emit("bid_error", { message: "نافذة Ultimo متاحة فقط لأعلى مزايد حالياً" });
-        return;
-      }
-
-      if (amount <= car.currentBid) {
-        socket.emit("bid_error", { message: "يجب أن تكون المزايدة أعلى من القيمة الحالية" });
-        return;
-      }
-
-      if (!user) {
-        socket.emit("bid_error", { message: "المستخدم غير موجود" });
-        return;
-      }
-
-      // Calculate total exposure: sum of current leading bids for this user
-      const totalLeadingBids: any = (db.prepare("SELECT SUM(currentBid) as total FROM cars WHERE winnerId = ? AND status = 'live' AND id != ?").get(userId, carId) as any)?.total || 0;
-      const totalExposurePlusNewBid = totalLeadingBids + amount;
-
-      if (totalExposurePlusNewBid > user.buyingPower) {
-        socket.emit("bid_error", {
-          message: `إجمالي التزاماتك($${totalLeadingBids.toLocaleString()} + المزايدة الجديدة $${amount.toLocaleString()}) يتجاوز سقفك المالي($${user.buyingPower.toLocaleString()})`
-        });
-        return;
-      }
+      // From here on, bid is committed — do non-transactional side effects
+      console.log(`[BID] $${amount} by ${userId} for ${carId}`);
 
       // Anti-sniping: ensure at least 15 seconds remain after each bid
       if (car.status === 'live' && car.auctionEndDate) {
@@ -4701,14 +4788,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           const remaining = currentEndDate - now;
           const ANTI_SNIPE_MS = 15000; // 15 seconds
 
-          // Only extend if less than 15 seconds remain
           if (remaining < ANTI_SNIPE_MS) {
             const newEndDate = new Date(now + ANTI_SNIPE_MS).toISOString();
             const addedMs = (now + ANTI_SNIPE_MS) - currentEndDate;
             db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, carId);
             io.to(carId).emit("car_updated", { id: carId, auctionEndDate: newEndDate });
 
-            // Also shift upcoming cars by the same amount
             const addedSec = Math.ceil(addedMs / 1000);
             db.prepare(`
                 UPDATE cars
@@ -4718,20 +4803,13 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(addedSec, addedSec);
 
             io.emit("upcoming_cars_shifted", { shiftMs: addedMs });
-            console.log(`Bid placed: Live car ${carId} — only ${Math.round(remaining/1000)}s left, extended to 15s.`);
-          } else {
-            console.log(`Bid placed: Live car ${carId} — ${Math.round(remaining/1000)}s remaining, no extension needed.`);
           }
       }
 
-      const prevWinnerId = car.winnerId;
-      db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(amount, userId, carId);
-      console.log(`[STRESS] Bid placed: $${amount} by ${userId} for ${carId}`);
-
-      // INSTANT OUTBID NOTIFICATION
+      // INSTANT OUTBID NOTIFICATION (prevWinnerId comes from transaction)
       if (prevWinnerId && prevWinnerId !== userId) {
         sendNotification(prevWinnerId, "⚠️ تم تجاوز مزايدتك!", `قام شخص آخر بالمزايدة على ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. زايد الآن لاستعادة الصدارة!`, 'warning', 'general_notification', {}, `/cars/${carId}`);
-        io.to(`user_${prevWinnerId} `).emit("outbid", { carId, newBid: amount, make: car.make, model: car.model });
+        io.to(`user_${prevWinnerId}`).emit("outbid", { carId, newBid: amount, make: car.make, model: car.model });
       }
 
       // If Ultimo bid meets reserve, close immediately
@@ -4744,7 +4822,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         io.to(carId).emit("auction_closed", { carId, winnerId: userId, status: 'sold' });
       }
 
-      db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp, type) VALUES (?, ?, ?, ?, ?, ?)").run(bidId, carId, userId, amount, timestamp, type || 'manual');
+      // Bid already inserted in the transaction above
 
       const logEntry = {
         type: 'bid',
@@ -4762,7 +4840,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       io.emit("new_log", logEntry);
 
       // Broadcast wallet balance update to the user
-      io.to(`user_${userId} `).emit("user_update", {
+      io.to(`user_${userId}`).emit("user_update", {
         id: userId,
         buyingPower: user.buyingPower,
         deposit: user.deposit
@@ -4800,7 +4878,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     };
 
     socket.on("set_proxy_bid", (data) => {
-      const { carId, userId, maxAmount } = data;
+      if (!socketUser) return socket.emit("bid_error", { message: "يجب تسجيل الدخول" });
+      const { carId, maxAmount } = data;
+      const userId = socketUser.id; // Use authenticated user
       const user: any = db.prepare("SELECT buyingPower FROM users WHERE id = ?").get(userId);
 
       if (!user || maxAmount > user.buyingPower) {
@@ -5384,8 +5464,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // POST /api/seller/register — seller KYC application
   app.post("/api/seller/register", requireAuth, (req, res) => {
     try {
-      const { userId, companyName, tradeLicense, address, city, bankName, iban, phone } = req.body;
-      if (!userId) return res.status(400).json({ error: "بيانات غير مكتملة" });
+      const { companyName, tradeLicense, address, city, bankName, iban, phone } = req.body;
+      const userId = (req as any).user.id; // Use authenticated user
       db.prepare(`UPDATE users SET role='seller', kycStatus='pending', companyName=?, address1=?, phone=?
         WHERE id=?`).run(companyName||null, address||null, phone||null, userId);
       // Store IBAN for seller wallet
@@ -5838,7 +5918,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       if (!user) return res.json({ success: true, message: "إذا كان البريد مسجلاً، سيصلك رمز إعادة التعيين" });
 
       // Generate 6-digit code
-      const token = String(Math.floor(100000 + Math.random() * 900000));
+      const token = String(crypto.randomInt(100000, 999999));
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
 
       // Remove old tokens for this email
@@ -6545,7 +6625,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           db.prepare("UPDATE invoices SET status = 'paid', paidAt = ?, paidVia = 'plutu_sadad' WHERE id = ?")
             .run(new Date().toISOString(), invoiceId);
           sendNotification(userId, `تم دفع الفاتورة ${invoiceId} عبر سداد بنجاح`, 'payment', '/dashboard/user?view=invoices');
-          try { completeInvoicePayment(invoiceId, userId); } catch (_) { }
+          try { completeInvoicePayment(invoiceId, new Date().toISOString(), 'plutu'); } catch (_) { }
         } else {
           // Deposit — credit wallet
           const userRow: any = db.prepare("SELECT deposit FROM users WHERE id = ?").get(userId);
@@ -6618,8 +6698,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     try {
       const { approved, transaction_id, userId, type, invoiceId, amount, hashed } = req.query as any;
 
-      // SECURITY: Verify HMAC signature if PLUTU_SECRET_KEY is set
-      if (PLUTU_SECRET_KEY) {
+      // SECURITY: Verify HMAC signature — reject if no secret key configured
+      if (!PLUTU_SECRET_KEY) {
+        console.error('[PLUTU CALLBACK] HMAC verification impossible — PLUTU_SECRET_KEY not configured');
+        return res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=error&reason=security_config`);
+      }
+      {
         const dataToHash = `${transaction_id}${amount}${approved}`;
         const expectedHash = crypto.createHmac('sha256', PLUTU_SECRET_KEY).update(dataToHash).digest('hex');
         if (hashed !== expectedHash) {
@@ -6645,7 +6729,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           db.prepare("UPDATE invoices SET status = 'paid', paidAt = ?, paidVia = 'plutu_localbank' WHERE id = ?")
             .run(new Date().toISOString(), invoiceId);
           sendNotification(userId, `تم دفع الفاتورة ${invoiceId} عبر البطاقة المصرفية بنجاح`, 'payment', '/dashboard/user?view=invoices');
-          try { completeInvoicePayment(invoiceId, userId); } catch (_) { }
+          try { completeInvoicePayment(invoiceId, new Date().toISOString(), 'plutu'); } catch (_) { }
         } else {
           // Deposit — credit wallet
           const paidAmount = Number(amount) || 0;

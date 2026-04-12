@@ -333,31 +333,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               </button>
             </div>
 
-            {/* Quick Demo Login Buttons */}
+            {/* Quick Demo Login — only in development */}
+            {import.meta.env.DEV && (
             <div className="mt-6 pt-6 border-t border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center mb-3">دخول سريع (تجريبي)</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center mb-3">دخول سريع (تجريبي - بيئة التطوير فقط)</p>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => { setFormData({ ...formData, email: 'admin@autopro.com', password: 'admin123' }); }}
                   className="bg-red-50 text-red-600 border border-red-100 px-3 py-2.5 rounded-xl font-bold text-xs hover:bg-red-100 transition-colors"
                 >
-                  🛡️ مدير النظام
+                  مدير النظام
                 </button>
                 <button
                   onClick={() => { setFormData({ ...formData, email: 'user@autopro.com', password: 'user123' }); }}
                   className="bg-blue-50 text-blue-600 border border-blue-100 px-3 py-2.5 rounded-xl font-bold text-xs hover:bg-blue-100 transition-colors"
                 >
-                  🛒 مشتري
+                  مشتري
                 </button>
                 <button
                   onClick={() => { setFormData({ ...formData, email: 'seller@autopro.com', password: 'seller123' }); }}
                   className="bg-emerald-50 text-emerald-600 border border-emerald-100 px-3 py-2.5 rounded-xl font-bold text-xs hover:bg-emerald-100 transition-colors"
                 >
-                  🏪 تاجر
+                  تاجر
                 </button>
               </div>
-              <p className="text-[10px] text-slate-300 text-center mt-2">اضغط على الزر ثم اضغط "دخول"</p>
             </div>
+            )}
 
             <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               <Shield className="w-3 h-3" /> تشفير آمن 256-bit SSL

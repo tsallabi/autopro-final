@@ -125,7 +125,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Initialize Socket
   useEffect(() => {
-    const newSocket = io(window.location.origin);
+    const token = localStorage.getItem('authToken');
+    const newSocket = io(window.location.origin, {
+      auth: { token: token || undefined },
+    });
     setSocket(newSocket);
 
     newSocket.on('global_bid_update', ({ carId, currentBid }) => {
@@ -400,7 +403,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const markMessageAsRead = async (id: string) => {
     try {
-      await fetch(`/api/messages/${id}/read`, { method: 'POST' });
+      await authFetch(`/api/messages/${id}/read`, { method: 'POST' });
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: 1 } : m));
       fetchUnreadCounts();
     } catch (e) {
@@ -411,7 +414,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const sendMessage = async (data: { receiverId: string; subject: string; content: string; category: string }) => {
     if (!currentUser) return;
     try {
-      const res = await fetch('/api/messages', {
+      const res = await authFetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...data, senderId: currentUser.id })
@@ -434,13 +437,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       if (isExisting) {
         // Remove
-        const res = await fetch(`/api/watchlist/${isExisting.id}`, { method: 'DELETE' });
+        const res = await authFetch(`/api/watchlist/${isExisting.id}`, { method: 'DELETE' });
         if (res.ok) {
           setWatchlist(prev => prev.filter(w => w.carId !== carId));
         }
       } else {
         // Add
-        const res = await fetch('/api/watchlist', {
+        const res = await authFetch('/api/watchlist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentUser.id, carId })
@@ -464,7 +467,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addCar = async (car: Car) => {
     try {
-      const res = await fetch('/api/cars', {
+      const res = await authFetch('/api/cars', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(car)
@@ -484,7 +487,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateCar = async (id: string, updates: Partial<Car>) => {
     try {
-      const res = await fetch(`/api/cars/${id}`, {
+      const res = await authFetch(`/api/cars/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -500,7 +503,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteCar = async (id: string) => {
     try {
-      const res = await fetch(`/api/cars/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/cars/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setCars(prev => prev.filter(car => car.id !== id));
         setStats(prev => ({ ...prev, activeAuctions: prev.activeAuctions - 1 }));
@@ -544,7 +547,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addUser = async (user: User) => {
     try {
-      const res = await fetch('/api/users', {
+      const res = await authFetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user)
