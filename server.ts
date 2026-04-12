@@ -1,4 +1,14 @@
 import "dotenv/config";
+
+// Crash protection — prevent server from dying on unhandled errors
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err.message);
+  console.error(err.stack);
+  // Don't exit — keep serving
+});
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[FATAL] Unhandled Rejection:', reason?.message || reason);
+});
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -981,6 +991,25 @@ db.exec(`
   );
 `);
 
+// Database indexes for query performance
+try {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_cars_status ON cars(status);
+    CREATE INDEX IF NOT EXISTS idx_cars_sellerId ON cars(sellerId);
+    CREATE INDEX IF NOT EXISTS idx_cars_winnerId ON cars(winnerId);
+    CREATE INDEX IF NOT EXISTS idx_bids_carId ON bids(carId);
+    CREATE INDEX IF NOT EXISTS idx_bids_userId ON bids(userId);
+    CREATE INDEX IF NOT EXISTS idx_invoices_userId ON invoices(userId);
+    CREATE INDEX IF NOT EXISTS idx_invoices_carId ON invoices(carId);
+    CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+    CREATE INDEX IF NOT EXISTS idx_transactions_userId ON transactions(userId);
+    CREATE INDEX IF NOT EXISTS idx_notifications_userId ON notifications(userId);
+    CREATE INDEX IF NOT EXISTS idx_messages_receiverId ON messages(receiverId);
+    CREATE INDEX IF NOT EXISTS idx_shipments_userId ON shipments(userId);
+    CREATE INDEX IF NOT EXISTS idx_watchlist_userId ON watchlist(userId);
+  `);
+} catch (_) { }
+
 // Safe column additions (ignore if already exist)
 try { db.exec("ALTER TABLE seller_wallets ADD COLUMN bankName TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN kycDocUrl TEXT"); } catch (_) { }
@@ -1248,6 +1277,13 @@ async function startServer() {
 
   // ── In-memory rate limiter (login & sensitive endpoints) ──
   const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  // Cleanup expired entries every 5 minutes to prevent memory leak
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitMap) {
+      if (entry.resetAt < now) rateLimitMap.delete(key);
+    }
+  }, 5 * 60 * 1000);
   const rateLimit = (maxRequests: number, windowMs: number) => (req: any, res: any, next: any) => {
     const key = req.ip || 'unknown';
     const now = Date.now();
