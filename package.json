@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "start": "tsx server.ts",
+    "dev": "node --import tsx/esm server.ts",
+    "start": "node --import tsx/esm server.ts",
     "build": "vite build --emptyOutDir",
     "preview": "vite preview",
     "clean": "rm -rf dist",
