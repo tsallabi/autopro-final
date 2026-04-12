@@ -97,10 +97,9 @@ export const LandingPage = () => {
                     <div className="relative animate-in zoom-in duration-1000 hidden lg:flex flex-col items-center gap-32">
                         <div className="relative group mb-12">
                             <img
-                                src="/logo_on_dark.png?v=3"
+                                src="/logo_transparent_real.png"
                                 alt="AutoPro Logo"
                                 className="h-20 lg:h-28 w-auto object-contain transition-transform hover:scale-105 duration-700"
-                                style={{ mixBlendMode: 'screen' }}
                             />
                         </div>
 
