@@ -123,7 +123,7 @@ async function sendEmail(opts: { to: string; subject: string; html: string; from
 const SITE_URL = process.env.SITE_URL || 'https://autopro-final.onrender.com';
 
 
-// Initialize Database
+// Initialize Database — FK OFF only during schema creation + seed data, re-enabled at end of init block
 db.exec("PRAGMA foreign_keys = OFF;");
 
 // Create core tables early
@@ -463,14 +463,14 @@ db.exec(`
   ('off-3', 'مكتب القاهرة', 'eg', 'خالد عبدالله', 'active'),
   ('off-4', 'مكتب دبي', 'ae', 'سارة محمد', 'active');
 
-  -- Insert default admin if not exists
-  INSERT OR REPLACE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit)
+  -- Insert default admin if not exists (INSERT OR IGNORE so we never overwrite an already-hashed password)
+  INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit)
   VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.com', '01000000000', 'admin123', 'admin', 'active', '2024-01-01', 1000000, 100000);
 
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
   VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', 'user123', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
 
-  INSERT OR REPLACE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
+  INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
   VALUES ('seller-1', 'أحمد', 'المعرض', 'seller-1@autopro.com', '0112233445', 'seller123', 'seller', 'active', '2024-02-01', 0, 0, 3);
 
   -- Seed Default Notification Templates
@@ -1215,6 +1215,10 @@ for (let i = 1; i <= 18; i++) {
   }
 }
 
+// CRITICAL: Ensure foreign keys are ON for all runtime operations (cascade deletes, etc.)
+// This is a safety net in case any init block above left them OFF.
+db.exec("PRAGMA foreign_keys = ON;");
+
 // Diagnostic Log
 const carCount = db.prepare("SELECT COUNT(*) as count FROM cars").get() as any;
 console.log(`Database Status: ${carCount.count} cars loaded.`);
@@ -1827,7 +1831,7 @@ async function startServer() {
   });
 
 
-  setInterval(tickAuctions, 1000);
+  // (tickAuctions interval already started above — duplicate removed)
 
   // Heartbeat to monitor event loop health
   setInterval(() => {
@@ -4129,7 +4133,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       const totalSales: any = (db.prepare("SELECT SUM(amount) as total FROM bids").get() as any)?.total || 0;
       const activeAuctions: any = (db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get() as any)?.count || 0;
       const totalUsers: any = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any)?.count || 0;
-      const totalCommission = totalSales * 0.05; // Example logic
+      const commissionRateSetting: any = db.prepare("SELECT value FROM system_settings WHERE key = 'platform_commission_rate'").get();
+      const totalCommission = totalSales * (parseFloat(commissionRateSetting?.value) || 0.07);
       const activeShipments: any = (db.prepare("SELECT COUNT(*) as count FROM shipments WHERE status NOT IN ('delivered', 'cancelled')").get() as any)?.count || 0;
 
       res.json({
@@ -4671,10 +4676,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             const addedSec = Math.ceil(addedMs / 1000);
             db.prepare(`
                 UPDATE cars
-                SET auctionEndDate = datetime(auctionEndDate, '+${addedSec} seconds'),
-                    auctionStartTime = datetime(auctionStartTime, '+${addedSec} seconds')
+                SET auctionEndDate = datetime(auctionEndDate, '+' || ? || ' seconds'),
+                    auctionStartTime = datetime(auctionStartTime, '+' || ? || ' seconds')
                 WHERE status = 'upcoming'
-            `).run();
+            `).run(addedSec, addedSec);
 
             io.emit("upcoming_cars_shifted", { shiftMs: addedMs });
             console.log(`Bid placed: Live car ${carId} — only ${Math.round(remaining/1000)}s left, extended to 15s.`);
@@ -5529,12 +5534,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // SAFE: parameterized queries to prevent SQL injection
       const hasDateRange = from && to;
 
+      // Read commission rate from system_settings (consistent with platform_commission_rate)
+      const commRateSetting: any = db.prepare("SELECT value FROM system_settings WHERE key = 'platform_commission_rate'").get();
+      const commRate = parseFloat(commRateSetting?.value) || 0.07;
+
       const totalRevenue = hasDateRange
         ? (db.prepare("SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)?.v || 0
         : (db.prepare("SELECT SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed'").get() as any)?.v || 0;
       const totalCommission = hasDateRange
-        ? (db.prepare("SELECT SUM(amount * 0.05) as v FROM transactions WHERE type='commission' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)?.v || 0
-        : (db.prepare("SELECT SUM(amount * 0.05) as v FROM transactions WHERE type='commission' AND status='completed'").get() as any)?.v || 0;
+        ? (db.prepare("SELECT SUM(amount * ?) as v FROM transactions WHERE type='commission' AND status='completed' AND timestamp BETWEEN ? AND ?").get(commRate, from, to) as any)?.v || 0
+        : (db.prepare("SELECT SUM(amount * ?) as v FROM transactions WHERE type='commission' AND status='completed'").get(commRate) as any)?.v || 0;
       const totalDeposits = hasDateRange
         ? (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed' AND timestamp BETWEEN ? AND ?").get(from, to) as any)
         : (db.prepare("SELECT COUNT(*) as c, SUM(amount) as v FROM transactions WHERE type='deposit' AND status='completed'").get() as any);
@@ -5626,7 +5635,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   app.post("/api/admin/commission", requireAdmin, (req, res) => {
     try {
       const { carId, sellerId, saleAmount, commissionRate } = req.body;
-      const rate = commissionRate || 0.05;
+      // Read default from system_settings if not provided in request
+      const defaultRate: any = db.prepare("SELECT value FROM system_settings WHERE key = 'platform_commission_rate'").get();
+      const rate = commissionRate || parseFloat(defaultRate?.value) || 0.07;
       const commission = saleAmount * rate;
       const sellerNet = saleAmount - commission;
 
