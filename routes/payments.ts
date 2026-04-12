@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import express from 'express';
-import { requireAuth, requireAdmin } from '../lib/middleware';
-import type { AppContext } from '../lib/types';
+import { requireAuth, requireAdmin } from '../lib/middleware.ts';
+import type { AppContext } from '../lib/types.ts';
 
 export function registerPaymentRoutes(ctx: AppContext) {
   const {

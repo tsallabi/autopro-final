@@ -1,13 +1,13 @@
 import "dotenv/config";
 console.log('[BOOT] dotenv loaded, importing modules...');
-import { registerAuthRoutes } from './routes/auth';
-import { registerAdminRoutes } from './routes/admin';
-import { registerPaymentRoutes } from './routes/payments';
-import { registerSellerRoutes } from './routes/seller';
-import { registerBuyerRoutes } from './routes/buyer';
-import { registerCarRoutes } from './routes/cars';
-import { registerShippingRoutes } from './routes/shipping';
-import { registerSocketHandlers } from './sockets/index';
+import { registerAuthRoutes } from './routes/auth.ts';
+import { registerAdminRoutes } from './routes/admin.ts';
+import { registerPaymentRoutes } from './routes/payments.ts';
+import { registerSellerRoutes } from './routes/seller.ts';
+import { registerBuyerRoutes } from './routes/buyer.ts';
+import { registerCarRoutes } from './routes/cars.ts';
+import { registerShippingRoutes } from './routes/shipping.ts';
+import { registerSocketHandlers } from './sockets/index.ts';
 console.log('[BOOT] All route modules imported successfully');
 
 // Crash protection — prevent server from dying on unhandled errors

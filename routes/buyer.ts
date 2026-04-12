@@ -2,8 +2,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { requireAuth } from '../lib/middleware';
-import type { AppContext } from '../lib/types';
+import { requireAuth } from '../lib/middleware.ts';
+import type { AppContext } from '../lib/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { requireAdmin, requireAuth } from '../lib/middleware';
-import type { AppContext } from '../lib/types';
+import { requireAdmin, requireAuth } from '../lib/middleware.ts';
+import type { AppContext } from '../lib/types.ts';
 
 export function registerAdminRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, sendInternalMessage, sendEmail, walletCredit, walletDebit, completeInvoicePayment, JWT_SECRET, SITE_URL, SALT_ROUNDS, transporter } = ctx;

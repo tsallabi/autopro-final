@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { requireAuth } from '../lib/middleware';
-import type { AppContext } from '../lib/types';
+import { requireAuth } from '../lib/middleware.ts';
+import type { AppContext } from '../lib/types.ts';
 
 export function registerAuthRoutes(ctx: AppContext) {
   const { app, db, sendEmail, sendNotification, sendInternalMessage, JWT_SECRET, SITE_URL, SALT_ROUNDS } = ctx;

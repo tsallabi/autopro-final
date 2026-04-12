@@ -2,8 +2,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { requireAuth, requireAdmin } from '../lib/middleware';
-import type { AppContext } from '../lib/types';
+import { requireAuth, requireAdmin } from '../lib/middleware.ts';
+import type { AppContext } from '../lib/types.ts';
 
 export function registerCarRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, SITE_URL } = ctx;

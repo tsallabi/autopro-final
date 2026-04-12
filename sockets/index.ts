@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import type { AppContext } from '../lib/types';
+import type { AppContext } from '../lib/types.ts';
 
 export function registerSocketHandlers(ctx: AppContext) {
   const { io, db, sendNotification, sendInternalMessage, createWinInvoices, JWT_SECRET } = ctx;
