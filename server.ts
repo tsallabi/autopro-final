@@ -1,4 +1,12 @@
 import "dotenv/config";
+import { registerAuthRoutes } from './routes/auth';
+import { registerAdminRoutes } from './routes/admin';
+import { registerPaymentRoutes } from './routes/payments';
+import { registerSellerRoutes } from './routes/seller';
+import { registerBuyerRoutes } from './routes/buyer';
+import { registerCarRoutes } from './routes/cars';
+import { registerShippingRoutes } from './routes/shipping';
+import { registerSocketHandlers } from './sockets/index';
 
 // Crash protection — prevent server from dying on unhandled errors
 process.on('uncaughtException', (err) => {
@@ -2515,7 +2523,11 @@ async function startServer() {
     }
   }) as any);
 
-  // ======= AUTH ROUTES =======
+  // ======= AUTH ROUTES (moved to routes/auth.ts) =======
+  // The following auth routes are now in routes/auth.ts:
+  // POST /api/auth/register, POST /api/auth/login, POST /api/auth/google
+  // GET /api/auth/verify-email, POST /api/auth/forgot-password, POST /api/auth/reset-password
+  // POST /api/user/update-profile, POST /api/user/change-password
 
   app.post("/api/auth/register", async (req, res) => {
     const {
@@ -3638,6 +3650,23 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     return { txId, commission, netAmount };
   };
+
+  // ======= MODULE REGISTRATION (extracted routes) =======
+  const ctx = {
+    app, io, db, sendEmail, sendNotification, sendInternalMessage,
+    walletCredit, walletDebit, createWinInvoices, completeInvoicePayment,
+    ensureSellerWallet, settleSaleToSellerWallet,
+    JWT_SECRET, SITE_URL, SALT_ROUNDS, stripeClient, transporter,
+    PLUTU_API_KEY, PLUTU_ACCESS_TOKEN, PLUTU_SECRET_KEY, PLUTU_BASE_URL, PLUTU_ENABLED,
+  };
+  registerAuthRoutes(ctx as any);
+  registerAdminRoutes(ctx as any);
+  registerPaymentRoutes(ctx as any);
+  registerSellerRoutes(ctx as any);
+  registerBuyerRoutes(ctx as any);
+  registerCarRoutes(ctx as any);
+  registerShippingRoutes(ctx as any);
+  registerSocketHandlers(ctx as any);
 
   // GET /api/seller/wallet/:sellerId - Full wallet summary
   app.get("/api/seller/wallet/:sellerId", requireAuth, (req, res) => {
