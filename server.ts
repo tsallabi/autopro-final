@@ -14,6 +14,7 @@ import fs from "fs";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import Stripe from "stripe";
+import crypto from "crypto";
 
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
 
@@ -1281,7 +1282,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/settings", (req, res) => {
+  app.post("/api/settings", requireAdmin, (req, res) => {
     try {
       const updates = req.body;
       const stmt = db.prepare("UPDATE system_settings SET value = ?, updatedAt = ? WHERE key = ?");
@@ -1902,7 +1903,8 @@ async function startServer() {
   // POST /api/wallet/topup — user requests a top-up (pending admin approval)
   app.post("/api/wallet/topup", requireAuth, (req, res) => {
     try {
-      const { userId, amount, method, referenceNo } = req.body;
+      const userId = (req as any).user.id;
+      const { amount, method, referenceNo } = req.body;
       if (!userId || !amount || amount <= 0) return res.status(400).json({ error: "بيانات غير مكتملة" });
       const id = `pr-topup-${Date.now()}`;
       db.prepare(`INSERT INTO payment_requests (id, userId, type, amount, method, referenceNo, status, requestedAt)
@@ -1917,7 +1919,8 @@ async function startServer() {
   // POST /api/wallet/pay-invoice — pay an invoice from wallet balance
   app.post("/api/wallet/pay-invoice", requireAuth, (req, res) => {
     try {
-      const { userId, invoiceId } = req.body;
+      const userId = (req as any).user.id;
+      const { invoiceId } = req.body;
       const invoice: any = db.prepare("SELECT * FROM invoices WHERE id = ? AND userId = ?").get(invoiceId, userId) as any;
       if (!invoice) return res.status(404).json({ error: "الفاتورة غير موجودة" });
       if (invoice.status === 'paid') return res.status(400).json({ error: "الفاتورة مدفوعة بالفعل" });
@@ -2104,7 +2107,8 @@ async function startServer() {
   // POST /api/wallet/withdrawal — user requests withdrawal
   app.post("/api/wallet/withdrawal", requireAuth, (req, res) => {
     try {
-      const { userId, amount, iban, bankName } = req.body;
+      const userId = (req as any).user.id;
+      const { amount, iban, bankName } = req.body;
       if (!userId || !amount || amount <= 0) return res.status(400).json({ error: "بيانات غير مكتملة" });
       const wallet: any = db.prepare("SELECT balance FROM buyer_wallets WHERE userId=?").get(userId) as any;
       if (!wallet || wallet.balance < amount) return res.status(400).json({ error: "رصيد غير كافٍ" });
@@ -2172,6 +2176,10 @@ async function startServer() {
       } catch {
         return res.status(401).json({ error: "جلسة منتهية" });
       }
+      // SECURITY: Block demo bypass in production
+      if (demo && process.env.NODE_ENV === 'production') {
+        return res.status(400).json({ error: 'Demo not allowed in production' });
+      }
       if (!demo && stripeClient) {
         const pi = await stripeClient.paymentIntents.retrieve(paymentIntentId);
         if (pi.status !== 'succeeded') return res.status(400).json({ error: "لم يكتمل الدفع بعد" });
@@ -2229,7 +2237,7 @@ async function startServer() {
   });
 
   // ======= INSPECTION ROUTES =======
-  app.get("/api/inspections/:userId", (req, res) => {
+  app.get("/api/inspections/:userId", requireAuth, (req, res) => {
     try {
       const { userId } = req.params;
       const inspections = db.prepare("SELECT * FROM inspections WHERE userId = ? ORDER BY requestedAt DESC").all(userId);
@@ -2237,7 +2245,7 @@ async function startServer() {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post("/api/inspections", (req, res) => {
+  app.post("/api/inspections", requireAuth, (req, res) => {
     try {
       const { userId, carMake, carModel, carYear, vin, notes } = req.body;
       if (!userId || !carMake || !carModel) return res.status(400).json({ error: "Missing required fields" });
@@ -2254,18 +2262,19 @@ async function startServer() {
   // POST /api/user/update-profile — user updates their profile info
   app.post("/api/user/update-profile", requireAuth, (req, res) => {
     try {
-      const { id, firstName, lastName, phone, address } = req.body;
+      const id = (req as any).user.id;
+      const { firstName, lastName, phone, address } = req.body;
       if (!id) return res.status(400).json({ error: "Missing ID" });
 
       const stmt = db.prepare(`
-        UPDATE users 
+        UPDATE users
         SET firstName = ?, lastName = ?, phone = ?, address1 = ?
         WHERE id = ?
       `);
       const info = stmt.run(firstName, lastName, phone, address, id);
 
       if (info.changes > 0) {
-        const updatedUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+        const updatedUser: any = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users WHERE id = ?").get(id);
         res.json({ success: true, user: updatedUser });
       } else {
         res.status(404).json({ error: "User not found" });
@@ -2278,7 +2287,8 @@ async function startServer() {
   // POST /api/user/change-password — user changes their password
   app.post("/api/user/change-password", requireAuth, (req, res) => {
     try {
-      const { id, currentPassword, newPassword } = req.body;
+      const id = (req as any).user.id;
+      const { currentPassword, newPassword } = req.body;
       if (!id || !currentPassword || !newPassword) return res.status(400).json({ error: "Missing fields" });
 
       const user: any = db.prepare("SELECT password FROM users WHERE id = ?").get(id) as any;
@@ -2424,7 +2434,7 @@ async function startServer() {
   });
 
   // POST /api/upload/images - Upload up to 20 car images
-  app.post('/api/upload/images', (uploadImages.array('images', 20) as any), ((req: any, res: any) => {
+  app.post('/api/upload/images', requireAuth, (uploadImages.array('images', 20) as any), ((req: any, res: any) => {
     try {
       if (!req.files || (req.files as any).length === 0) {
         return res.status(400).json({ error: 'لم يتم رفع أي صور' });
@@ -2656,7 +2666,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           db.prepare("UPDATE users SET googleId = ?, profilePic = COALESCE(profilePic, ?) WHERE id = ?")
             .run(googleId, picture || null, user.id);
         }
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+        user = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate, googleId, profilePic, isEmailVerified FROM users WHERE id = ?").get(user.id);
       } else {
         // Register new user via Google
         const id = `user-g-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -2669,7 +2679,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(id, given_name || name || 'مستخدم', family_name || 'جوجل', email,
                googleId, picture || null, joinDate, buyingPower);
 
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+        user = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate, googleId, profilePic, isEmailVerified FROM users WHERE id = ?").get(id);
 
         // Welcome notification
         sendNotification(id, '🎉 مرحباً بك في أوتو برو!', 'تم تسجيلك عبر حساب Google. حسابك قيد المراجعة.', 'success', 'registration_success');
@@ -2833,14 +2843,14 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/offers/:carId/accept", requireAuth, (req, res) => {
     const { carId } = req.params;
-    const { userId, userRole } = req.body || {};
-    const actionUserId = userId || 'admin-1'; // fallback to admin if accessed directly from admin panel
+    const jwtUser = (req as any).user;
+    const actionUserId = jwtUser.id;
 
     try {
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
       if (!car) return res.status(404).json({ error: "Car not found" });
 
-      if (userRole !== 'admin' && userId && car.sellerId !== userId) {
+      if (jwtUser.role !== 'admin' && car.sellerId !== jwtUser.id) {
         return res.status(403).json({ error: "ليس لديك صلاحية للموافقة على هذا العرض" });
       }
 
@@ -2864,13 +2874,13 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/offers/:carId/reject", requireAuth, (req, res) => {
     const { carId } = req.params;
-    const { userId, userRole } = req.body || {};
+    const jwtUser = (req as any).user;
 
     try {
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
       if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
 
-      if (userRole !== 'admin' && userId && car.sellerId !== userId) {
+      if (jwtUser.role !== 'admin' && car.sellerId !== jwtUser.id) {
         return res.status(403).json({ error: "ليس لديك صلاحية لرفض هذا العرض" });
       }
 
@@ -2892,13 +2902,14 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/offers/:carId/counter", requireAuth, (req, res) => {
     const { carId } = req.params;
-    const { counterAmount, userId, userRole } = req.body || {};
+    const jwtUser = (req as any).user;
+    const { counterAmount } = req.body || {};
 
     try {
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
       if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
 
-      if (userRole !== 'admin' && userId && car.sellerId !== userId) {
+      if (jwtUser.role !== 'admin' && car.sellerId !== jwtUser.id) {
         return res.status(403).json({ error: "ليس لديك صلاحية لتقديم عرض مضاد" });
       }
 
@@ -3047,7 +3058,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= ADMIN: USER APPROVAL ROUTES =======
   app.get("/api/admin/pending-users", requireAdmin, (req, res) => {
     try {
-      const users: any[] = db.prepare("SELECT * FROM users WHERE status = 'pending_approval'").all();
+      const users: any[] = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users WHERE status = 'pending_approval'").all();
       res.json(users);
     } catch (e) {
       res.status(500).json({ error: "فشل جلب المستخدمين المعلقين" });
@@ -3192,7 +3203,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/shipments/seller/:id", (req, res) => {
+  app.get("/api/shipments/seller/:id", requireAuth, (req, res) => {
     const { id } = req.params;
     try {
       const shipments: any[] = db.prepare(`
@@ -3262,7 +3273,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/shipments/:carId/request", (req, res) => {
+  app.post("/api/shipments/:carId/request", requireAuth, (req, res) => {
     const { carId } = req.params;
     const { userId } = req.body;
     try {
@@ -3432,7 +3443,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   app.post("/api/watchlist", requireAuth, (req, res) => {
-    const { userId, carId } = req.body;
+    const userId = (req as any).user.id;
+    const { carId } = req.body;
     const id = Date.now().toString();
     try {
       db.prepare("INSERT INTO watchlist (id, userId, carId, timestamp) VALUES (?, ?, ?, ?)").run(
@@ -3464,7 +3476,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json(transactions);
   });
 
-  app.get("/api/transactions", (req, res) => {
+  app.get("/api/transactions", requireAdmin, (req, res) => {
     const { status, type } = req.query;
     let query = "SELECT t.*, u.firstName, u.lastName FROM transactions t JOIN users u ON t.userId = u.id";
     const params: any[] = [];
@@ -3492,7 +3504,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/transactions", (req, res) => {
+  app.post("/api/transactions", requireAdmin, (req, res) => {
     const { userId, amount, type, status } = req.body;
     const id = Date.now().toString();
     try {
@@ -3706,7 +3718,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/upload/document - KYC & general document upload
-  app.post("/api/upload/document", (uploadDoc.single('document') as any), ((req: any, res: any) => {
+  app.post("/api/upload/document", requireAuth, (uploadDoc.single('document') as any), ((req: any, res: any) => {
     try {
       if (!req.file) return res.status(400).json({ error: "لم يتم اختيار ملف" });
       const { userId, docType } = req.body;
@@ -3953,7 +3965,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ==========================================
   // ROUTES
   // ==========================================
-  app.post('/api/admin/send-campaign', async (req, res) => {
+  app.post('/api/admin/send-campaign', requireAdmin, async (req, res) => {
     try {
       const { carId, type } = req.body;
       const stmt = db.prepare('SELECT * FROM cars WHERE id = ?');
@@ -4168,7 +4180,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/cars/:id/offer", (req, res) => {
+  app.post("/api/cars/:id/offer", requireAuth, (req, res) => {
     const { id } = req.params;
     const { userId, amount } = req.body;
     const timestamp = new Date().toISOString();
@@ -4216,7 +4228,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   // Duplicate /api/offers/:id/accept and reject endpoints removed to resolve routing conflict
 
-  app.post("/api/cars/:id/re-list", (req, res) => {
+  app.post("/api/cars/:id/re-list", requireAuth, (req, res) => {
     const { id } = req.params;
     const { userId, userRole, nextAuctionDate } = req.body;
 
@@ -4479,7 +4491,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // Message Routes
-  app.get("/api/messages", (req, res) => {
+  app.get("/api/messages", requireAdmin, (req, res) => {
     try {
       const messages: any[] = db.prepare(`
         SELECT m.*,
@@ -4499,7 +4511,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // NOTE: Duplicate /api/messages/user/:userId - this second definition is removed.
   // The canonical version at line ~1426 is kept (with correct .all(userId) parameter).
 
-  app.post("/api/messages", (req, res) => {
+  app.post("/api/messages", requireAuth, (req, res) => {
     const { senderId, receiverId, subject, content, category } = req.body;
     try {
       sendInternalMessage(senderId, receiverId, subject, content, category);
@@ -4524,7 +4536,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   app.post("/api/notifications/read-all", requireAuth, (req, res) => {
-    const { userId } = req.body;
+    const userId = (req as any).user.id;
     try {
       db.prepare("UPDATE notifications SET isRead = 1 WHERE userId = ?").run(userId);
       res.json({ success: true });
@@ -4543,7 +4555,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.get("/api/unread-counts/:userId", (req, res) => {
+  app.get("/api/unread-counts/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
     try {
       const messages: any = db.prepare("SELECT COUNT(*) as count FROM messages WHERE receiverId = ? AND isRead = 0").get(userId) as any;
@@ -4554,7 +4566,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post("/api/messages/:id/read", (req, res) => {
+  app.post("/api/messages/:id/read", requireAuth, (req, res) => {
     const { id } = req.params;
     try {
       db.prepare("UPDATE messages SET isRead = 1 WHERE id = ?").run(id);
@@ -4844,7 +4856,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.get("/api/admin/system-summary", requireAdmin, (req, res) => {
     try {
-      const pendingUsers = db.prepare("SELECT * FROM users WHERE status = 'pending_approval'").all();
+      const pendingUsers = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users WHERE status = 'pending_approval'").all();
       const pendingCars = db.prepare("SELECT * FROM cars WHERE status = 'pending_approval'").all();
       const shipments = db.prepare("SELECT * FROM shipments WHERE status != 'delivered'").all();
 
@@ -4896,7 +4908,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.get("/api/admin/merchants", requireAdmin, (req, res) => {
     try {
-      res.json(db.prepare("SELECT * FROM users WHERE role = 'seller'").all());
+      res.json(db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users WHERE role = 'seller'").all());
     } catch (e) {
       res.status(500).json({ error: "Merchants error" });
     }
@@ -5036,7 +5048,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/libyan-market — add new car (admin)
-  app.post("/api/libyan-market", (req, res) => {
+  app.post("/api/libyan-market", requireAdmin, (req, res) => {
     try {
       const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD } = req.body;
       if (!make || !model || !year) return res.status(400).json({ error: "الماركة والموديل والسنة مطلوبة" });
@@ -5052,7 +5064,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // PUT /api/libyan-market/:id — edit car (admin)
-  app.put("/api/libyan-market/:id", (req, res) => {
+  app.put("/api/libyan-market/:id", requireAdmin, (req, res) => {
     try {
       const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD } = req.body;
       db.prepare(`UPDATE libyan_market_prices SET
@@ -5068,7 +5080,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // DELETE /api/libyan-market/:id — delete car (admin)
-  app.delete("/api/libyan-market/:id", (req, res) => {
+  app.delete("/api/libyan-market/:id", requireAdmin, (req, res) => {
     try {
       db.prepare("DELETE FROM libyan_market_prices WHERE id = ?").run(req.params.id);
       res.json({ success: true });
@@ -5238,7 +5250,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/bids/:carId — bids for a car
-  app.get("/api/bids/:carId", (req, res) => {
+  app.get("/api/bids/:carId", requireAuth, (req, res) => {
     try {
       const bids: any[] = db.prepare(`
         SELECT b.*, u.firstName, u.lastName, u.avatar
@@ -5266,7 +5278,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/offices — create office (admin)
-  app.post("/api/offices", (req, res) => {
+  app.post("/api/offices", requireAdmin, (req, res) => {
     try {
       const { name, branchId, manager, phone, email, address, city, country, status } = req.body;
       const id = `office-${Date.now()}`;
@@ -5277,7 +5289,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/sellers — list all seller users
-  app.get("/api/sellers", (req, res) => {
+  app.get("/api/sellers", requireAdmin, (req, res) => {
     try {
       const sellers: any[] = db.prepare(`
         SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.status, u.kycStatus,
@@ -5296,7 +5308,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // Alias: /api/seller-wallet/:id → /api/seller/wallet/:id
-  app.get("/api/seller-wallet/:id", (req, res) => {
+  app.get("/api/seller-wallet/:id", requireAuth, (req, res) => {
     try {
       let wallet: any = db.prepare("SELECT * FROM seller_wallets WHERE sellerId = ?").get(req.params.id);
       if (!wallet) {
@@ -5348,7 +5360,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/cars/seller — seller uploads a new car for auction
-  app.post("/api/cars/seller", (req, res) => {
+  app.post("/api/cars/seller", requireAuth, (req, res) => {
     try {
       const { sellerId, make, model, year, vin, mileage, condition, description,
               startingBid, reservePrice, auctionStart, auctionEnd, images, city } = req.body;
@@ -5381,7 +5393,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/cars/seller/:sellerId — seller's own cars
-  app.get("/api/cars/seller/:sellerId", (req, res) => {
+  app.get("/api/cars/seller/:sellerId", requireAuth, (req, res) => {
     try {
       const cars: any[] = db.prepare(`
         SELECT c.*,
@@ -5422,7 +5434,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // =====================================================================
 
   // GET /api/marketing/leads — all captured leads
-  app.get("/api/marketing/leads", (req, res) => {
+  app.get("/api/marketing/leads", requireAdmin, (req, res) => {
     try {
       const leads: any[] = db.prepare(`
         SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.country, u.joinDate,
@@ -5445,7 +5457,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/crm/customers — full CRM customer list
-  app.get("/api/crm/customers", (req, res) => {
+  app.get("/api/crm/customers", requireAdmin, (req, res) => {
     try {
       const customers: any[] = db.prepare(`
         SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.country, u.joinDate,
@@ -5464,7 +5476,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/crm/send-message — broadcast message to customer segment
-  app.post("/api/crm/send-message", (req, res) => {
+  app.post("/api/crm/send-message", requireAdmin, (req, res) => {
     try {
       const { segment, subject, content, adminId } = req.body;
       if (!subject || !content) return res.status(400).json({ error: "الموضوع والمحتوى مطلوبان" });
@@ -5488,7 +5500,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // POST /api/crm/send-notification — broadcast notification
-  app.post("/api/crm/send-notification", (req, res) => {
+  app.post("/api/crm/send-notification", requireAdmin, (req, res) => {
     try {
       const { segment, title, message, type, link } = req.body;
       if (!title || !message) return res.status(400).json({ error: "العنوان والمحتوى مطلوبان" });
@@ -6557,7 +6569,24 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // Plutu callback — handle return from bank card payment
   app.get("/api/payments/plutu/callback", async (req, res) => {
     try {
-      const { approved, transaction_id, userId, type, invoiceId, amount } = req.query as any;
+      const { approved, transaction_id, userId, type, invoiceId, amount, hashed } = req.query as any;
+
+      // SECURITY: Verify HMAC signature if PLUTU_SECRET_KEY is set
+      if (PLUTU_SECRET_KEY) {
+        const dataToHash = `${transaction_id}${amount}${approved}`;
+        const expectedHash = crypto.createHmac('sha256', PLUTU_SECRET_KEY).update(dataToHash).digest('hex');
+        if (hashed !== expectedHash) {
+          console.error(`[PLUTU CALLBACK] HMAC verification failed — expected: ${expectedHash}, got: ${hashed}`);
+          return res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=error&reason=invalid_signature`);
+        }
+      }
+
+      // SECURITY: Verify the pending transaction exists in DB before crediting
+      const pendingTxn: any = db.prepare("SELECT id FROM transactions WHERE userId = ? AND method = 'plutu_localbank' AND status = 'pending' ORDER BY timestamp DESC LIMIT 1").get(userId);
+      if (!pendingTxn) {
+        console.error(`[PLUTU CALLBACK] No pending transaction found for user ${userId}`);
+        return res.redirect(`${SITE_URL}/dashboard/user?view=wallet&payment=error&reason=no_pending_transaction`);
+      }
 
       if (approved === 'true' || approved === '1') {
         // Update pending transaction to completed
