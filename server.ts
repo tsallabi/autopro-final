@@ -5743,8 +5743,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Insert new token
       db.prepare("INSERT INTO password_reset_tokens (email, token, expiresAt) VALUES (?, ?, ?)").run(email, token, expiresAt);
 
-      // Send email
-      await sendEmail({
+      // Return success immediately — send email in background
+      res.json({ success: true, message: "إذا كان البريد مسجلاً، سيصلك رمز إعادة التعيين" });
+
+      // Send email (non-blocking)
+      sendEmail({
         to: email,
         subject: "رمز إعادة تعيين كلمة المرور — AutoPro",
         html: `
@@ -5755,9 +5758,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             <p style="color:#64748b;font-size:13px;">ينتهي صلاحية هذا الرمز خلال 15 دقيقة. إذا لم تطلب إعادة تعيين كلمة المرور، تجاهل هذه الرسالة.</p>
           </div>
         `,
-      });
-
-      res.json({ success: true, message: "إذا كان البريد مسجلاً، سيصلك رمز إعادة التعيين" });
+      }).catch(err => console.error('[FORGOT-PASSWORD EMAIL]', err.message));
     } catch (e: any) {
       console.error("[FORGOT-PASSWORD ERROR]", e);
       res.status(500).json({ error: "حدث خطأ — يرجى المحاولة لاحقاً" });
@@ -6326,7 +6327,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       if (model) { where += " AND LOWER(model) LIKE ?"; params.push(`%${(model as string).toLowerCase()}%`); }
       if (year) { where += " AND year = ?"; params.push(Number(year)); }
 
-      const prices = db.prepare(`SELECT make, model, year, price_usd, price_lyd FROM libyan_market_prices ${where} ORDER BY make, model, year LIMIT 50`).all(...params);
+      const prices = db.prepare(`SELECT make, makeEn, model, modelEn, year, priceLYD, transmission, fuel, mileage, city FROM libyan_market_prices ${where} ORDER BY make, model, year LIMIT 50`).all(...params);
       res.json({ success: true, count: prices.length, prices });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
