@@ -1,4 +1,5 @@
 import "dotenv/config";
+console.log('[BOOT] dotenv loaded, importing modules...');
 import { registerAuthRoutes } from './routes/auth';
 import { registerAdminRoutes } from './routes/admin';
 import { registerPaymentRoutes } from './routes/payments';
@@ -7,6 +8,7 @@ import { registerBuyerRoutes } from './routes/buyer';
 import { registerCarRoutes } from './routes/cars';
 import { registerShippingRoutes } from './routes/shipping';
 import { registerSocketHandlers } from './sockets/index';
+console.log('[BOOT] All route modules imported successfully');
 
 // Crash protection — prevent server from dying on unhandled errors
 process.on('uncaughtException', (err) => {
@@ -3659,14 +3661,23 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     JWT_SECRET, SITE_URL, SALT_ROUNDS, stripeClient, transporter,
     PLUTU_API_KEY, PLUTU_ACCESS_TOKEN, PLUTU_SECRET_KEY, PLUTU_BASE_URL, PLUTU_ENABLED,
   };
+  console.log('[BOOT] Registering route modules...');
   registerAuthRoutes(ctx as any);
+  console.log('[BOOT] ✓ auth routes');
   registerAdminRoutes(ctx as any);
+  console.log('[BOOT] ✓ admin routes');
   registerPaymentRoutes(ctx as any);
+  console.log('[BOOT] ✓ payment routes');
   registerSellerRoutes(ctx as any);
+  console.log('[BOOT] ✓ seller routes');
   registerBuyerRoutes(ctx as any);
+  console.log('[BOOT] ✓ buyer routes');
   registerCarRoutes(ctx as any);
+  console.log('[BOOT] ✓ car routes');
   registerShippingRoutes(ctx as any);
+  console.log('[BOOT] ✓ shipping routes');
   registerSocketHandlers(ctx as any);
+  console.log('[BOOT] ✓ socket handlers');
 
   // GET /api/seller/wallet/:sellerId - Full wallet summary
   app.get("/api/seller/wallet/:sellerId", requireAuth, (req, res) => {
