@@ -1869,6 +1869,10 @@ async function startServer() {
   app.get("/api/wallet/:userId", requireAuth, (req, res) => {
     try {
       const { userId } = req.params;
+      const requestingUser = (req as any).user;
+      if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+        return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+      }
       let wallet: any = db.prepare("SELECT * FROM buyer_wallets WHERE userId = ?").get(userId) as any;
       if (!wallet) {
         // Auto-create empty wallet
@@ -1886,6 +1890,10 @@ async function startServer() {
   app.get("/api/wallet/:userId/transactions", requireAuth, (req, res) => {
     try {
       const { userId } = req.params;
+      const requestingUser = (req as any).user;
+      if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+        return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+      }
       const txs: any[] = db.prepare("SELECT * FROM wallet_transactions WHERE userId = ? ORDER BY timestamp DESC LIMIT 100").all(userId);
       res.json(txs);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -3128,6 +3136,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= USER BIDS HISTORY =======
   app.get("/api/bids/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     try {
       const bids: any[] = db.prepare(`
         SELECT b.*, c.make, c.model, c.year, c.status as carStatus, c.currentBid, c.winnerId, c.images, c.lotNumber
@@ -3145,6 +3157,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= SHIPMENT ROUTES =======
   app.get("/api/shipments/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     try {
       const shipments: any[] = db.prepare(`
         SELECT s.*, c.make, c.model, c.year, c.images, c.lotNumber
@@ -3290,6 +3306,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // Invoice Routes
   app.get("/api/invoices/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     const invoices: any[] = db.prepare(`
       SELECT i.*, c.make, c.model, c.year, c.lotNumber, c.sellerId
       FROM invoices i 
@@ -3301,6 +3321,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.get("/api/offers/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     try {
       const offers = db.prepare("SELECT * FROM cars WHERE winnerId = ? AND status = 'offer_market'").all(userId);
       res.json(offers);
@@ -3391,6 +3415,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // Watchlist Routes
   app.get("/api/watchlist/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     const watchlist: any[] = db.prepare(`
       SELECT w.*, c.make, c.model, c.year, c.currentBid, c.images, c.status
       FROM watchlist w
@@ -3428,6 +3456,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= TRANSACTION ROUTES =======
   app.get("/api/transactions/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     const transactions: any[] = db.prepare("SELECT * FROM transactions WHERE userId = ? ORDER BY timestamp DESC").all(userId);
     res.json(transactions);
   });
@@ -4066,6 +4098,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // Message Routes (enhanced)
   app.get("/api/messages/user/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     const messages: any[] = db.prepare(`
       SELECT m.*, u.firstName as senderFirstName, u.lastName as senderLastName
       FROM messages m
@@ -4475,6 +4511,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.get("/api/notifications/:userId", requireAuth, (req, res) => {
     const { userId } = req.params;
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     try {
       const notifications: any[] = db.prepare("SELECT * FROM notifications WHERE userId = ? ORDER BY timestamp DESC").all(userId);
       res.json(notifications);
@@ -5270,7 +5310,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // GET /api/shipments/:userId — alias for /api/shipments/user/:userId
-  app.get("/api/shipments/:userId", (req, res) => {
+  app.get("/api/shipments/:userId", requireAuth, (req, res) => {
+    const requestingUser = (req as any).user;
+    if (requestingUser.id !== req.params.userId && requestingUser.role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح — لا يمكنك الوصول لبيانات مستخدم آخر" });
+    }
     try {
       const shipments: any[] = db.prepare(`
         SELECT s.*, c.make, c.model, c.year, c.lotNumber, c.vin
