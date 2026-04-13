@@ -839,7 +839,7 @@ export const Home = () => {
             <div className={`mt-20 ${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10' : 'flex flex-col gap-8'}`}>
               {filteredCars.map((car) => {
                 const seller = users.find(u => u.id === car.sellerId);
-                const showroomName = seller?.companyName || seller?.firstName ? `${seller.firstName || ''} ${seller.lastName || ''}`.trim() : 'معرض غير معروف';
+                const showroomName = car.showroomName || seller?.companyName || (seller?.firstName ? `${seller.firstName || ''} ${seller.lastName || ''}`.trim() : 'AutoPro Auctions');
                 const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active';
 
                 return (

@@ -19,8 +19,8 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
   const isFavorite = watchlist.some((w) => w.carId === car.id);
 
   const seller = users.find(u => u.id === car.sellerId);
-  const showroomName = seller?.companyName || seller?.firstName ? `${seller.firstName} ${seller.lastName}` : 'معرض غير معروف';
-  const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active';
+  const showroomName = car.showroomName || seller?.companyName || (seller?.firstName ? `${seller.firstName} ${seller.lastName}` : 'AutoPro Auctions');
+  const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active' || !car.sellerId;
 
   const handleToggleFavorite = (e: React.MouseEvent) => {
     e.stopPropagation();

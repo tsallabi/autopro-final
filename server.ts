@@ -683,7 +683,8 @@ db.exec("PRAGMA foreign_keys = ON;");
   "maxAuctionRetries INTEGER DEFAULT 3",
   "engineAudioUrl TEXT",
   "engineVideoUrl TEXT",
-  "pendingSellerEndTime TEXT"
+  "pendingSellerEndTime TEXT",
+  "showroomName TEXT"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE cars ADD COLUMN ${colDef}`);
@@ -2992,9 +2993,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
           auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
-          engineAudioUrl, engineVideoUrl
+          engineAudioUrl, engineVideoUrl, showroomName
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
@@ -3002,7 +3003,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
-        engineAudioUrl || '', engineVideoUrl || ''
+        engineAudioUrl || '', engineVideoUrl || '',
+        showroomName || 'AutoPro Auctions'
       );
       res.json({ id, ...req.body });
     } catch (e: any) {
@@ -6305,7 +6307,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           location = ?, primaryDamage = ?, secondaryDamage = ?, titleType = ?,
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
           drivetrain = ?, auctionEndDate = ?,
-          engineAudioUrl = ?, engineVideoUrl = ?
+          engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -6329,6 +6331,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         drivetrain ?? existing.drivetrain, auctionEndDate ?? existing.auctionEndDate,
         engineAudioUrl ?? engineSoundUrl ?? existing.engineAudioUrl ?? '',
         engineVideoUrl ?? youtubeVideoUrl ?? existing.engineVideoUrl ?? '',
+        showroomName ?? existing.showroomName ?? '',
         id
       );
 
