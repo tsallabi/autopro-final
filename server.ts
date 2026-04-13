@@ -83,7 +83,24 @@ function requireAuth(req: any, res: any, next: any) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("auction.db");
+// Use /data (Render persistent disk) in production, local dir in dev
+const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
+const DB_PATH = path.join(DATA_DIR, 'auction.db');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+
+// Copy seed DB to persistent disk on first run (if DB doesn't exist there yet)
+if (DATA_DIR === '/data' && !fs.existsSync(DB_PATH)) {
+  const localDb = path.join(__dirname, 'auction.db');
+  if (fs.existsSync(localDb)) {
+    fs.copyFileSync(localDb, DB_PATH);
+    console.log(`[BOOT] Copied seed DB to persistent disk: ${DB_PATH}`);
+  }
+}
+
+console.log(`[BOOT] Data dir: ${DATA_DIR}`);
+console.log(`[BOOT] DB path: ${DB_PATH}`);
+
+const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
 
@@ -2465,7 +2482,7 @@ async function startServer() {
   });
 
   // ======= FILE UPLOAD SETUP (multer) =======
-  const uploadsDir = path.join(__dirname, 'uploads');
+  const uploadsDir = UPLOADS_DIR;
   const imagesDir = path.join(uploadsDir, 'images');
   const docsDir = path.join(uploadsDir, 'documents');
   const mediaDir = path.join(uploadsDir, 'media');
