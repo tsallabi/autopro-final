@@ -22,7 +22,7 @@ process.on('unhandledRejection', (reason: any) => {
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { createServer as createViteServer } from "vite";
+// vite imported dynamically only in dev mode (see bottom of file)
 import cors from "cors";
 import Database from "better-sqlite3";
 import path from "path";
@@ -83,17 +83,22 @@ function requireAuth(req: any, res: any, next: any) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+console.log('[BOOT] Starting DB initialization...', { cwd: process.cwd(), dirname: __dirname });
 // Use /data (Render persistent disk) in production, local dir in dev
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 const DB_PATH = path.join(DATA_DIR, 'auction.db');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
 // Copy seed DB to persistent disk on first run (if DB doesn't exist there yet)
+console.log(`[BOOT] DATA_DIR=${DATA_DIR}, DB_PATH=${DB_PATH}, exists=${fs.existsSync(DB_PATH)}`);
 if (DATA_DIR === '/data' && !fs.existsSync(DB_PATH)) {
   const localDb = path.join(__dirname, 'auction.db');
+  console.log(`[BOOT] Local DB at ${localDb}, exists=${fs.existsSync(localDb)}`);
   if (fs.existsSync(localDb)) {
     fs.copyFileSync(localDb, DB_PATH);
     console.log(`[BOOT] Copied seed DB to persistent disk: ${DB_PATH}`);
+  } else {
+    console.log(`[BOOT] No local DB found — will create fresh DB at ${DB_PATH}`);
   }
 }
 
@@ -6956,6 +6961,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   } else {
     console.log("📦 Dev mode — initializing Vite Middleware...");
     try {
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
