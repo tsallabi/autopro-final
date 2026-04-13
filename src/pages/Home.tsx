@@ -9,7 +9,7 @@ import {
   Calendar, Gauge, Info, Gavel, User, Menu, Settings,
   Car as CarIcon, Mail, Laptop, Truck, BookOpen,
   Calculator as CalcIcon, Wallet, LayoutDashboard, Plus, Handshake,
-  Droplets, Settings2, ShieldCheck, AlertTriangle
+  Droplets, Settings2, ShieldCheck, AlertTriangle, Star
 } from 'lucide-react';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
@@ -846,7 +846,7 @@ export const Home = () => {
                   <div
                     key={car.id}
                     style={{ scrollMarginTop: '160px' }}
-                    className={`bg-white rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm hover:shadow-2xl transition-all duration-500 group ${viewMode === 'list' ? 'flex flex-col md:flex-row h-auto' : 'flex flex-col'}`}
+                    className={`rounded-[2rem] overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 group ${viewMode === 'list' ? 'flex flex-col md:flex-row h-auto' : 'flex flex-col'} ${car.isRecommended ? 'bg-gradient-to-b from-amber-50 to-white border-2 border-amber-400 shadow-amber-200/50 ring-2 ring-amber-300/30' : 'bg-white border border-slate-200'}`}
                   >
                     {/* Image Section with Consistent Sizing */}
                     <div className={`relative overflow-hidden bg-slate-100 shrink-0 ${viewMode === 'list' ? 'w-full aspect-[4/3] md:aspect-auto md:h-auto md:w-[30%] lg:w-[32%] xl:w-[350px]' : 'w-full aspect-[16/9]'}`}>
@@ -871,9 +871,9 @@ export const Home = () => {
                           #{car.lotNumber}
                         </div>
                         {car.isRecommended && (
-                          <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-white px-4 py-1.5 rounded-full text-[10px] font-black flex items-center gap-2 shadow-xl border border-white/20">
-                            <Heart className="w-3 h-3 fill-current" />
-                            مُوصى به
+                          <div className="bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-900 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-xl shadow-amber-400/30 border border-amber-300 animate-pulse">
+                            <Star className="w-4 h-4 fill-current text-amber-700" />
+                            سيارة مميزة
                           </div>
                         )}
                       </div>

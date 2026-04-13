@@ -684,7 +684,8 @@ db.exec("PRAGMA foreign_keys = ON;");
   "engineAudioUrl TEXT",
   "engineVideoUrl TEXT",
   "pendingSellerEndTime TEXT",
-  "showroomName TEXT"
+  "showroomName TEXT",
+  "isRecommended INTEGER DEFAULT 0"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE cars ADD COLUMN ${colDef}`);
@@ -2969,7 +2970,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
       buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
-      acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl,
+      acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl, isRecommended, showroomName,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes
     } = req.body;
@@ -2994,9 +2995,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
           auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
-          engineAudioUrl, engineVideoUrl, showroomName
+          engineAudioUrl, engineVideoUrl, showroomName, isRecommended
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
@@ -3005,7 +3006,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         engineAudioUrl || '', engineVideoUrl || '',
-        showroomName || (reqUser?.role === 'admin' ? 'AutoPro Auctions' : '') || ''
+        showroomName || (reqUser?.role === 'admin' ? 'AutoPro Auctions' : '') || '',
+        isRecommended ? 1 : 0
       );
       res.json({ id, ...req.body });
     } catch (e: any) {
@@ -6308,7 +6310,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           location = ?, primaryDamage = ?, secondaryDamage = ?, titleType = ?,
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
           drivetrain = ?, auctionEndDate = ?,
-          engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?
+          engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?, isRecommended = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -6333,6 +6335,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         engineAudioUrl ?? engineSoundUrl ?? existing.engineAudioUrl ?? '',
         engineVideoUrl ?? youtubeVideoUrl ?? existing.engineVideoUrl ?? '',
         showroomName ?? existing.showroomName ?? '',
+        isRecommended !== undefined ? (isRecommended ? 1 : 0) : existing.isRecommended ?? 0,
         id
       );
 
