@@ -20,7 +20,7 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
 
   const seller = users.find(u => u.id === car.sellerId);
   const showroomName = car.showroomName || seller?.companyName || (seller?.firstName ? `${seller.firstName} ${seller.lastName}` : 'AutoPro Auctions');
-  const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active' || !car.sellerId;
+  const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active' || seller?.role === 'admin' || !car.sellerId;
 
   const handleToggleFavorite = (e: React.MouseEvent) => {
     e.stopPropagation();

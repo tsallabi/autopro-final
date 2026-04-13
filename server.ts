@@ -6972,9 +6972,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   if (isProduction) {
     console.log("🚀 Production mode — serving dist/");
+    // Serve uploads BEFORE dist to prevent SPA catch-all from intercepting media files
+    app.use('/uploads', express.static(UPLOADS_DIR));
     app.use(express.static(distPath));
-    // Catch-all: serve React SPA (must be AFTER all /api routes)
+    // Catch-all: serve React SPA (must be AFTER all /api and /uploads routes)
     app.get('*', (req, res) => {
+      if (req.path.startsWith('/uploads/')) return res.status(404).send('File not found');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } else {
