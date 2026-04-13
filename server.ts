@@ -2980,9 +2980,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       return res.status(400).json({ error: `VIN ${vin} is already registered in the system.` });
     }
 
-    // If user is a seller and no sellerId provided, auto-set from auth token
-    // Use null (not '') for empty sellerId to satisfy FOREIGN KEY constraint
-    const effectiveSellerId = sellerId || ((req as any).user?.role === 'seller' ? (req as any).user.id : null);
+    // Auto-set sellerId from authenticated user — admin/employee/seller all get linked
+    // This ensures notifications, invoices, and payouts reach the right person
+    const reqUser = (req as any).user;
+    const effectiveSellerId = sellerId || reqUser?.id || null;
 
     const id = Date.now().toString();
     try {
@@ -3004,7 +3005,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         engineAudioUrl || '', engineVideoUrl || '',
-        showroomName || 'AutoPro Auctions'
+        showroomName || (reqUser?.role === 'admin' ? 'AutoPro Auctions' : '') || ''
       );
       res.json({ id, ...req.body });
     } catch (e: any) {
