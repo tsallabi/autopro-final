@@ -675,7 +675,9 @@ db.exec("PRAGMA foreign_keys = ON;");
   "sellerCounterPrice REAL",
   "isBuyNow INTEGER DEFAULT 0",
   "auctionStartTime TEXT",
-  "maxAuctionRetries INTEGER DEFAULT 3"
+  "maxAuctionRetries INTEGER DEFAULT 3",
+  "engineAudioUrl TEXT",
+  "engineVideoUrl TEXT"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE cars ADD COLUMN ${colDef}`);
@@ -2896,7 +2898,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
       buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
-      acceptOffers, videoUrl, inspectionPdf,
+      acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes
     } = req.body;
@@ -2919,16 +2921,18 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           transmission, drive, drivetrain, fuelType, exteriorColor, interiorColor,
           primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
-          auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers
+          auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
+          engineAudioUrl, engineVideoUrl
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
         currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),
-        videoUrl || '', inspectionPdf || '', 'pending_approval',
-        auctionEndDate || null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0
+        videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
+        auctionEndDate || null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
+        engineAudioUrl || '', engineVideoUrl || ''
       );
       res.json({ id, ...req.body });
     } catch (e: any) {

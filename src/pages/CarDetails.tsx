@@ -7,7 +7,7 @@ import {
 import { calculateTotalCost, MOCK_LOCATIONS } from '../services/calculatorService';
 import { VehicleType } from '../types/calculator';
 import { LiveAuction } from '../components/LiveAuction';
-import { useStore } from '../context/StoreContext';
+import { useStore, authFetch } from '../context/StoreContext';
 
 // ============================================================
 // Inline Proxy Bid Panel for Upcoming Market cars
@@ -392,17 +392,17 @@ export const CarDetails = () => {
           </div>
 
           {/* New Media Section */}
-          {(car.youtubeVideoUrl || car.videoUrl || car.engineSoundUrl || car.engineAudioUrl || car.inspectionReportUrl || car.inspectionPdf) && (
+          {(car.youtubeVideoUrl || car.videoUrl || car.engineVideoUrl || car.engineSoundUrl || car.engineAudioUrl || car.inspectionReportUrl || car.inspectionPdf) && (
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mt-8 space-y-6">
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
                 <FileText className="w-6 h-6 text-orange-500" /> تفاصيل الفحص والوسائط
               </h3>
 
-              {(car.youtubeVideoUrl || car.videoUrl) && (
+              {(car.youtubeVideoUrl || car.videoUrl || car.engineVideoUrl) && (
                 <div className="aspect-video rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-100 flex flex-col">
                   <iframe
                     title="فيديو السيارة"
-                    src={getYoutubeEmbedUrl(car.youtubeVideoUrl || car.videoUrl)}
+                    src={getYoutubeEmbedUrl(car.youtubeVideoUrl || car.videoUrl || car.engineVideoUrl)}
                     className="w-full flex-1"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -764,7 +764,7 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
     }
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/cars/${car.id}/offer`, {
+      const res = await authFetch(`/api/cars/${car.id}/offer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id, amount: offerAmount })
