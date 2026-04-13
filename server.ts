@@ -2889,7 +2889,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
 
     // If user is a seller and no sellerId provided, auto-set from auth token
-    const effectiveSellerId = sellerId || ((req as any).user?.role === 'seller' ? (req as any).user.id : '');
+    // Use null (not '') for empty sellerId to satisfy FOREIGN KEY constraint
+    const effectiveSellerId = sellerId || ((req as any).user?.role === 'seller' ? (req as any).user.id : null);
 
     const id = Date.now().toString();
     try {
