@@ -1034,40 +1034,40 @@ export const Home = () => {
 
                 {isMyAuctionsOpen && (
                   <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-2">
-                    {[
-                      { year: 2016, make: 'Chevrolet', model: 'Silverado 25...', trim: 'LT 1LT • 4WD • 8cyl', miles: '131,332 miles', time: '26:37', bid: 22550, winning: true, image: 'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&q=80&w=300', lot: '448555' },
-                      { year: 2014, make: 'Chevrolet', model: 'Corvette', trim: 'Stingray Z51 2LT', miles: '48,565 miles', time: '38:44', bid: 28500, winning: false, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300', lot: '184920' },
-                      { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
-                    ].map((item, idx) => (
-                      <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
+                    {cars.filter(car => car.status === 'live' && car.winnerId === currentUser?.id).length === 0 && (
+                      <div className="text-center py-4 text-slate-400 text-xs italic">لا توجد مزايدات نشطة حالياً</div>
+                    )}
+                    {cars.filter(car => (car.status === 'live' || car.status === 'ultimo') && car.winnerId === currentUser?.id).map((car) => {
+                      const isWinning = car.winnerId === currentUser?.id;
+                      const carImage = Array.isArray(car.images) && car.images.length > 0 ? car.images[0] : 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=300';
+                      const remaining = car.auctionEndDate ? Math.max(0, Math.floor((new Date(car.auctionEndDate).getTime() - Date.now()) / 60000)) : 0;
+                      return (
+                      <div key={car.id} onClick={() => navigate('/live-auction')} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${isWinning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
                         <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
-                          <img src={item.image} alt="car" className="w-full h-full object-cover" />
-                          <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
-                            <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
-                          </div>
+                          <img src={carImage} alt="car" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 flex flex-col justify-between min-w-0">
                           <div className="flex justify-between items-start">
                             <div className="min-w-0 pr-1">
-                              <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
-                              <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
-                              <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
+                              <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{car.year} {car.make} {car.model}</h4>
+                              <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{car.trim || ''} • {car.odometer?.toLocaleString()} mi</div>
                             </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isWinning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                               <CheckCircle2 className="w-3 h-3" />
                             </div>
                           </div>
                           <div className="flex justify-between items-end mt-1">
                             <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
-                              <Clock className="w-3 h-3 text-slate-400" /> {item.time}
+                              <Clock className="w-3 h-3 text-slate-400" /> {remaining}m
                             </div>
-                            <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
-                              ${item.bid.toLocaleString()}
+                            <div className={`text-sm font-black font-mono leading-none ${isWinning ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              ${(car.currentBid || 0).toLocaleString()}
                             </div>
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
 
                     <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full mt-2 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-black text-[11px] hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-2">
                       عرض جميع المزايدات <ArrowUpRight className="w-3 h-3" />

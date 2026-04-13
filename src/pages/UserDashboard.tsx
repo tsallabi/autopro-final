@@ -257,7 +257,12 @@ export const UserDashboard = () => {
       );
       setLostAuctions(lost);
 
-      const leadingBids = cars.filter(car => car.status === 'live' && car.winnerId === effectiveUser.id);
+      // Show ALL cars the user has bid on (not just winning ones)
+      const biddedCarIds = new Set(userBids.map(b => b.carId));
+      const leadingBids = cars.filter(car =>
+        (car.status === 'live' || car.status === 'ultimo') &&
+        (car.winnerId === effectiveUser.id || biddedCarIds.has(car.id))
+      );
       setActiveBids(leadingBids);
     }
   }, [cars, userBids, effectiveUser?.id]);
