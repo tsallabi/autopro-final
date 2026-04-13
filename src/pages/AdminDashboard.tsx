@@ -95,7 +95,7 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
         showAlert('فشل في جلب البيانات', 'error');
         setLoading(false);
       });
-  }, [refresh, showAlert]);
+  }, [refresh]); // eslint-disable-line -- showAlert is stable, don't include it
 
   const handleAction = async (url: string, method: string, body?: any) => {
     try {

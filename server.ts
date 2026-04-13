@@ -656,7 +656,9 @@ db.exec("PRAGMA foreign_keys = ON;");
   "auctionSessionCount INTEGER DEFAULT 0",
   "acceptedBy TEXT",
   "sellerCounterPrice REAL",
-  "isBuyNow INTEGER DEFAULT 0"
+  "isBuyNow INTEGER DEFAULT 0",
+  "auctionStartTime TEXT",
+  "maxAuctionRetries INTEGER DEFAULT 3"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE cars ADD COLUMN ${colDef}`);
@@ -5382,8 +5384,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         counterCars,
         wonCars
       });
-    } catch (e) {
-      res.status(500).json({ error: "Failed to fetch live auctions management data" });
+    } catch (e: any) {
+      console.error('[MANAGE-LIVE ERROR]', e.message);
+      res.status(500).json({ error: `Failed to fetch live auctions management data: ${e.message}` });
     }
   });
 
