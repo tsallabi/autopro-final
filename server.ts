@@ -4758,10 +4758,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  // Socket.io for Bidding
+  // Socket.io handlers moved to sockets/index.ts — registered via registerSocketHandlers(ctx)
+  // The old io.on("connection") block was removed to prevent duplicate bid processing.
+  // See sockets/index.ts for the current socket handler implementation.
+  /* REMOVED: old socket handlers — start
   io.on("connection", (socket) => {
     const socketUser = (socket as any).user;
-    console.log("User connected:", socket.id, socketUser ? `(${socketUser.email})` : '(anonymous)');
 
     socket.on("join_auction", (data) => {
       const carId = typeof data === 'string' ? data : data?.carId;
@@ -4968,6 +4970,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       console.log("User disconnected");
     });
   });
+  REMOVED: old socket handlers — end */
 
 
   app.get("/api/admin/all-transactions", requireAdmin, (req, res) => {
