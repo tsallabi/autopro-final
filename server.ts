@@ -508,13 +508,13 @@ db.exec(`
 
   -- Insert default admin if not exists (INSERT OR IGNORE so we never overwrite an already-hashed password)
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit)
-  VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.com', '01000000000', '${bcrypt.hashSync('admin123', 10)}', 'admin', 'active', '2024-01-01', 1000000, 100000);
+  VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.com', '01000000000', '$2b$10$DUniry6Q1H0Xfo//1rktVej.yWj0SV/9a.lwv0sOGfolOLJENZcQu', 'admin', 'active', '2024-01-01', 1000000, 100000);
 
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
-  VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', '${bcrypt.hashSync('user123', 10)}', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
+  VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', '$2b$10$eOo5.7Svq0keYdQgb7ruPOdkYh4ks9uhAXQxi.hQKRXXFiglZGyEq', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
 
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
-  VALUES ('seller-1', 'أحمد', 'المعرض', 'seller-1@autopro.com', '0112233445', '${bcrypt.hashSync('seller123', 10)}', 'seller', 'active', '2024-02-01', 0, 0, 3);
+  VALUES ('seller-1', 'أحمد', 'المعرض', 'seller-1@autopro.com', '0112233445', '$2b$10$QH6VnNaYPJDPRtKPXPM9tOcGxPCvml2CFoL2nEtQpsXeNT2QyTPU6', 'seller', 'active', '2024-02-01', 0, 0, 3);
 
   -- Seed Default Notification Templates
   INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
