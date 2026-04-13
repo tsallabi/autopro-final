@@ -79,8 +79,8 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         auctionLane: '', showroomName: '', startingBid: '', reservePrice: '',
         saleStatus: SALE_STATUSES[0], locationDetails: '', exchangeRate: '1', minPrice: '',
         specialNote: '', buyNowPrice: '', acceptedOfferPercentage: ACCEPTED_OFFER_OPTIONS[0],
-        bodyType: BODY_TYPES[0], interiorColor: '', auctionLights: AUCTION_LIGHTS[0], conditionReportType: CONDITION_REPORT_TYPES[0],
-        youtubeVideoUrl: '', isRecommended: false,
+        bodyType: BODY_TYPES[0], interiorColor: '', exteriorColor: '', auctionLights: AUCTION_LIGHTS[0], conditionReportType: CONDITION_REPORT_TYPES[0],
+        youtubeVideoUrl: '', isRecommended: false, primaryDamage: 'بدون ضرر', location: '', titleType: 'الولايات المتحدة us',
         ...(initialData || {}),
     });
 
@@ -361,6 +361,12 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                     <input type="text" aria-label="اللون الداخلي" title="اللون الداخلي" value={formData.interiorColor || ''} onChange={e => handleFieldChange('interiorColor', e.target.value)} className={iptClass} placeholder="بيج، أسود، أحمر..." />
                                 </div>
                                 <ComboSelect label="شكل الهيكل" value={formData.bodyType} options={BODY_TYPES} onChange={(v: string) => handleFieldChange('bodyType', v)} />
+                                <ComboSelect label="نوع الضرر الأساسي" value={formData.primaryDamage} options={['بدون ضرر', 'أمامي', 'خلفي', 'جانبي', 'سقف', 'غرق', 'حريق', 'تلف بيئي', 'سرقة مسترجعة', 'ميكانيكي', 'كهربائي', 'أخرى']} onChange={(v: string) => handleFieldChange('primaryDamage', v)} />
+                                <div>
+                                    <label className="block text-xs font-black text-orange-500 mb-2">موقع السيارة (Location)</label>
+                                    <input type="text" value={formData.location || formData.locationDetails || ''} onChange={e => { handleFieldChange('location', e.target.value); handleFieldChange('locationDetails', e.target.value); }} className={iptClass} placeholder="مثال: GA - ATLANTA, USA" />
+                                </div>
+                                <ComboSelect label="بلد الاستيراد" value={formData.titleType} options={['الولايات المتحدة us', 'كندا ca', 'كوريا kr', 'الإمارات ae', 'أوروبا eu', 'أخرى']} onChange={(v: string) => handleFieldChange('titleType', v)} />
                                 <ComboSelect label="إضاءة المزاد (حالة عامة)" value={formData.auctionLights} options={AUCTION_LIGHTS} onChange={(v: string) => handleFieldChange('auctionLights', v)} />
                                 <ComboSelect label="نوع تقرير الفحص" value={formData.conditionReportType} options={CONDITION_REPORT_TYPES} onChange={(v: string) => handleFieldChange('conditionReportType', v)} />
                                 <ComboSelect label="حالة السيارة" value={formData.runsDrives || 'تعمل وتسير'} options={['تعمل وتسير', 'المحرك يعمل فقط', 'لا تعمل ولا تسير']} onChange={(v: string) => handleFieldChange('runsDrives', v)} />

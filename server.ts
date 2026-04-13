@@ -6283,7 +6283,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
       buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
-      acceptOffers, videoUrl, inspectionPdf,
+      acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
       actualOdometer, cylinders, auctionLane, showroomName, saleStatus,
@@ -6304,7 +6304,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           exteriorColor = ?, interiorColor = ?, keys = ?, runsDrives = ?,
           location = ?, primaryDamage = ?, secondaryDamage = ?, titleType = ?,
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
-          drivetrain = ?, auctionEndDate = ?
+          drivetrain = ?, auctionEndDate = ?,
+          engineAudioUrl = ?, engineVideoUrl = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -6313,7 +6314,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         transmission ?? existing.transmission, drive ?? existing.drive,
         fuelType ?? existing.fuelType, reservePrice ?? existing.reservePrice,
         JSON.stringify(images || JSON.parse(existing.images || '[]')),
-        videoUrl ?? youtubeVideoUrl ?? existing.videoUrl,
+        videoUrl ?? engineVideoUrl ?? youtubeVideoUrl ?? existing.videoUrl,
         inspectionPdf ?? inspectionReportUrl ?? existing.inspectionPdf,
         sellerId ?? existing.sellerId, currency ?? existing.currency,
         acceptOffers !== undefined ? (acceptOffers ? 1 : 0) : existing.acceptOffers,
@@ -6326,6 +6327,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         trim ?? existing.trim, mileageUnit ?? existing.mileageUnit,
         engineSize ?? existing.engineSize, horsepower ?? existing.horsepower,
         drivetrain ?? existing.drivetrain, auctionEndDate ?? existing.auctionEndDate,
+        engineAudioUrl ?? engineSoundUrl ?? existing.engineAudioUrl ?? '',
+        engineVideoUrl ?? youtubeVideoUrl ?? existing.engineVideoUrl ?? '',
         id
       );
 
