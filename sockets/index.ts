@@ -76,7 +76,7 @@ export function registerSocketHandlers(ctx: AppContext) {
           const c: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
           const u: any = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
 
-          if (!c || (c.status !== 'live' && c.status !== 'ultimo')) {
+          if (!c || (c.status !== 'live' && c.status !== 'upcoming' && c.status !== 'ultimo')) {
             throw new Error("المزاد غير متاح حالياً");
           }
           if (c.status === 'ultimo' && userId !== c.winnerId) {
@@ -90,7 +90,7 @@ export function registerSocketHandlers(ctx: AppContext) {
           }
 
           // Calculate total exposure atomically inside transaction
-          const totalLeadingBids: any = (db.prepare("SELECT SUM(currentBid) as total FROM cars WHERE winnerId = ? AND status = 'live' AND id != ?").get(userId, carId) as any)?.total || 0;
+          const totalLeadingBids: any = (db.prepare("SELECT SUM(currentBid) as total FROM cars WHERE winnerId = ? AND status IN ('live', 'upcoming') AND id != ?").get(userId, carId) as any)?.total || 0;
           const totalExposurePlusNewBid = totalLeadingBids + amount;
 
           if (totalExposurePlusNewBid > u.buyingPower) {
