@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --import tsx/esm server.ts",
-    "start": "node --import tsx/esm server.ts",
-    "build": "vite build --emptyOutDir",
+    "dev": "tsx server.ts",
+    "start": "node server.mjs",
+    "build": "vite build --emptyOutDir && npx esbuild server.ts --bundle --platform=node --format=esm --outfile=server.mjs --packages=external --target=node20",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
