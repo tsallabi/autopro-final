@@ -2466,10 +2466,13 @@ async function startServer() {
   const uploadsDir = path.join(__dirname, 'uploads');
   const imagesDir = path.join(uploadsDir, 'images');
   const docsDir = path.join(uploadsDir, 'documents');
+  const mediaDir = path.join(uploadsDir, 'media');
+  const kycDir = path.join(uploadsDir, 'kyc');
 
-  // Create upload directories if they don't exist
-  [uploadsDir, imagesDir, docsDir].forEach(dir => {
+  // Create ALL upload directories at startup
+  [uploadsDir, imagesDir, docsDir, mediaDir, kycDir].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    console.log(`[BOOT] Upload dir: ${dir} ${fs.existsSync(dir) ? '✓' : '✗'}`);
   });
 
   // Serve uploaded files as static assets
@@ -2513,17 +2516,25 @@ async function startServer() {
   });
 
   // POST /api/upload/images - Upload up to 20 car images
-  app.post('/api/upload/images', requireAuth, (uploadImages.array('images', 20) as any), ((req: any, res: any) => {
-    try {
-      if (!req.files || (req.files as any).length === 0) {
-        return res.status(400).json({ error: 'لم يتم رفع أي صور' });
+  app.post('/api/upload/images', requireAuth, (req: any, res: any, next: any) => {
+    (uploadImages.array('images', 20) as any)(req, res, (err: any) => {
+      if (err) {
+        console.error('[UPLOAD ERROR]', err.message, err.code);
+        return res.status(400).json({ error: `فشل رفع الصور: ${err.message}` });
       }
-      const urls = (req.files as any[]).map((f: any) => `/uploads/images/${f.filename}`);
-      res.json({ success: true, urls, count: urls.length });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message || 'فشل رفع الصور' });
-    }
-  }) as any);
+      try {
+        if (!req.files || (req.files as any).length === 0) {
+          return res.status(400).json({ error: 'لم يتم رفع أي صور' });
+        }
+        const urls = (req.files as any[]).map((f: any) => `/uploads/images/${f.filename}`);
+        console.log(`[UPLOAD] ${urls.length} images uploaded:`, urls);
+        res.json({ success: true, urls, count: urls.length });
+      } catch (e: any) {
+        console.error('[UPLOAD HANDLER ERROR]', e.message);
+        res.status(500).json({ error: e.message || 'فشل رفع الصور' });
+      }
+    });
+  });
 
   // ======= AUTH ROUTES (moved to routes/auth.ts) =======
   // The following auth routes are now in routes/auth.ts:
@@ -2900,9 +2911,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         auctionEndDate || '', effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0
       );
       res.json({ id, ...req.body });
-    } catch (e) {
-      console.error(e);
-      res.status(400).json({ error: "Failed to add car or invalid data" });
+    } catch (e: any) {
+      console.error('[CAR CREATE ERROR]', e.message, e);
+      res.status(400).json({ error: `فشل إضافة السيارة: ${e.message}` });
     }
   });
 
@@ -6137,8 +6148,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ======= MISSING ENDPOINTS =======
 
   // 4a) POST /api/upload/media — engine sound + inspection PDF upload
-  const mediaDir = path.join(uploadsDir, 'media');
-  if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+  // mediaDir already created at startup above
 
   const mediaStorage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, mediaDir),
@@ -6229,8 +6239,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // 4c) POST /api/kyc/upload — KYC document upload for buyers
-  const kycDir = path.join(uploadsDir, 'kyc');
-  if (!fs.existsSync(kycDir)) fs.mkdirSync(kycDir, { recursive: true });
+  // kycDir already created at startup above
 
   const kycStorage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, kycDir),
