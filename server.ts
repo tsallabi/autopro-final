@@ -1295,12 +1295,26 @@ db.exec("PRAGMA foreign_keys = ON;");
 const carCount = db.prepare("SELECT COUNT(*) as count FROM cars").get() as any;
 console.log(`Database Status: ${carCount.count} cars loaded.`);
 
+// ━━ CREATE SERVER IMMEDIATELY for health check ━━
+const app = express();
+const httpServer = createServer(app);
+const PORT = Number(process.env.PORT) || 3005;
+
+// Health check must respond BEFORE full initialization
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ HTTP Server listening on http://localhost:${PORT}`);
+  // Start full initialization AFTER server is listening
+  startServer().catch(err => console.error('Server Start Error:', err));
+});
+
 async function startServer() {
   console.log("🚀 Starting Server Initialization...");
-  const app = express();
-  const httpServer = createServer(app);
 
-  const PORT = Number(process.env.PORT) || 3005;
+  // app, httpServer, PORT already created above
 
   const allowedOrigins = [
     SITE_URL,
@@ -1366,10 +1380,7 @@ async function startServer() {
   app.use('/api/payments/', rateLimit(30, 60_000));        // 30 per minute
   app.use('/api/deposit', rateLimit(10, 60_000));          // 10 per minute
 
-  // Register health check IMMEDIATELY
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
-  });
+  // Health check already registered before listen (line ~1304)
 
   // Settings API
   app.get("/api/settings", (req, res) => {
@@ -1405,10 +1416,8 @@ async function startServer() {
     }
   });
 
-  // Start listening before Vite
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ HTTP Server listening on http://localhost:${PORT}`);
-  });
+  // Health check already registered above (before startServer)
+  // Server already listening above (before startServer)
 
   // ======= Internal Helper Functions =======
 
@@ -6974,6 +6983,4 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   }
 }
 
-startServer().catch(err => {
-  console.log('Server Start Error:', err);
-});
+// startServer() is now called from httpServer.listen callback above
