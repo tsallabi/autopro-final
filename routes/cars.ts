@@ -71,8 +71,12 @@ export function registerCarRoutes(ctx: AppContext) {
     storage: mediaStorage,
     limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
     fileFilter: (_req, file, cb) => {
-      if (file.mimetype.startsWith('audio/') || file.mimetype === 'application/pdf') cb(null, true);
-      else cb(new Error('Only audio and PDF files allowed'));
+      const ext = (file.originalname || '').toLowerCase();
+      const isAudio = file.mimetype.startsWith('audio/') || ext.endsWith('.mp3') || ext.endsWith('.wav') || ext.endsWith('.ogg') || ext.endsWith('.m4a');
+      const isPdf = file.mimetype === 'application/pdf' || ext.endsWith('.pdf');
+      const isVideo = file.mimetype.startsWith('video/') || ext.endsWith('.mp4') || ext.endsWith('.webm');
+      if (isAudio || isPdf || isVideo) cb(null, true);
+      else cb(new Error(`نوع الملف غير مدعوم (${file.mimetype}). يُقبل: MP3, WAV, PDF, MP4`));
     }
   });
 
