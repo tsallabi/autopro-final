@@ -57,8 +57,15 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
   return (
     <div
       onClick={() => onClick(car)}
-      className="bg-white rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.1)] transition-all duration-500 border border-slate-100 cursor-pointer group flex flex-col hover:-translate-y-2"
+      className={`rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.1)] transition-all duration-500 cursor-pointer group flex flex-col hover:-translate-y-2 ${car.isRecommended ? 'bg-gradient-to-b from-amber-50 to-white border-2 border-amber-400 ring-2 ring-amber-300/30 shadow-amber-200/50' : 'bg-white border border-slate-100'}`}
     >
+      {/* Featured Badge */}
+      {car.isRecommended && (
+        <div className="absolute top-4 right-4 z-30 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 text-slate-900 px-3 py-1.5 rounded-full text-[11px] font-black flex items-center gap-1.5 shadow-lg shadow-amber-400/50 border border-amber-300 animate-pulse">
+          <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          سيارة مميزة
+        </div>
+      )}
       {/* Image Container */}
       <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
         <img

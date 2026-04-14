@@ -16,6 +16,7 @@ import { MessageDropdown } from '../components/MessageDropdown';
 import { useTranslation } from 'react-i18next';
 import { CAR_MAKES_AND_MODELS } from '../data/carData';
 import { DualRangeSlider } from '../components/DualRangeSlider';
+import { FeaturedCarsBanner } from '../components/FeaturedCarsBanner';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 const ListCarTimer = ({ car }: { car: Car }) => {
@@ -815,6 +816,9 @@ export const Home = () => {
             </div>
           </div>
 
+          {/* Featured Cars Banner in left sidebar */}
+          <FeaturedCarsBanner />
+
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden group border border-white/10 shadow-2xl">
             <div className="relative z-10">
               <div className="text-orange-500 font-black text-[10px] uppercase tracking-widest mb-2 text-right">{t('home.news.platformNews')}</div>
@@ -1051,6 +1055,9 @@ export const Home = () => {
         {
           currentUser && (
             <aside className="hidden lg:flex w-80 flex-col gap-6 sticky top-[90px] z-10">
+              {/* Featured Cars Banner — Premium Gold Dealers */}
+              <FeaturedCarsBanner />
+
               <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-4">
                 <div onClick={() => setIsMyAuctionsOpen(!isMyAuctionsOpen)} className="flex items-center justify-between mb-2 cursor-pointer group pb-3 border-b border-slate-100">
                   <h3 className="font-black text-slate-900 text-base flex items-center gap-2 group-hover:text-orange-500 transition-colors">مزايداتي (My Auctions)</h3>

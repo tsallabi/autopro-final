@@ -435,6 +435,22 @@ export const CarDetails = () => {
 
         {/* Right: Info */}
         <div className="space-y-8">
+          {/* Recommended Badge */}
+          {car.isRecommended && (
+            <div className="relative bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 p-4 rounded-2xl shadow-xl shadow-amber-400/30 border-2 border-amber-300 animate-pulse-slow">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/30 backdrop-blur rounded-full flex items-center justify-center shrink-0">
+                  <Shield className="w-6 h-6 text-slate-900 fill-current" />
+                </div>
+                <div>
+                  <div className="text-xs font-black text-slate-900 opacity-80 mb-0.5">⭐ تمييز المنصة</div>
+                  <div className="text-lg font-black text-slate-900">سيارة مميزة موصى بها</div>
+                </div>
+              </div>
+              <div className="absolute top-2 left-2 bg-slate-900 text-amber-400 text-[10px] font-black px-2 py-0.5 rounded-full">PREMIUM</div>
+            </div>
+          )}
+
           <div>
             <div className="flex items-center gap-2 text-orange-500 font-bold text-sm uppercase tracking-widest mb-2">
               <Shield className="w-4 h-4" />
