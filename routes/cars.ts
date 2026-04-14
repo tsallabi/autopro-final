@@ -9,9 +9,11 @@ export function registerCarRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, SITE_URL } = ctx;
 
   // ======= FILE UPLOAD SETUP (multer) =======
+  // Use Render persistent disk /data in production, local ./uploads in dev
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  const dataRoot = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+  const uploadsDir = path.join(dataRoot, 'uploads');
   const imagesDir = path.join(uploadsDir, 'images');
   const docsDir = path.join(uploadsDir, 'documents');
   const mediaDir = path.join(uploadsDir, 'media');
@@ -20,6 +22,7 @@ export function registerCarRoutes(ctx: AppContext) {
   [uploadsDir, imagesDir, docsDir, mediaDir].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   });
+  console.log(`[BOOT] routes/cars.ts uploads dir: ${uploadsDir}`);
 
   // Multer config for car images (max 10MB per image)
   const imageStorage = multer.diskStorage({

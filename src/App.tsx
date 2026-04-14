@@ -19,6 +19,8 @@ import { PrivacyPage } from './pages/PrivacyPage';
 import { RefundPage } from './pages/RefundPage';
 import { DepositPage } from './pages/DepositPage';
 import { DealerPackagesPage } from './pages/DealerPackagesPage';
+import { GulfBranchesPage } from './pages/GulfBranchesPage';
+import { DealerClearancePage } from './pages/DealerClearancePage';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AdminErrorBoundary } from './components/AdminErrorBoundary';
@@ -90,6 +92,8 @@ export default function App() {
             <Route path="refund" element={<RefundPage />} />
             <Route path="deposit" element={<DepositPage />} />
             <Route path="dealer-packages" element={<DealerPackagesPage />} />
+            <Route path="gulf-branches" element={<GulfBranchesPage />} />
+            <Route path="dealer-clearance" element={<DealerClearancePage />} />
           </Route>
 
           {/* Redirects */}

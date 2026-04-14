@@ -22,10 +22,13 @@ interface KpiData {
 }
 
 interface AlertItem {
-  id: string;
+  id?: string;
   type: 'danger' | 'warning' | 'info' | 'success';
   message: string;
   navigateTo?: string;
+  action?: string;  // backend sends 'action' field (view ID)
+  count?: number;
+  icon?: string;
 }
 
 interface RecentSale {
@@ -139,13 +142,16 @@ const AlertBanner: React.FC<{
         const AlertIcon = style.icon;
         return (
           <button
-            key={alert.id}
-            onClick={() => alert.navigateTo && onNavigate(alert.navigateTo)}
+            key={alert.id || alert.message}
+            onClick={() => {
+              const target = alert.navigateTo || alert.action;
+              if (target) onNavigate(target);
+            }}
             className={`${style.bg} ${style.border} border rounded-xl p-4 text-right transition-all hover:scale-[1.02] hover:shadow-lg flex items-start gap-3 cursor-pointer`}
           >
             <AlertIcon className={`w-5 h-5 ${style.text} shrink-0 mt-0.5`} />
             <span className={`text-sm font-medium ${style.text}`}>{alert.message}</span>
-            {alert.navigateTo && <ChevronLeft className={`w-4 h-4 ${style.text} shrink-0 mt-0.5 mr-auto`} />}
+            {(alert.navigateTo || alert.action) && <ChevronLeft className={`w-4 h-4 ${style.text} shrink-0 mt-0.5 mr-auto`} />}
           </button>
         );
       })}
@@ -512,7 +518,7 @@ export const EnhancedOverviewPanel: React.FC<{
             <Gavel className="w-5 h-5 text-blue-400" />
           </button>
           <button
-            onClick={() => onNavigate('shipments_tracking')}
+            onClick={() => onNavigate('shipping_settings')}
             className="flex items-center justify-between p-4 bg-slate-800/60 hover:bg-slate-800 rounded-xl transition-colors border border-slate-700/50"
           >
             <span className="font-medium text-slate-300 text-sm">تحديث اسعار الشحن</span>
@@ -541,10 +547,14 @@ const AccountingSnapshot: React.FC<{ onNavigate: (view: string) => void }> = ({ 
         if (!res.ok) return;
         const d = await res.json();
         if (cancelled) return;
+        // API returns { revenue: { total, accounts }, expenses: { total, accounts }, netProfit }
+        const revenue = typeof d.revenue === 'object' ? (d.revenue?.total || 0) : (d.revenue || d.totalRevenue || 0);
+        const expenses = typeof d.expenses === 'object' ? (d.expenses?.total || 0) : (d.expenses || d.totalExpenses || 0);
+        const netProfit = Number(d.netProfit) || (revenue - expenses) || 0;
         setData({
-          revenue: d.revenue || d.totalRevenue || 0,
-          expenses: d.expenses || d.totalExpenses || 0,
-          netProfit: d.netProfit ?? ((d.revenue || 0) - (d.expenses || 0)),
+          revenue: Number(revenue) || 0,
+          expenses: Number(expenses) || 0,
+          netProfit: Number(netProfit) || 0,
         });
       } catch { /* silent */ }
       finally { if (!cancelled) setLoading(false); }
@@ -552,7 +562,10 @@ const AccountingSnapshot: React.FC<{ onNavigate: (view: string) => void }> = ({ 
     return () => { cancelled = true; };
   }, []);
 
-  const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0);
+  const fmt = (n: number) => {
+    const safeNum = typeof n === 'number' && !isNaN(n) ? n : 0;
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(safeNum);
+  };
 
   return (
     <div className="bg-slate-900/60 rounded-2xl border border-slate-700/50 p-6" dir="rtl">

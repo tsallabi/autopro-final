@@ -757,27 +757,52 @@ export const Home = () => {
             <div className="p-6">
               {activeSidebarTab === 'events' ? (
                 <div className="space-y-4">
-                  {[
-                    { label: t('home.sidebar.copartLive'), count: 124, active: true },
-                    { label: t('home.sidebar.noReserve'), count: 42, active: false },
-                    { label: t('home.sidebar.gulfUpcoming'), count: 88, active: false },
-                    { label: t('home.sidebar.dealerClearance'), count: 15, active: false },
-                  ].map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        if (item.label.includes('Copart')) handleTabChange('all');
-                        if (item.label.includes('الخليج') || item.label.includes('Gulf')) handleTabChange('upcoming');
-                      }}
-                      className={`p-4 rounded-2xl cursor-pointer transition-all border ${item.active ? 'bg-orange-50 border-orange-100 text-orange-700' : 'bg-slate-50 border-transparent hover:border-slate-200 text-slate-600'}`}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-black text-sm">{item.label}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${item.active ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{item.count}</span>
+                  {(() => {
+                    const noReserveCount = cars.filter(c => (c.reservePrice === 0 || !c.reservePrice) && (c.status === 'live' || c.status === 'upcoming')).length;
+                    const items = [
+                      {
+                        label: 'مزادات ماكينا مباشر',
+                        count: '↗',
+                        active: true,
+                        action: () => window.open('https://www.macchinaa.com', '_blank'),
+                        accent: 'orange',
+                      },
+                      {
+                        label: 'سيارات بدون احتياطي',
+                        count: noReserveCount,
+                        active: false,
+                        action: () => { handleTabChange('all'); /* scroll to cars with no reserve */ setTimeout(() => { const e = document.querySelector('[data-no-reserve]'); e?.scrollIntoView({ behavior: 'smooth' }); }, 200); },
+                        accent: 'emerald',
+                      },
+                      {
+                        label: 'فروع أوتو برو في الخليج',
+                        count: 6,
+                        active: false,
+                        action: () => navigate('/gulf-branches'),
+                        accent: 'blue',
+                      },
+                      {
+                        label: 'تصفية مخزون المعارض',
+                        count: '↗',
+                        active: false,
+                        action: () => navigate('/dealer-clearance'),
+                        accent: 'purple',
+                      },
+                    ];
+                    return items.map((item, idx) => (
+                      <div
+                        key={idx}
+                        onClick={item.action}
+                        className={`p-4 rounded-2xl cursor-pointer transition-all border ${item.active ? 'bg-orange-50 border-orange-100 text-orange-700 hover:bg-orange-100' : 'bg-slate-50 border-transparent hover:border-slate-200 hover:bg-slate-100 text-slate-600'}`}
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-sm">{item.label}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${item.active ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{item.count}</span>
+                        </div>
+                        {item.active && <div className="text-[10px] font-bold opacity-70">رابط خارجي</div>}
                       </div>
-                      {item.active && <div className="text-[10px] font-bold opacity-70">{t('home.sidebar.auctionInProgress')}</div>}
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               ) : (
                 <div className="text-center py-10">
