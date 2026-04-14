@@ -35,3 +35,13 @@ export function requireAdmin(req: any, res: any, next: any) {
 export function requireAuth(req: any, res: any, next: any) {
   authenticateToken(req, res, () => next());
 }
+
+export function requireAccountant(req: any, res: any, next: any) {
+  authenticateToken(req, res, () => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'accountant') {
+      return res.status(403).json({ error: "غير مصرح — صلاحيات المحاسب مطلوبة" });
+    }
+    next();
+  });
+}

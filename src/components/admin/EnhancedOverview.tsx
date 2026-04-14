@@ -520,6 +520,71 @@ export const EnhancedOverviewPanel: React.FC<{
           </button>
         </div>
       </div>
+
+      <AccountingSnapshot onNavigate={onNavigate} />
+    </div>
+  );
+};
+
+/* ================================================================
+   Accounting Snapshot — quick P&L overview on admin dashboard
+   ================================================================ */
+const AccountingSnapshot: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<{ revenue: number; expenses: number; netProfit: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch('/api/accounting/reports/income-statement');
+        if (!res.ok) return;
+        const d = await res.json();
+        if (cancelled) return;
+        setData({
+          revenue: d.revenue || d.totalRevenue || 0,
+          expenses: d.expenses || d.totalExpenses || 0,
+          netProfit: d.netProfit ?? ((d.revenue || 0) - (d.expenses || 0)),
+        });
+      } catch { /* silent */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0);
+
+  return (
+    <div className="bg-slate-900/60 rounded-2xl border border-slate-700/50 p-6" dir="rtl">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-orange-500" />
+          لمحة محاسبية سريعة
+        </h3>
+        <button onClick={() => onNavigate('accounting_dashboard')} className="text-xs font-bold text-orange-400 hover:text-orange-300 flex items-center gap-1">
+          عرض كامل <ChevronLeft className="w-3 h-3" />
+        </button>
+      </div>
+      {loading ? (
+        <div className="text-center text-slate-500 py-6 text-sm">جارٍ التحميل...</div>
+      ) : !data ? (
+        <div className="text-center text-slate-500 py-6 text-sm">لا توجد بيانات محاسبية بعد</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
+            <div className="text-xs text-slate-400 mb-1">إيرادات</div>
+            <div className="text-xl font-black text-emerald-400">{fmt(data.revenue)}</div>
+          </div>
+          <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
+            <div className="text-xs text-slate-400 mb-1">مصاريف</div>
+            <div className="text-xl font-black text-red-400">{fmt(data.expenses)}</div>
+          </div>
+          <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
+            <div className="text-xs text-slate-400 mb-1">صافي الربح</div>
+            <div className={`text-xl font-black ${data.netProfit >= 0 ? 'text-orange-400' : 'text-red-400'}`}>{fmt(data.netProfit)}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,7 +7,16 @@ import { registerSellerRoutes } from './routes/seller.ts';
 import { registerBuyerRoutes } from './routes/buyer.ts';
 import { registerCarRoutes } from './routes/cars.ts';
 import { registerShippingRoutes } from './routes/shipping.ts';
+import { registerAccountingRoutes } from './routes/accounting.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
+import {
+  seedChartOfAccounts,
+  recordInvoicePosted,
+  recordInvoicePaid,
+  recordDeposit,
+  recordWithdrawal,
+  recordCommission,
+} from './lib/accounting.ts';
 console.log('[BOOT] All route modules imported successfully');
 
 // Crash protection — prevent server from dying on unhandled errors
@@ -78,6 +87,16 @@ function requireAdmin(req: any, res: any, next: any) {
 
 function requireAuth(req: any, res: any, next: any) {
   authenticateToken(req, res, () => next());
+}
+
+function requireAccountant(req: any, res: any, next: any) {
+  authenticateToken(req, res, () => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'accountant') {
+      return res.status(403).json({ error: "غير مصرح — صلاحيات المحاسب مطلوبة" });
+    }
+    next();
+  });
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1169,6 +1188,91 @@ db.exec(`
   );
 `);
 
+// ======= ACCOUNTING SYSTEM (double-entry bookkeeping) =======
+db.exec(`
+  -- Chart of Accounts (the 35 accounts)
+  CREATE TABLE IF NOT EXISTS accounting_accounts (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE NOT NULL,          -- e.g. "1010", "4010"
+    nameAr TEXT NOT NULL,
+    nameEn TEXT,
+    type TEXT NOT NULL,                  -- asset, liability, equity, revenue, expense
+    subType TEXT,                        -- current_asset, fixed_asset, current_liability, etc.
+    parentId TEXT,                       -- for tree structure
+    normalBalance TEXT NOT NULL,         -- debit or credit
+    balance REAL DEFAULT 0,              -- running balance
+    isActive INTEGER DEFAULT 1,
+    createdAt TEXT,
+    FOREIGN KEY(parentId) REFERENCES accounting_accounts(id)
+  );
+
+  -- Journal Entries (every transaction)
+  CREATE TABLE IF NOT EXISTS journal_entries (
+    id TEXT PRIMARY KEY,
+    entryNumber TEXT UNIQUE,             -- JE-2026-001
+    entryDate TEXT NOT NULL,
+    description TEXT,
+    referenceType TEXT,                  -- invoice, deposit, withdrawal, commission, manual
+    referenceId TEXT,                    -- ID of related record
+    totalDebit REAL DEFAULT 0,
+    totalCredit REAL DEFAULT 0,
+    status TEXT DEFAULT 'posted',        -- draft, posted, reversed
+    createdBy TEXT,
+    createdAt TEXT,
+    FOREIGN KEY(createdBy) REFERENCES users(id)
+  );
+
+  -- Journal Entry Lines (the debit/credit details)
+  CREATE TABLE IF NOT EXISTS journal_entry_lines (
+    id TEXT PRIMARY KEY,
+    entryId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    debit REAL DEFAULT 0,
+    credit REAL DEFAULT 0,
+    description TEXT,
+    FOREIGN KEY(entryId) REFERENCES journal_entries(id) ON DELETE CASCADE,
+    FOREIGN KEY(accountId) REFERENCES accounting_accounts(id)
+  );
+
+  -- Accounting Invoice Items (line items for multi-item invoices)
+  CREATE TABLE IF NOT EXISTS invoice_items (
+    id TEXT PRIMARY KEY,
+    invoiceId TEXT NOT NULL,
+    description TEXT NOT NULL,
+    quantity REAL DEFAULT 1,
+    unitPrice REAL DEFAULT 0,
+    taxRate REAL DEFAULT 0,
+    subtotal REAL DEFAULT 0,
+    taxAmount REAL DEFAULT 0,
+    total REAL DEFAULT 0,
+    accountId TEXT,                     -- which revenue account this goes to
+    FOREIGN KEY(invoiceId) REFERENCES invoices(id) ON DELETE CASCADE,
+    FOREIGN KEY(accountId) REFERENCES accounting_accounts(id)
+  );
+
+  -- Activity Logger for accounting actions
+  CREATE TABLE IF NOT EXISTS accounting_activity (
+    id TEXT PRIMARY KEY,
+    userId TEXT,
+    action TEXT NOT NULL,
+    entityType TEXT,                    -- invoice, journal, account, payment
+    entityId TEXT,
+    oldValue TEXT,
+    newValue TEXT,
+    ipAddress TEXT,
+    timestamp TEXT,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
+`);
+
+// Extend invoices table with accounting fields (idempotent)
+try { db.exec("ALTER TABLE invoices ADD COLUMN subtotal REAL DEFAULT 0"); } catch (_) { }
+try { db.exec("ALTER TABLE invoices ADD COLUMN taxAmount REAL DEFAULT 0"); } catch (_) { }
+try { db.exec("ALTER TABLE invoices ADD COLUMN total REAL DEFAULT 0"); } catch (_) { }
+try { db.exec("ALTER TABLE invoices ADD COLUMN journalEntryId TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE invoices ADD COLUMN confirmedAt TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE invoices ADD COLUMN confirmedBy TEXT"); } catch (_) { }
+
 // ======= PHASE 10: BUYER WALLET & PAYMENT SYSTEM =======
 db.exec(`
   CREATE TABLE IF NOT EXISTS buyer_wallets (
@@ -1394,6 +1498,15 @@ db.exec("PRAGMA foreign_keys = ON;");
 // Diagnostic Log
 const carCount = db.prepare("SELECT COUNT(*) as count FROM cars").get() as any;
 console.log(`Database Status: ${carCount.count} cars loaded.`);
+
+// ━━ CHART OF ACCOUNTS — idempotent seed (safe on every boot) ━━
+try {
+  seedChartOfAccounts(db);
+  const acctCount = db.prepare("SELECT COUNT(*) as c FROM coa_accounts").get() as any;
+  console.log(`[BOOT] Chart of Accounts ready — ${acctCount?.c || 0} accounts.`);
+} catch (err: any) {
+  console.error('[BOOT] seedChartOfAccounts failed:', err?.message);
+}
 
 // ━━ CREATE SERVER IMMEDIATELY for health check ━━
 const app = express();
@@ -1714,6 +1827,17 @@ async function startServer() {
       db.prepare(`INSERT OR IGNORE INTO shipments(id, carId, userId, status, createdAt, updatedAt) VALUES(?, ?, ?, 'awaiting_dispatch', ?, ?)`)
         .run(shipId, carId, userId, now, now);
     })();
+
+    // ━━ AUTO JOURNAL ENTRIES (non-blocking — isolated from invoice flow) ━━
+    try {
+      // Purchase invoice = commission revenue recognized to 4010
+      recordInvoicePosted(db, { id: inv1, amount, type: 'purchase', userId });
+      recordInvoicePosted(db, { id: inv2, amount: transportFee, type: 'transport', userId });
+      recordInvoicePosted(db, { id: inv3, amount: shippingFee, type: 'shipping', userId });
+      recordCommission(db, carId, commission);
+    } catch (err: any) {
+      console.error('[ACCOUNTING] createWinInvoices auto-JE failed:', err?.message);
+    }
 
     // ✅ NOTIFY SELLER
     if (car && car.sellerId) {
@@ -2203,6 +2327,10 @@ async function startServer() {
       const newBal = walletDebit(userId, invoice.amount, `دفع فاتورة: ${invoice.type}`, invoiceId);
       db.prepare("UPDATE invoices SET status='paid', paidAt=?, paidVia='wallet' WHERE id=?").run(new Date().toISOString(), invoiceId);
 
+      // ━━ AUTO JOURNAL ENTRY — invoice paid via wallet ━━
+      try { recordInvoicePaid(db, invoice, 'wallet'); }
+      catch (err: any) { console.error('[ACCOUNTING] wallet invoice-pay JE failed:', err?.message); }
+
       // If purchase invoice paid → activate transport invoice
       if (invoice.type === 'purchase') {
         db.prepare("UPDATE invoices SET status='unpaid' WHERE userId=? AND carId=? AND type='transport'").run(userId, invoice.carId);
@@ -2307,6 +2435,21 @@ async function startServer() {
         db.prepare("UPDATE payment_requests SET status='approved', adminNote=?, processedAt=? WHERE id=?")
           .run(adminNote || null, timestamp, id);
       })();
+
+      // ━━ AUTO JOURNAL ENTRIES (non-blocking) ━━
+      try {
+        if (pr.type === 'topup') {
+          recordDeposit(db, pr.userId, Number(pr.amount), pr.method || 'bank_libya');
+        } else if (pr.type === 'withdrawal') {
+          // Buyer withdrawal from buyer wallet: Dr Customer Deposits (2030) / Cr Bank
+          recordWithdrawal(db, pr.userId, Number(pr.amount), pr.method || 'bank_libya');
+        } else if (pr.type === 'invoice_payment') {
+          const inv: any = db.prepare("SELECT id, amount, type, userId FROM invoices WHERE id = ?").get(pr.invoiceId);
+          if (inv) recordInvoicePaid(db, inv, pr.method || 'bank_libya');
+        }
+      } catch (err: any) {
+        console.error('[ACCOUNTING] payment-request approve auto-JE failed:', err?.message);
+      }
 
       // Send receipt internal message after transaction commits
       const walletAfter: any = db.prepare("SELECT balance FROM buyer_wallets WHERE userId = ?").get(pr.userId);
@@ -3725,6 +3868,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           }
         })();
 
+        // ━━ AUTO JOURNAL ENTRY — invoice paid via wallet ━━
+        try { recordInvoicePaid(db, invoice, 'wallet'); }
+        catch (err: any) { console.error('[ACCOUNTING] wallet invoice-pay JE failed:', err?.message); }
+
         return res.json({ success: true, status: 'paid', message: "تم الدفع بنجاح عبر المحفظة" });
       }
 
@@ -3915,6 +4062,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   console.log('[BOOT] ✓ car routes');
   registerShippingRoutes(ctx as any);
   console.log('[BOOT] ✓ shipping routes');
+  registerAccountingRoutes(ctx as any);
+  console.log('[BOOT] ✓ accounting routes');
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 
@@ -4038,6 +4187,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .run(`stx-wd-${Date.now()}`, wr.sellerId, wr.amount, wr.amount, new Date().toISOString(), new Date().toISOString());
 
       sendNotification(wr.sellerId, '✅ تم تحويل المبلغ', `تم قبول طلب السحب وتحويل $${wr.amount.toLocaleString()} لحسابك البنكي.`, 'success');
+
+      // ━━ AUTO JOURNAL ENTRY — seller withdrawal paid ━━
+      try { recordWithdrawal(db, wr.sellerId, Number(wr.amount), 'bank_usd'); }
+      catch (err: any) { console.error('[ACCOUNTING] seller withdrawal JE failed:', err?.message); }
+
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "فشل الموافقة على السحب" });

@@ -8,7 +8,7 @@ import {
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key, Hash, BarChart3
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -22,6 +22,12 @@ import { ReportsPanel } from '../components/admin/ReportsPanel';
 import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
+import { AccountingDashboard } from '../components/admin/accounting/AccountingDashboard';
+import { InvoicesList } from '../components/admin/accounting/InvoicesList';
+import { InvoiceDetail } from '../components/admin/accounting/InvoiceDetail';
+import { JournalEntries } from '../components/admin/accounting/JournalEntries';
+import { ChartOfAccounts } from '../components/admin/accounting/ChartOfAccounts';
+import { ReportsHub } from '../components/admin/accounting/ReportsHub';
 
 /* ============================================================
    SellerInfoRow — Lazy-loaded seller info for car review cards
@@ -4203,6 +4209,20 @@ export const AdminDashboard = () => {
 
   const renderContent = () => {
     switch (view) {
+      case 'accounting_dashboard':
+        return <AccountingDashboard onNavigate={(v) => setSearchParams({ view: v })} />;
+      case 'accounting_invoices':
+        return <InvoicesList onOpenInvoice={(id) => setSearchParams({ view: 'accounting_invoice_detail', id })} />;
+      case 'accounting_invoice_detail': {
+        const id = searchParams.get('id') || '';
+        return <InvoiceDetail invoiceId={id} onBack={() => setSearchParams({ view: 'accounting_invoices' })} />;
+      }
+      case 'accounting_journal':
+        return <JournalEntries />;
+      case 'accounting_accounts':
+        return <ChartOfAccounts />;
+      case 'accounting_reports':
+        return <ReportsHub />;
       case 'marketing':
         return <MarketingPanel />;
       case 'shipping_settings':
@@ -7087,6 +7107,18 @@ export const AdminDashboard = () => {
                 { id: 'financial_ledger', label: 'الدفتر المالي والتقارير', icon: DollarSign },
                 { id: 'expenses', label: 'إدارة المصاريف 💸', icon: Receipt },
                 { id: 'payment_gateways', label: 'بوابات الدفع الإلكتروني', icon: ShieldCheck },
+              ]
+            },
+            {
+              group: 'Accounting',
+              label: 'النظام المحاسبي',
+              icon: Calculator,
+              items: [
+                { id: 'accounting_dashboard', label: 'لوحة المحاسبة', icon: BarChart3 },
+                { id: 'accounting_invoices', label: 'الفواتير', icon: FileText },
+                { id: 'accounting_journal', label: 'دفتر اليومية', icon: BookOpen },
+                { id: 'accounting_accounts', label: 'دليل الحسابات', icon: Hash },
+                { id: 'accounting_reports', label: 'التقارير المالية', icon: TrendingUp },
               ]
             },
             {
