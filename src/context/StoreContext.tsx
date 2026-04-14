@@ -49,7 +49,7 @@ interface StoreContextType {
 }
 
 // Authenticated fetch helper — injects JWT token from localStorage
-export function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = localStorage.getItem('authToken');
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> || {}),
@@ -60,7 +60,14 @@ export function authFetch(url: string, options: RequestInit = {}): Promise<Respo
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   }
-  return fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers });
+  // Auto-logout on expired token (401)
+  if (res.status === 401 && token) {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('currentUser');
+    window.location.href = '/auth';
+  }
+  return res;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
