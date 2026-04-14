@@ -7289,8 +7289,15 @@ export const AdminDashboard = () => {
                     setShowAddCarModal(false);
                     showAlert('تم إضافة السيارة بنجاح إلى النظام', 'success');
                   }
-                } catch (err) {
-                  showAlert('حدث خطأ أثناء رفع الملفات أو حفظ السيارة', 'error');
+                } catch (err: any) {
+                  const msg = err?.message || '';
+                  if (msg.includes('VIN') || msg.includes('vin')) {
+                    showAlert(`⚠️ رقم الشاصي (VIN) مسجل مسبقاً في النظام. يرجى استخدام رقم شاصي مختلف.`, 'error');
+                  } else if (msg.includes('FOREIGN KEY')) {
+                    showAlert(`⚠️ خطأ في ربط البيانات — تأكد من صحة معلومات البائع.`, 'error');
+                  } else {
+                    showAlert(`⚠️ ${msg || 'حدث خطأ أثناء حفظ السيارة — تأكد من ملء جميع الحقول المطلوبة.'}`, 'error');
+                  }
                 }
               }}
             />

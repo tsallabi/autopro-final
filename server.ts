@@ -3025,7 +3025,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     // VIN LOCK - check for duplicates
     const existing: any = db.prepare("SELECT id FROM cars WHERE vin = ?").get(vin);
     if (existing) {
-      return res.status(400).json({ error: `VIN ${vin} is already registered in the system.` });
+      return res.status(400).json({ error: `رقم الشاصي (VIN: ${vin}) مسجل مسبقاً في النظام. يرجى إدخال رقم شاصي مختلف أو تعديل السيارة الموجودة.` });
     }
 
     // Auto-set sellerId from authenticated user — admin/employee/seller all get linked
