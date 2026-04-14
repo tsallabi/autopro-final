@@ -18,6 +18,7 @@ import { TermsPage } from './pages/TermsPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { RefundPage } from './pages/RefundPage';
 import { DepositPage } from './pages/DepositPage';
+import { DealerPackagesPage } from './pages/DealerPackagesPage';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AdminErrorBoundary } from './components/AdminErrorBoundary';
@@ -88,6 +89,7 @@ export default function App() {
             <Route path="privacy" element={<PrivacyPage />} />
             <Route path="refund" element={<RefundPage />} />
             <Route path="deposit" element={<DepositPage />} />
+            <Route path="dealer-packages" element={<DealerPackagesPage />} />
           </Route>
 
           {/* Redirects */}

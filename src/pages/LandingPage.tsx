@@ -8,6 +8,7 @@ import {
     Timer, Star, Globe, Zap, Car as CarIcon
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { AgencyRecruitment } from '../components/AgencyRecruitment';
 
 export const LandingPage = () => {
     const navigate = useNavigate();
@@ -337,6 +338,9 @@ export const LandingPage = () => {
                     ))}
                 </div>
             </section >
+
+            {/* AGENCY RECRUITMENT */}
+            <AgencyRecruitment />
 
             {/* 6. CALL TO ACTION FOOTER (Image 1 Bottom style) */}
             < section className="pb-32 container mx-auto px-6" >

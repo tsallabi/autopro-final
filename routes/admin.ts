@@ -521,7 +521,7 @@ export function registerAdminRoutes(ctx: AppContext) {
   app.post("/api/admin/approve-car/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
-      db.prepare("UPDATE cars SET status = 'upcoming' WHERE id = ? AND status = 'pending_approval'").run(id);
+      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = NULL, auctionStartTime = NULL WHERE id = ? AND status = 'pending_approval'").run(id);
       io.emit("car_approved", { carId: id });
 
       // Notify seller that their car was approved
@@ -536,17 +536,47 @@ export function registerAdminRoutes(ctx: AppContext) {
 
       res.json({ success: true, message: "تم اعتماد السيارة بنجاح" });
     } catch (e) {
-      res.status(500).json({ error: "��شل اعتماد السيارة" });
+      res.status(500).json({ error: "فشل اعتماد السيارة" });
     }
   });
 
   app.post("/api/admin/reject-car/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
+    const { reason } = req.body || {};
     try {
       db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (car?.sellerId) {
+        sendInternalMessage('admin-1', car.sellerId, '❌ تم رفض سيارتك',
+          `عذراً، تم رفض سيارتك ${car.make} ${car.model} (${car.year || ''}).${reason ? '\nالسبب: ' + reason : ''}`,
+          'general');
+        sendNotification(car.sellerId, '❌ تم رفض سيارتك',
+          `تم رفض سيارتك ${car.make} ${car.model}. ${reason || ''}`, 'error');
+      }
       res.json({ success: true, message: "تم رفض السيارة" });
     } catch (e) {
       res.status(500).json({ error: "فشل رفض السيارة" });
+    }
+  });
+
+  // POST /api/admin/cars/:id/request-edit — request seller to edit their car
+  app.post("/api/admin/cars/:id/request-edit", requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const { notes } = req.body;
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+      if (car.sellerId) {
+        sendInternalMessage('admin-1', car.sellerId, '📝 مطلوب تعديل على سيارتك',
+          `يرجى تعديل بيانات سيارتك ${car.make} ${car.model} (${car.year || ''}).\n\nملاحظات الإدارة:\n${notes || 'لا توجد تفاصيل'}`,
+          'general');
+        sendNotification(car.sellerId, '📝 مطلوب تعديل على سيارتك',
+          `يرجى مراجعة وتعديل بيانات سيارتك ${car.make} ${car.model}. راجع رسائلك للتفاصيل.`, 'warning',
+          `/dashboard/seller?view=inventory`);
+      }
+      res.json({ success: true, message: "تم إرسال طلب التعديل للبائع" });
+    } catch (e) {
+      res.status(500).json({ error: "فشل إرسال طلب التعديل" });
     }
   });
 
@@ -1426,12 +1456,16 @@ export function registerAdminRoutes(ctx: AppContext) {
     const { id } = req.params;
     const { action, reason } = req.body;
     try {
-      const status = action === 'approve' ? 'live' : 'rejected';
-      db.prepare("UPDATE cars SET status = ? WHERE id = ?").run(status, id);
+      const status = action === 'approve' ? 'upcoming' : 'rejected';
+      if (action === 'approve') {
+        db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = NULL, auctionStartTime = NULL WHERE id = ?").run(id);
+      } else {
+        db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
+      }
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (car.sellerId) {
-        sendInternalMessage('admin-1', car.sellerId, status === 'live' ? '✅ تمت ��لموافقة' : '❌ تم الرفض',
-          status === 'live' ? `سيارتك ${car.make} ${car.model} الآن في المزاد!` : `عذراً، تم رفض سيارتك.السبب: ${reason} `);
+        sendInternalMessage('admin-1', car.sellerId, status === 'upcoming' ? '✅ تمت الموافقة' : '❌ تم الرفض',
+          status === 'upcoming' ? `سيارتك ${car.make} ${car.model} الآن في قائمة المزادات القادمة!` : `عذراً، تم رفض سيارتك.السبب: ${reason} `);
       }
       io.emit("car_updated", { id, status });
       res.json({ success: true });
@@ -2687,6 +2721,119 @@ export function registerAdminRoutes(ctx: AppContext) {
     } catch (err: any) {
       console.error('[ADMIN DASHBOARD OVERVIEW ERROR]', err);
       res.status(500).json({ error: 'فشل تحميل بيانات لوحة التحكم', details: err.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  //  DEALER PACKAGES
+  // ══════════════════════════════════════════════════════════════
+
+  // Public — list active packages (for pricing page)
+  app.get("/api/packages", (_req, res) => {
+    try {
+      const packages = db.prepare("SELECT * FROM dealer_packages WHERE isActive = 1 ORDER BY sortOrder ASC").all() as any[];
+      const parsed = packages.map((p: any) => ({
+        ...p,
+        features: p.features ? JSON.parse(p.features) : [],
+      }));
+      res.json(parsed);
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل تحميل الباقات", details: err.message });
+    }
+  });
+
+  // Admin — assign package to user
+  app.post("/api/admin/packages/:userId/assign", requireAdmin, (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { packageId, expiresAt } = req.body;
+
+      // Validate package exists
+      const pkg = db.prepare("SELECT * FROM dealer_packages WHERE id = ?").get(packageId) as any;
+      if (!pkg) {
+        return res.status(404).json({ error: "الباقة غير موجودة" });
+      }
+
+      // Validate user exists
+      const user = db.prepare("SELECT id, firstName, lastName FROM users WHERE id = ?").get(userId) as any;
+      if (!user) {
+        return res.status(404).json({ error: "المستخدم غير موجود" });
+      }
+
+      // Calculate expiry: use provided or default 30 days from now
+      const expiry = expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      db.prepare("UPDATE users SET packageId = ?, packageExpiresAt = ? WHERE id = ?").run(packageId, expiry, userId);
+
+      res.json({
+        success: true,
+        message: `تم تعيين باقة "${pkg.nameAr}" للمستخدم ${user.firstName} ${user.lastName}`,
+        user: { id: userId, packageId, packageExpiresAt: expiry },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل تعيين الباقة", details: err.message });
+    }
+  });
+
+  // Admin — list all packages (including inactive)
+  app.get("/api/admin/packages", requireAdmin, (_req, res) => {
+    try {
+      const packages = db.prepare("SELECT * FROM dealer_packages ORDER BY sortOrder ASC").all() as any[];
+      const parsed = packages.map((p: any) => ({
+        ...p,
+        features: p.features ? JSON.parse(p.features) : [],
+      }));
+      res.json(parsed);
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل تحميل الباقات", details: err.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  //  AGENCY APPLICATIONS
+  // ══════════════════════════════════════════════════════════════
+
+  // Public — submit agency application
+  app.post("/api/agency-applications", (req, res) => {
+    try {
+      const { fullName, cityCountry, phone, whatsapp, showroomName, expectedCarsPerMonth, notes } = req.body;
+
+      if (!fullName || !cityCountry || !phone) {
+        return res.status(400).json({ error: "الاسم والمدينة ورقم الهاتف مطلوبة" });
+      }
+
+      const id = `agency-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const createdAt = new Date().toISOString();
+
+      db.prepare(`INSERT INTO agency_applications (id, fullName, cityCountry, phone, whatsapp, showroomName, expectedCarsPerMonth, notes, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).run(
+        id, fullName, cityCountry, phone, whatsapp || null, showroomName || null, expectedCarsPerMonth || null, notes || null, createdAt
+      );
+
+      res.json({ success: true, message: "تم استلام طلبك بنجاح. سنتواصل معك قريباً!", id });
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل إرسال الطلب", details: err.message });
+    }
+  });
+
+  // Admin — list agency applications
+  app.get("/api/admin/agency-applications", requireAdmin, (_req, res) => {
+    try {
+      const apps = db.prepare("SELECT * FROM agency_applications ORDER BY createdAt DESC").all();
+      res.json(apps);
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل تحميل الطلبات", details: err.message });
+    }
+  });
+
+  // Admin — update application status
+  app.post("/api/admin/agency-applications/:id/status", requireAdmin, (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, adminNote } = req.body;
+      db.prepare("UPDATE agency_applications SET status = ?, adminNote = ? WHERE id = ?").run(status, adminNote || null, id);
+      res.json({ success: true, message: "تم تحديث حالة الطلب" });
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل تحديث الطلب", details: err.message });
     }
   });
 }

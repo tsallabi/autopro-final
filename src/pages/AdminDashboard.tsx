@@ -24,6 +24,44 @@ import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
 
 /* ============================================================
+   SellerInfoRow — Lazy-loaded seller info for car review cards
+   ============================================================ */
+function SellerInfoRow({ sellerId, users }: { sellerId: string; users: any[] }) {
+  if (!sellerId) return <span className="text-slate-500 text-xs">تاجر نظامي (بدون حساب بائع)</span>;
+
+  const info = users.find((u: any) => u.id === sellerId);
+  if (!info) return <span className="text-slate-500 text-xs">بائع: {sellerId}</span>;
+
+  return (
+    <div className="flex items-center gap-3 text-xs">
+      <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-orange-400 font-bold text-sm">
+        {(info.firstName || '?')[0]}
+      </div>
+      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div>
+          <span className="text-slate-500">الاسم: </span>
+          <span className="text-white font-bold">{info.firstName} {info.lastName}</span>
+        </div>
+        <div>
+          <span className="text-slate-500">الحالة: </span>
+          <span className={`font-bold ${info.status === 'active' ? 'text-emerald-400' : info.kycStatus === 'approved' ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {info.status === 'active' ? 'موثق' : 'غير موثق'}
+          </span>
+        </div>
+        <div>
+          <span className="text-slate-500">الرصيد: </span>
+          <span className="text-white font-bold">${Number(info.deposit || 0).toLocaleString()}</span>
+        </div>
+        <div>
+          <span className="text-slate-500">الدور: </span>
+          <span className="text-white font-bold">{info.role === 'seller' ? 'بائع' : info.role === 'admin' ? 'مدير' : info.role}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    FooterSettingsPanel — Admin panel to control SiteFooter
    ============================================================ */
 export const FOOTER_KEY = 'autopro_footer_settings_v7';
@@ -5222,62 +5260,178 @@ export const AdminDashboard = () => {
       case 'inventory_review':
         return (
           <div className="space-y-6 animate-in fade-in duration-500 text-right" dir="rtl">
-            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+            <h2 className="text-2xl font-black text-white flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-orange-500" />
               مراجعة وقبول السيارات الجديدة
+              <span className="text-sm font-bold text-slate-400 mr-2">({adminPendingCars.length} بانتظار المراجعة)</span>
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {adminPendingCars.map(car => (
-                <div key={car.id} className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all group">
-                  <div className="relative aspect-[4/3]">
-                    <img src={car.images?.[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="صورة" />
-                    <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                      بانتظار المراجعة
+            <div className="space-y-6">
+              {adminPendingCars.map(car => {
+                const sellerInfo = (car as any)._sellerInfo;
+                return (
+                <div key={car.id} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                  <div className="flex flex-col lg:flex-row">
+                    {/* Image section */}
+                    <div className="lg:w-[400px] shrink-0">
+                      <div className="relative aspect-[4/3] lg:aspect-auto lg:h-full">
+                        <img
+                          src={car.images?.[0] || '/placeholder-car.jpg'}
+                          className="w-full h-full object-cover"
+                          alt={`${car.make} ${car.model}`}
+                        />
+                        <div className="absolute top-3 right-3 bg-orange-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                          بانتظار المراجعة
+                        </div>
+                      </div>
+                      {/* Thumbnail gallery */}
+                      {car.images?.length > 1 && (
+                        <div className="flex gap-1 p-2 bg-slate-950 overflow-x-auto">
+                          {car.images.slice(0, 6).map((img: string, idx: number) => (
+                            <img key={idx} src={img} className="w-14 h-10 object-cover rounded border border-slate-700 opacity-70 hover:opacity-100 transition-opacity cursor-pointer" alt="" />
+                          ))}
+                          {car.images.length > 6 && (
+                            <div className="w-14 h-10 bg-slate-800 rounded border border-slate-700 flex items-center justify-center text-slate-400 text-xs font-bold">
+                              +{car.images.length - 6}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="p-6">
-                    <h3 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h3>
-                    <p className="text-[10px] text-slate-400 font-black mb-4 uppercase tracking-widest">المصدر: {car.sellerId || 'تاجر نظامي'}</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          const res = await authFetch(`/api/admin/cars/${car.id}/review`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'approve' })
-                          });
-                          if (res.ok) {
-                            setAdminPendingCars(prev => prev.filter(c => c.id !== car.id));
-                            showAlert('تم نشر السيارة بنجاح', 'success');
-                          }
-                        }}
-                        className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black text-xs hover:bg-emerald-600 transition-all active:scale-95 shadow-lg shadow-slate-900/20"
-                      >
-                        موافقة ونشر
-                      </button>
-                      <button aria-label="زر" title="زر"
-                        onClick={async () => {
-                          const reason = window.prompt('سبب الرفض:');
-                          if (reason) {
+
+                    {/* Details section */}
+                    <div className="flex-1 p-5 space-y-4">
+                      {/* Car title */}
+                      <div>
+                        <h3 className="text-xl font-black text-white">{car.year} {car.make} {car.model} {car.trim || ''}</h3>
+                        {car.vin && <p className="text-xs text-slate-500 font-mono mt-1">VIN: {car.vin}</p>}
+                      </div>
+
+                      {/* Car details grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                        {car.odometer && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">العداد</div>
+                            <div className="text-white font-bold">{Number(car.odometer).toLocaleString()} {car.mileageUnit || 'mi'}</div>
+                          </div>
+                        )}
+                        {car.location && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">الموقع</div>
+                            <div className="text-white font-bold text-xs">{car.location}</div>
+                          </div>
+                        )}
+                        {car.primaryDamage && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">الضرر الرئيسي</div>
+                            <div className="text-orange-400 font-bold text-xs">{car.primaryDamage}</div>
+                          </div>
+                        )}
+                        {car.exteriorColor && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">اللون</div>
+                            <div className="text-white font-bold text-xs">{car.exteriorColor}</div>
+                          </div>
+                        )}
+                        {car.transmission && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">ناقل الحركة</div>
+                            <div className="text-white font-bold text-xs">{car.transmission}</div>
+                          </div>
+                        )}
+                        {car.engine && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">المحرك</div>
+                            <div className="text-white font-bold text-xs">{car.engine}</div>
+                          </div>
+                        )}
+                        {(car.reservePrice > 0) && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">السعر الاحتياطي</div>
+                            <div className="text-emerald-400 font-bold">${Number(car.reservePrice).toLocaleString()}</div>
+                          </div>
+                        )}
+                        {(car.currentBid > 0) && (
+                          <div className="bg-slate-800/60 rounded-xl p-3">
+                            <div className="text-[10px] text-slate-500 font-bold uppercase">سعر البداية</div>
+                            <div className="text-white font-bold">${Number(car.currentBid).toLocaleString()}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Seller info */}
+                      <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50">
+                        <div className="text-[10px] text-slate-500 font-bold uppercase mb-2 flex items-center gap-1">
+                          <User className="w-3 h-3" /> معلومات البائع
+                        </div>
+                        <SellerInfoRow sellerId={car.sellerId} users={users} />
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={async () => {
                             const res = await authFetch(`/api/admin/cars/${car.id}/review`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ action: 'reject', reason })
+                              body: JSON.stringify({ action: 'approve' })
                             });
-                            if (res.ok) setAdminPendingCars(prev => prev.filter(c => c.id !== car.id));
-                          }
-                        }}
-                        className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all active:scale-95"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                            if (res.ok) {
+                              setAdminPendingCars(prev => prev.filter(c => c.id !== car.id));
+                              showAlert('تم نشر السيارة بنجاح', 'success');
+                            }
+                          }}
+                          className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-sm hover:bg-emerald-500 transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          موافقة ونشر
+                        </button>
+                        <button
+                          onClick={() => {
+                            const notes = window.prompt('ملاحظات التعديل المطلوبة:');
+                            if (notes) {
+                              authFetch(`/api/admin/cars/${car.id}/request-edit`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ notes })
+                              }).then(res => {
+                                if (res.ok) showAlert('تم إرسال طلب التعديل للبائع', 'success');
+                              });
+                            }
+                          }}
+                          className="flex-1 bg-amber-600 text-white py-3 rounded-xl font-black text-sm hover:bg-amber-500 transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <Edit className="w-4 h-4" />
+                          طلب تعديل
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const reason = window.prompt('سبب الرفض النهائي:');
+                            if (reason) {
+                              const res = await authFetch(`/api/admin/cars/${car.id}/review`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'reject', reason })
+                              });
+                              if (res.ok) {
+                                setAdminPendingCars(prev => prev.filter(c => c.id !== car.id));
+                                showAlert('تم رفض السيارة نهائياً', 'error');
+                              }
+                            }
+                          }}
+                          className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          رفض نهائي
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {adminPendingCars.length === 0 && (
-                <div className="col-span-full py-20 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-                  <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                <div className="py-20 text-center bg-slate-900 rounded-2xl border-2 border-dashed border-slate-700">
+                  <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-500">
                     <CheckCircle2 className="w-8 h-8" />
                   </div>
                   <p className="text-slate-400 font-bold">كل السيارات مراجعة تماماً!</p>

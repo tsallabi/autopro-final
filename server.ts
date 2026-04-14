@@ -1118,6 +1118,57 @@ db.exec(`
 try { db.exec("ALTER TABLE users ADD COLUMN lastActiveAt TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN totalLoginMinutes INTEGER DEFAULT 0"); } catch (_) { }
 
+// ======= DEALER SUBSCRIPTION PACKAGES =======
+db.exec(`
+  CREATE TABLE IF NOT EXISTS dealer_packages (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    nameAr TEXT NOT NULL,
+    price REAL DEFAULT 0,
+    currency TEXT DEFAULT 'LYD',
+    maxCars INTEGER DEFAULT 0,
+    maxAuctionRetries INTEGER DEFAULT 3,
+    offerMarketDays INTEGER DEFAULT 30,
+    badge TEXT,
+    features TEXT,
+    isActive INTEGER DEFAULT 1,
+    sortOrder INTEGER DEFAULT 0
+  );
+`);
+
+// Seed default packages if empty
+const pkgCount = db.prepare("SELECT COUNT(*) as cnt FROM dealer_packages").get() as any;
+if (pkgCount.cnt === 0) {
+  const seedPkgs = db.prepare(`INSERT INTO dealer_packages (id, name, nameAr, price, currency, maxCars, maxAuctionRetries, offerMarketDays, badge, features, isActive, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  db.transaction(() => {
+    seedPkgs.run('basic', 'Basic', 'أساسية', 0, 'LYD', 5, 3, 30, null, JSON.stringify(['عرض 5 سيارات', '3 محاولات مزايدة', 'دعم عبر البريد', 'عرض في السوق 30 يوم']), 1, 0);
+    seedPkgs.run('silver', 'Silver', 'فضية', 250, 'LYD', 50, 10, 60, 'تاجر موثق', JSON.stringify(['عرض 50 سيارة', '10 محاولات مزايدة', 'دعم أولوية', 'عرض في السوق 60 يوم', 'شارة تاجر موثق', 'إحصائيات متقدمة']), 1, 1);
+    seedPkgs.run('gold', 'Gold', 'ذهبية', 500, 'LYD', 100, -1, 120, 'تاجر مميز', JSON.stringify(['عرض 100 سيارة', 'محاولات مزايدة غير محدودة', 'دعم مباشر 24/7', 'عرض في السوق 120 يوم', 'شارة تاجر مميز', 'ظهور مميز في الإعلانات', 'تقارير أداء شهرية']), 1, 2);
+    seedPkgs.run('premium', 'Premium', 'متميزون', -1, 'LYD', 999, -1, 365, 'VIP', JSON.stringify(['عدد سيارات غير محدود', 'محاولات مزايدة غير محدودة', 'مدير حساب مخصص', 'عرض في السوق غير محدود', 'شارة VIP', 'أولوية في جميع المزادات', 'دعم مخصص على مدار الساعة', 'تقارير وتحليلات حصرية']), 1, 3);
+  })();
+}
+
+// User package columns
+try { db.exec("ALTER TABLE users ADD COLUMN packageId TEXT DEFAULT 'basic'"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN packageExpiresAt TEXT"); } catch (_) { }
+
+// ======= AGENCY APPLICATIONS =======
+db.exec(`
+  CREATE TABLE IF NOT EXISTS agency_applications (
+    id TEXT PRIMARY KEY,
+    fullName TEXT NOT NULL,
+    cityCountry TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    whatsapp TEXT,
+    showroomName TEXT,
+    expectedCarsPerMonth TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'pending',
+    adminNote TEXT,
+    createdAt TEXT NOT NULL
+  );
+`);
+
 // ======= PHASE 10: BUYER WALLET & PAYMENT SYSTEM =======
 db.exec(`
   CREATE TABLE IF NOT EXISTS buyer_wallets (
@@ -3365,7 +3416,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   app.post("/api/admin/approve-car/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
     try {
-      db.prepare("UPDATE cars SET status = 'upcoming' WHERE id = ? AND status = 'pending_approval'").run(id);
+      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = NULL, auctionStartTime = NULL WHERE id = ? AND status = 'pending_approval'").run(id);
       io.emit("car_approved", { carId: id });
 
       // Notify seller that their car was approved
@@ -3386,11 +3437,42 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/admin/reject-car/:id", requireAdmin, (req, res) => {
     const { id } = req.params;
+    const { reason } = req.body || {};
     try {
       db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
+      // Notify seller about rejection
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (car?.sellerId) {
+        sendInternalMessage('admin-1', car.sellerId, '❌ تم رفض سيارتك',
+          `عذراً، تم رفض سيارتك ${car.make} ${car.model} (${car.year || ''}).${reason ? '\nالسبب: ' + reason : ''}`,
+          'general');
+        sendNotification(car.sellerId, '❌ تم رفض سيارتك',
+          `تم رفض سيارتك ${car.make} ${car.model}. ${reason || ''}`, 'error');
+      }
       res.json({ success: true, message: "تم رفض السيارة" });
     } catch (e) {
       res.status(500).json({ error: "فشل رفض السيارة" });
+    }
+  });
+
+  // POST /api/admin/cars/:id/request-edit — request seller to edit their car
+  app.post("/api/admin/cars/:id/request-edit", requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const { notes } = req.body;
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+      if (car.sellerId) {
+        sendInternalMessage('admin-1', car.sellerId, '📝 مطلوب تعديل على سيارتك',
+          `يرجى تعديل بيانات سيارتك ${car.make} ${car.model} (${car.year || ''}).\n\nملاحظات الإدارة:\n${notes || 'لا توجد تفاصيل'}`,
+          'general');
+        sendNotification(car.sellerId, '📝 مطلوب تعديل على سيارتك',
+          `يرجى مراجعة وتعديل بيانات سيارتك ${car.make} ${car.model}. راجع رسائلك للتفاصيل.`, 'warning',
+          `/dashboard/seller?view=inventory`);
+      }
+      res.json({ success: true, message: "تم إرسال طلب التعديل للبائع" });
+    } catch (e) {
+      res.status(500).json({ error: "فشل إرسال طلب التعديل" });
     }
   });
 
@@ -5239,12 +5321,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     const { id } = req.params;
     const { action, reason } = req.body;
     try {
-      const status = action === 'approve' ? 'live' : 'rejected';
-      db.prepare("UPDATE cars SET status = ? WHERE id = ?").run(status, id);
+      const status = action === 'approve' ? 'upcoming' : 'rejected';
+      if (action === 'approve') {
+        db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = NULL, auctionStartTime = NULL WHERE id = ?").run(id);
+      } else {
+        db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
+      }
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (car.sellerId) {
-        sendInternalMessage('admin-1', car.sellerId, status === 'live' ? '✅ تمت الموافقة' : '❌ تم الرفض',
-          status === 'live' ? `سيارتك ${car.make} ${car.model} الآن في المزاد!` : `عذراً، تم رفض سيارتك.السبب: ${reason} `);
+        sendInternalMessage('admin-1', car.sellerId, status === 'upcoming' ? '✅ تمت الموافقة' : '❌ تم الرفض',
+          status === 'upcoming' ? `سيارتك ${car.make} ${car.model} الآن في قائمة المزادات القادمة!` : `عذراً، تم رفض سيارتك.السبب: ${reason} `);
       }
       io.emit("car_updated", { id, status });
       res.json({ success: true });
