@@ -1071,6 +1071,53 @@ try { db.exec("ALTER TABLE offices ADD COLUMN country TEXT DEFAULT 'ليبيا'"
 // Backfill createdAt for seller_transactions
 try { db.exec("UPDATE seller_transactions SET createdAt = timestamp WHERE createdAt IS NULL"); } catch (_) { }
 
+// ======= EMPLOYEE MANAGEMENT TABLES =======
+db.exec(`
+  CREATE TABLE IF NOT EXISTS employee_activity_log (
+    id TEXT PRIMARY KEY,
+    userId TEXT,
+    action TEXT,
+    details TEXT,
+    category TEXT,
+    timestamp TEXT,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS employee_tasks (
+    id TEXT PRIMARY KEY,
+    assignedTo TEXT,
+    assignedBy TEXT,
+    title TEXT,
+    description TEXT,
+    priority TEXT DEFAULT 'medium',
+    status TEXT DEFAULT 'pending',
+    dueDate TEXT,
+    completedAt TEXT,
+    createdAt TEXT,
+    FOREIGN KEY(assignedTo) REFERENCES users(id),
+    FOREIGN KEY(assignedBy) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS employee_reviews (
+    id TEXT PRIMARY KEY,
+    employeeId TEXT,
+    reviewerId TEXT,
+    period TEXT,
+    rating INTEGER,
+    notes TEXT,
+    carsAdded INTEGER DEFAULT 0,
+    customersHandled INTEGER DEFAULT 0,
+    tasksCompleted INTEGER DEFAULT 0,
+    responseTime TEXT,
+    createdAt TEXT,
+    FOREIGN KEY(employeeId) REFERENCES users(id)
+  );
+`);
+
+// Employee management columns on users
+try { db.exec("ALTER TABLE users ADD COLUMN lastActiveAt TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN totalLoginMinutes INTEGER DEFAULT 0"); } catch (_) { }
+
 // ======= PHASE 10: BUYER WALLET & PAYMENT SYSTEM =======
 db.exec(`
   CREATE TABLE IF NOT EXISTS buyer_wallets (

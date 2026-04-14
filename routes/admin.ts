@@ -2109,4 +2109,584 @@ export function registerAdminRoutes(ctx: AppContext) {
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // ══════════════════════════════════════════════════════════════
+  //  ADMIN: EMPLOYEE MANAGEMENT
+  // ══════════════════════════════════════════════════════════════
+
+  // GET /api/admin/employees — list all staff/admin users with activity stats
+  app.get("/api/admin/employees", requireAdmin, (_req, res) => {
+    try {
+      const employees: any[] = db.prepare(`
+        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.role, u.status,
+               u.joinDate, u.lastLogin, u.lastActiveAt, u.loginCount, u.totalLoginMinutes,
+               (SELECT COUNT(*) FROM employee_tasks WHERE assignedTo = u.id AND status = 'completed') as tasksCompleted,
+               (SELECT COUNT(*) FROM employee_tasks WHERE assignedTo = u.id AND status = 'pending') as tasksPending,
+               (SELECT COUNT(*) FROM employee_activity_log WHERE userId = u.id) as totalActions,
+               (SELECT COUNT(*) FROM cars WHERE sellerId = u.id OR acceptedBy = u.id) as carsHandled
+        FROM users u
+        WHERE u.role = 'admin' OR u.role = 'staff' OR u.role = 'manager'
+        ORDER BY u.joinDate DESC
+      `).all();
+      res.json({ employees });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/admin/employees/:id/activity — activity log for a specific employee
+  app.get("/api/admin/employees/:id/activity", requireAdmin, (req, res) => {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const category = req.query.category as string;
+
+      let query = `SELECT * FROM employee_activity_log WHERE userId = ?`;
+      const params: any[] = [id];
+
+      if (category) {
+        query += ` AND category = ?`;
+        params.push(category);
+      }
+
+      query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+      params.push(limit, offset);
+
+      const activities = db.prepare(query).all(...params);
+      const total: any = db.prepare(
+        `SELECT COUNT(*) as count FROM employee_activity_log WHERE userId = ?`
+      ).get(id);
+
+      res.json({ activities, total: total?.count || 0 });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/admin/employees/:id/task — create a task for an employee
+  app.post("/api/admin/employees/:id/task", requireAdmin, (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, priority, dueDate } = req.body;
+      if (!title) return res.status(400).json({ error: "عنوان المهمة مطلوب" });
+
+      const taskId = `task-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO employee_tasks (id, assignedTo, assignedBy, title, description, priority, status, dueDate, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(taskId, id, req.user.id, title, description || '', priority || 'medium', dueDate || null, now);
+
+      // Log the assignment as activity
+      db.prepare(`
+        INSERT INTO employee_activity_log (id, userId, action, details, category, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(`act-${Date.now()}`, req.user.id, 'task_assigned', `تم تعيين مهمة "${title}" للموظف ${id}`, 'tasks', now);
+
+      res.json({ success: true, taskId });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/admin/employees/:id/tasks — get tasks for an employee
+  app.get("/api/admin/employees/:id/tasks", requireAdmin, (req, res) => {
+    try {
+      const { id } = req.params;
+      const status = req.query.status as string;
+
+      let query = `
+        SELECT et.*, u.firstName as assignedByName, u.lastName as assignedByLastName
+        FROM employee_tasks et
+        LEFT JOIN users u ON et.assignedBy = u.id
+        WHERE et.assignedTo = ?
+      `;
+      const params: any[] = [id];
+
+      if (status) {
+        query += ` AND et.status = ?`;
+        params.push(status);
+      }
+
+      query += ` ORDER BY et.createdAt DESC`;
+
+      const tasks = db.prepare(query).all(...params);
+      res.json({ tasks });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PUT /api/admin/employees/tasks/:taskId — update task status
+  app.put("/api/admin/employees/tasks/:taskId", requireAdmin, (req: any, res) => {
+    try {
+      const { taskId } = req.params;
+      const { status, description, priority, dueDate } = req.body;
+
+      const task: any = db.prepare("SELECT * FROM employee_tasks WHERE id = ?").get(taskId);
+      if (!task) return res.status(404).json({ error: "المهمة غير موجودة" });
+
+      const now = new Date().toISOString();
+      const completedAt = status === 'completed' ? now : task.completedAt;
+
+      db.prepare(`
+        UPDATE employee_tasks
+        SET status = COALESCE(?, status),
+            description = COALESCE(?, description),
+            priority = COALESCE(?, priority),
+            dueDate = COALESCE(?, dueDate),
+            completedAt = ?
+        WHERE id = ?
+      `).run(status || null, description || null, priority || null, dueDate || null, completedAt, taskId);
+
+      // Log status change
+      if (status) {
+        db.prepare(`
+          INSERT INTO employee_activity_log (id, userId, action, details, category, timestamp)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(`act-${Date.now()}`, req.user.id, 'task_updated', `تم تحديث المهمة "${task.title}" إلى ${status}`, 'tasks', now);
+      }
+
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/admin/employees/:id/review — submit a performance review
+  app.post("/api/admin/employees/:id/review", requireAdmin, (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { period, rating, notes } = req.body;
+      if (!period || !rating) return res.status(400).json({ error: "الفترة والتقييم مطلوبان" });
+
+      const now = new Date().toISOString();
+      const reviewId = `review-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+      // Gather auto-calculated metrics
+      const carsAdded: any = db.prepare(
+        `SELECT COUNT(*) as count FROM cars WHERE (sellerId = ? OR acceptedBy = ?) AND createdAt >= ?`
+      ).get(id, id, period);
+
+      const tasksCompleted: any = db.prepare(
+        `SELECT COUNT(*) as count FROM employee_tasks WHERE assignedTo = ? AND status = 'completed' AND completedAt >= ?`
+      ).get(id, period);
+
+      const messagesHandled: any = db.prepare(
+        `SELECT COUNT(*) as count FROM messages WHERE senderId = ? AND createdAt >= ?`
+      ).get(id, period);
+
+      db.prepare(`
+        INSERT INTO employee_reviews (id, employeeId, reviewerId, period, rating, notes, carsAdded, customersHandled, tasksCompleted, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(reviewId, id, req.user.id, period, rating, notes || '', carsAdded?.count || 0, messagesHandled?.count || 0, tasksCompleted?.count || 0, now);
+
+      res.json({ success: true, reviewId });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/admin/employees/:id/performance — get performance metrics
+  app.get("/api/admin/employees/:id/performance", requireAdmin, (req, res) => {
+    try {
+      const { id } = req.params;
+      const since = (req.query.since as string) || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const user: any = db.prepare(
+        `SELECT id, firstName, lastName, email, role, lastLogin, lastActiveAt, loginCount, totalLoginMinutes FROM users WHERE id = ?`
+      ).get(id);
+      if (!user) return res.status(404).json({ error: "الموظف غير موجود" });
+
+      const carsAdded: any = db.prepare(
+        `SELECT COUNT(*) as count FROM cars WHERE (sellerId = ? OR acceptedBy = ?) AND createdAt >= ?`
+      ).get(id, id, since);
+
+      const messagesSent: any = db.prepare(
+        `SELECT COUNT(*) as count FROM messages WHERE senderId = ? AND createdAt >= ?`
+      ).get(id, since);
+
+      const tasksTotal: any = db.prepare(
+        `SELECT COUNT(*) as count FROM employee_tasks WHERE assignedTo = ?`
+      ).get(id);
+
+      const tasksCompleted: any = db.prepare(
+        `SELECT COUNT(*) as count FROM employee_tasks WHERE assignedTo = ? AND status = 'completed'`
+      ).get(id);
+
+      const tasksPending: any = db.prepare(
+        `SELECT COUNT(*) as count FROM employee_tasks WHERE assignedTo = ? AND status = 'pending'`
+      ).get(id);
+
+      const recentActivities = db.prepare(
+        `SELECT action, category, timestamp FROM employee_activity_log WHERE userId = ? ORDER BY timestamp DESC LIMIT 10`
+      ).all(id);
+
+      const reviews = db.prepare(
+        `SELECT * FROM employee_reviews WHERE employeeId = ? ORDER BY createdAt DESC LIMIT 5`
+      ).all(id);
+
+      const avgRating: any = db.prepare(
+        `SELECT AVG(rating) as avg FROM employee_reviews WHERE employeeId = ?`
+      ).get(id);
+
+      res.json({
+        employee: user,
+        metrics: {
+          carsAdded: carsAdded?.count || 0,
+          messagesSent: messagesSent?.count || 0,
+          tasksTotal: tasksTotal?.count || 0,
+          tasksCompleted: tasksCompleted?.count || 0,
+          tasksPending: tasksPending?.count || 0,
+          loginCount: user.loginCount || 0,
+          totalLoginMinutes: user.totalLoginMinutes || 0,
+          avgRating: avgRating?.avg ? Number(avgRating.avg).toFixed(1) : null,
+        },
+        recentActivities,
+        reviews,
+        since,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/admin/employees/log-activity — log an employee action
+  app.post("/api/admin/employees/log-activity", requireAdmin, (req: any, res) => {
+    try {
+      const { userId, action, details, category } = req.body;
+      if (!action) return res.status(400).json({ error: "الإجراء مطلوب" });
+
+      const logId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const now = new Date().toISOString();
+      const targetUser = userId || req.user.id;
+
+      db.prepare(`
+        INSERT INTO employee_activity_log (id, userId, action, details, category, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(logId, targetUser, action, details || '', category || 'general', now);
+
+      // Update lastActiveAt
+      db.prepare("UPDATE users SET lastActiveAt = ? WHERE id = ?").run(now, targetUser);
+
+      res.json({ success: true, logId });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  //  ADMIN: DASHBOARD OVERVIEW  (comprehensive KPIs + alerts + top lists)
+  // ══════════════════════════════════════════════════════════════
+
+  app.get("/api/admin/dashboard-overview", requireAdmin, (_req, res) => {
+    try {
+      // ── Helper: safely get .val from a single-column aggregate ──
+      const scalar = (sql: string, params: any[] = []): number => {
+        const row: any = db.prepare(sql).get(...params);
+        return row ? Number(row.val) || 0 : 0;
+      };
+
+      // ─────────────────────── KPIs ───────────────────────
+
+      // Sales (closed cars) — today / week / month / last month
+      const totalSalesToday = scalar(
+        `SELECT COALESCE(SUM(currentBid), 0) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND date(auctionEndDate) = date('now')`
+      );
+      const totalSalesWeek = scalar(
+        `SELECT COALESCE(SUM(currentBid), 0) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND auctionEndDate > datetime('now', '-7 days')`
+      );
+      const totalSalesMonth = scalar(
+        `SELECT COALESCE(SUM(currentBid), 0) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND strftime('%Y-%m', auctionEndDate) = strftime('%Y-%m', 'now')`
+      );
+      const totalSalesLastMonth = scalar(
+        `SELECT COALESCE(SUM(currentBid), 0) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND strftime('%Y-%m', auctionEndDate) = strftime('%Y-%m', 'now', '-1 month')`
+      );
+
+      const salesChangePercent = totalSalesLastMonth > 0
+        ? Math.round(((totalSalesMonth - totalSalesLastMonth) / totalSalesLastMonth) * 100)
+        : (totalSalesMonth > 0 ? 100 : 0);
+
+      // Active bids (bids on cars currently live or in offer_market)
+      const activeBidsNow = scalar(
+        `SELECT COUNT(*) AS val FROM bids b
+         JOIN cars c ON b.carId = c.id
+         WHERE c.status IN ('live', 'offer_market')`
+      );
+
+      // Average sale price (this month vs last month)
+      const averageSalePrice = scalar(
+        `SELECT COALESCE(AVG(currentBid), 0) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND strftime('%Y-%m', auctionEndDate) = strftime('%Y-%m', 'now')`
+      );
+      const averageSalePriceLastMonth = scalar(
+        `SELECT COALESCE(AVG(currentBid), 0) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND strftime('%Y-%m', auctionEndDate) = strftime('%Y-%m', 'now', '-1 month')`
+      );
+
+      // Conversion rate: sold / (sold + expired/unsold live auctions this month)
+      const totalSoldMonth = scalar(
+        `SELECT COUNT(*) AS val FROM cars
+         WHERE status = 'closed' AND winnerId IS NOT NULL
+         AND strftime('%Y-%m', auctionEndDate) = strftime('%Y-%m', 'now')`
+      );
+      const totalAuctionedMonth = scalar(
+        `SELECT COUNT(*) AS val FROM cars
+         WHERE status IN ('closed', 'offer_market', 'expired')
+         AND strftime('%Y-%m', auctionEndDate) = strftime('%Y-%m', 'now')`
+      );
+      const conversionRate = totalAuctionedMonth > 0
+        ? Math.round((totalSoldMonth / totalAuctionedMonth) * 100)
+        : 0;
+
+      // Commissions earned (from seller_transactions)
+      const totalCommissions = scalar(
+        `SELECT COALESCE(SUM(commission), 0) AS val FROM seller_transactions
+         WHERE type = 'sale'`
+      );
+
+      // Users
+      const newUsersToday = scalar(
+        `SELECT COUNT(*) AS val FROM users
+         WHERE date(joinDate) = date('now') AND role != 'admin'`
+      );
+      const newUsersWeek = scalar(
+        `SELECT COUNT(*) AS val FROM users
+         WHERE joinDate > datetime('now', '-7 days') AND role != 'admin'`
+      );
+      const totalRegisteredUsers = scalar(
+        `SELECT COUNT(*) AS val FROM users WHERE role != 'admin'`
+      );
+      const activeUsersToday = scalar(
+        `SELECT COUNT(*) AS val FROM users
+         WHERE date(lastLogin) = date('now') AND role != 'admin'`
+      );
+
+      // Cars
+      const totalCarsListed = scalar(`SELECT COUNT(*) AS val FROM cars`);
+      const totalCarsSold = scalar(
+        `SELECT COUNT(*) AS val FROM cars WHERE status = 'closed' AND winnerId IS NOT NULL`
+      );
+      const totalCarsInAuction = scalar(
+        `SELECT COUNT(*) AS val FROM cars WHERE status IN ('live', 'offer_market')`
+      );
+
+      // Pending approvals (cars with status 'pending' or 'pending_approval')
+      const pendingApprovals = scalar(
+        `SELECT COUNT(*) AS val FROM cars WHERE status IN ('pending', 'pending_approval')`
+      );
+
+      // Pending deposits (payment_requests with status 'pending' and type 'topup')
+      const pendingDeposits = scalar(
+        `SELECT COUNT(*) AS val FROM payment_requests WHERE status = 'pending' AND type = 'topup'`
+      );
+
+      // Overdue invoices (unpaid and dueDate < now)
+      const overdueInvoices = scalar(
+        `SELECT COUNT(*) AS val FROM invoices
+         WHERE status = 'unpaid' AND dueDate IS NOT NULL AND dueDate < datetime('now')`
+      );
+
+      // Total deposits balance (sum of all buyer wallet balances)
+      const totalDepositsBalance = scalar(
+        `SELECT COALESCE(SUM(balance), 0) AS val FROM buyer_wallets`
+      );
+
+      const kpis = {
+        totalSalesToday: Math.round(totalSalesToday),
+        totalSalesWeek: Math.round(totalSalesWeek),
+        totalSalesMonth: Math.round(totalSalesMonth),
+        totalSalesLastMonth: Math.round(totalSalesLastMonth),
+        salesChangePercent,
+        activeBidsNow,
+        averageSalePrice: Math.round(averageSalePrice),
+        averageSalePriceLastMonth: Math.round(averageSalePriceLastMonth),
+        conversionRate,
+        totalCommissions: Math.round(totalCommissions),
+        newUsersToday,
+        newUsersWeek,
+        totalRegisteredUsers,
+        activeUsersToday,
+        totalCarsListed,
+        totalCarsSold,
+        totalCarsInAuction,
+        pendingApprovals,
+        pendingDeposits,
+        overdueInvoices,
+        totalDepositsBalance: Math.round(totalDepositsBalance),
+      };
+
+      // ─────────────────────── Smart Alerts ───────────────────────
+
+      const alerts: Array<{ type: string; icon: string; message: string; count: number; action: string }> = [];
+
+      // 1. Overdue invoices (>48h past due)
+      const overdueCount48h = scalar(
+        `SELECT COUNT(*) AS val FROM invoices
+         WHERE status = 'unpaid' AND dueDate IS NOT NULL
+         AND dueDate < datetime('now', '-48 hours')`
+      );
+      if (overdueCount48h > 0) {
+        alerts.push({
+          type: 'danger', icon: 'invoice',
+          message: `${overdueCount48h} فواتير متأخرة أكثر من 48 ساعة`,
+          count: overdueCount48h, action: 'invoices'
+        });
+      }
+
+      // 2. Offer-market cars ending within 6 hours
+      const expiringOfferMarket = scalar(
+        `SELECT COUNT(*) AS val FROM cars
+         WHERE status = 'offer_market'
+         AND offerMarketEndTime IS NOT NULL
+         AND offerMarketEndTime > datetime('now')
+         AND offerMarketEndTime < datetime('now', '+6 hours')`
+      );
+      if (expiringOfferMarket > 0) {
+        alerts.push({
+          type: 'warning', icon: 'clock',
+          message: `${expiringOfferMarket} سيارات في سوق العروض تنتهي خلال 6 ساعات`,
+          count: expiringOfferMarket, action: 'manage_live_auctions'
+        });
+      }
+
+      // 3. Pending seller approvals (cars awaiting seller confirmation)
+      const pendingSellerApprovals = scalar(
+        `SELECT COUNT(*) AS val FROM cars WHERE status IN ('pending', 'pending_approval')`
+      );
+      if (pendingSellerApprovals > 0) {
+        alerts.push({
+          type: 'warning', icon: 'user',
+          message: `${pendingSellerApprovals} سيارة بانتظار موافقة بائع`,
+          count: pendingSellerApprovals, action: 'manage_live_auctions'
+        });
+      }
+
+      // 4. New users who haven't deposited yet (joined in last 7 days, no wallet or zero balance)
+      const noDepositUsers = scalar(
+        `SELECT COUNT(*) AS val FROM users u
+         LEFT JOIN buyer_wallets bw ON u.id = bw.userId
+         WHERE u.role = 'buyer' AND u.joinDate > datetime('now', '-7 days')
+         AND (bw.userId IS NULL OR bw.totalDeposited = 0)`
+      );
+      if (noDepositUsers > 0) {
+        alerts.push({
+          type: 'info', icon: 'users',
+          message: `${noDepositUsers} مستخدم جديد لم يودعوا بعد`,
+          count: noDepositUsers, action: 'users'
+        });
+      }
+
+      // 5. Hot cars (>= 10 bids while still live)
+      const hotCars = scalar(
+        `SELECT COUNT(*) AS val FROM (
+           SELECT b.carId, COUNT(*) AS cnt FROM bids b
+           JOIN cars c ON b.carId = c.id
+           WHERE c.status IN ('live', 'offer_market')
+           GROUP BY b.carId HAVING cnt >= 10
+         )`
+      );
+      if (hotCars > 0) {
+        alerts.push({
+          type: 'success', icon: 'trending',
+          message: `${hotCars} سيارات حصلت على أكثر من 10 مزايدات`,
+          count: hotCars, action: 'manage_live_auctions'
+        });
+      }
+
+      // 6. Pending payment requests
+      const pendingPaymentReqs = scalar(
+        `SELECT COUNT(*) AS val FROM payment_requests WHERE status = 'pending'`
+      );
+      if (pendingPaymentReqs > 0) {
+        alerts.push({
+          type: 'warning', icon: 'wallet',
+          message: `${pendingPaymentReqs} طلبات دفع بانتظار المراجعة`,
+          count: pendingPaymentReqs, action: 'payment_requests'
+        });
+      }
+
+      // 7. Live auctions ending within 1 hour
+      const endingSoonLive = scalar(
+        `SELECT COUNT(*) AS val FROM cars
+         WHERE status = 'live'
+         AND auctionEndDate > datetime('now')
+         AND auctionEndDate < datetime('now', '+1 hour')`
+      );
+      if (endingSoonLive > 0) {
+        alerts.push({
+          type: 'info', icon: 'clock',
+          message: `${endingSoonLive} مزادات حية تنتهي خلال ساعة`,
+          count: endingSoonLive, action: 'manage_live_auctions'
+        });
+      }
+
+      // ─────────────────────── Top Lists ───────────────────────
+
+      // Top 5 most bid-on cars (currently active)
+      const topCars: any[] = db.prepare(`
+        SELECT c.id AS carId, c.make, c.model, c.year, c.currentBid,
+               COUNT(b.id) AS bidCount
+        FROM cars c
+        JOIN bids b ON b.carId = c.id
+        WHERE c.status IN ('live', 'offer_market', 'closed')
+        GROUP BY c.id
+        ORDER BY bidCount DESC
+        LIMIT 5
+      `).all();
+
+      // Top 5 most active buyers (by bid count + total spent on won cars)
+      const topBuyers: any[] = db.prepare(`
+        SELECT u.id AS userId,
+               (u.firstName || ' ' || u.lastName) AS name,
+               COUNT(b.id) AS bidCount,
+               COALESCE((SELECT SUM(c2.currentBid) FROM cars c2 WHERE c2.winnerId = u.id AND c2.status = 'closed'), 0) AS totalSpent
+        FROM users u
+        JOIN bids b ON b.userId = u.id
+        WHERE u.role != 'admin'
+        GROUP BY u.id
+        ORDER BY bidCount DESC
+        LIMIT 5
+      `).all();
+
+      // Last 5 sold cars
+      const recentSales: any[] = db.prepare(`
+        SELECT c.id AS carId, c.make, c.model, c.year, c.currentBid AS salePrice,
+               (u.firstName || ' ' || u.lastName) AS buyerName, c.auctionEndDate AS soldAt
+        FROM cars c
+        LEFT JOIN users u ON c.winnerId = u.id
+        WHERE c.status = 'closed' AND c.winnerId IS NOT NULL
+        ORDER BY c.auctionEndDate DESC
+        LIMIT 5
+      `).all();
+
+      // Bid count per hour of day (all time, for peak-hours chart)
+      const peakHoursRaw: any[] = db.prepare(`
+        SELECT CAST(strftime('%H', timestamp) AS INTEGER) AS hour, COUNT(*) AS count
+        FROM bids
+        GROUP BY hour
+        ORDER BY hour
+      `).all();
+
+      // Fill in all 24 hours (some may have 0)
+      const peakHoursMap: Record<number, number> = {};
+      for (const row of peakHoursRaw) {
+        peakHoursMap[row.hour] = row.count;
+      }
+      const peakHours: Array<{ hour: number; count: number }> = [];
+      for (let h = 0; h < 24; h++) {
+        peakHours.push({ hour: h, count: peakHoursMap[h] || 0 });
+      }
+
+      // ─────────────────────── Response ───────────────────────
+
+      res.json({
+        kpis,
+        alerts,
+        topCars,
+        topBuyers,
+        recentSales,
+        peakHours,
+      });
+    } catch (err: any) {
+      console.error('[ADMIN DASHBOARD OVERVIEW ERROR]', err);
+      res.status(500).json({ error: 'فشل تحميل بيانات لوحة التحكم', details: err.message });
+    }
+  });
 }
