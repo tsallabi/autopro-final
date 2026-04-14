@@ -20,6 +20,8 @@ import { UnifiedCarForm } from '../components/UnifiedCarForm';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ReportsPanel } from '../components/admin/ReportsPanel';
 import { KycReviewPanel } from '../components/admin/KycReviewPanel';
+import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
+import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
 
 /* ============================================================
    FooterSettingsPanel — Admin panel to control SiteFooter
@@ -5159,6 +5161,9 @@ export const AdminDashboard = () => {
       case 'manage_live_auctions':
         return <ManageLiveAuctionsPanel currentUser={currentUser} />;
 
+      case 'employee_management':
+        return <EmployeeManagementPanel />;
+
       case 'financials':
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
@@ -5904,182 +5909,17 @@ export const AdminDashboard = () => {
 
       case 'overview':
         return (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow group">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-slate-500 text-sm">إجمالي المبيعات</p>
-                    <h3 className="text-2xl font-bold text-slate-800 mt-2">${stats.totalSales.toLocaleString()}</h3>
-                  </div>
-                  <div className="p-3 bg-blue-50 rounded-xl text-blue-600 group-hover:bg-blue-100 transition-colors">
-                    <DollarSign className="w-6 h-6" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow group">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-slate-500 text-sm">المزادات النشطة</p>
-                    <h3 className="text-2xl font-bold text-slate-800 mt-2">{stats.activeAuctions}</h3>
-                  </div>
-                  <div className="p-3 bg-orange-50 rounded-xl text-orange-600 group-hover:bg-orange-100 transition-colors">
-                    <Car className="w-6 h-6" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow group">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-slate-500 text-sm">المستخدمين</p>
-                    <h3 className="text-2xl font-bold text-slate-800 mt-2">{users.length.toLocaleString()}</h3>
-                  </div>
-                  <div className="p-3 bg-purple-50 rounded-xl text-purple-600 group-hover:bg-purple-100 transition-colors">
-                    <Users className="w-6 h-6" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow group">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-slate-500 text-sm">حالة النظام</p>
-                    <h3 className="text-lg font-bold text-green-600 mt-2 flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                      يعمل بكفاءة
-                    </h3>
-                  </div>
-                  <div className="p-3 bg-green-50 rounded-xl text-green-600 group-hover:bg-green-100 transition-colors">
-                    <Database className="w-6 h-6" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ✅ PHASE 6: Seller Wallet Financial Overview */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2rem] p-8 relative overflow-hidden" dir="rtl">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-blue-500 to-orange-500"></div>
-
-              <div className="flex justify-between items-end mb-8 relative z-10">
-                <div>
-                  <h3 className="text-white font-black text-2xl flex items-center gap-3">
-                    <Shield className="w-8 h-8 text-emerald-400" />
-                    الرقابة المالية الشاملة (System Liquidity)
-                  </h3>
-                  <p className="text-slate-400 text-sm font-bold mt-1">تتبع السيولة النقدية والمستحقات عبر كافة محافظ المشترين والبائعين</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                  Live Sync Active
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                {[
-                  { label: 'سيولة محافظ المشترين', value: `$${buyerWalletStats.totalCashBalance.toLocaleString()}`, sub: 'نقدي متاح للمزايدين', color: 'orange', icon: Wallet },
-                  { label: 'أرصدة البائعين (المتاحة)', value: `$${walletStats.totalAvailable.toLocaleString()}`, sub: 'جاهز للسحب فوراً', color: 'emerald', icon: TrendingUp },
-                  { label: 'فواتير غير مدفوعة', value: `$${(receivables.unpaidPurchase + receivables.unpaidTransport + receivables.unpaidShipping).toLocaleString()}`, sub: 'مستحقات بانتظار التحصيل', color: 'blue', icon: FileText },
-                  { label: 'طلبات شحن معلقة', value: buyerWalletStats.pendingTopups > 0 ? `${buyerWalletStats.pendingTopups} طلب` : 'لا يوجد', sub: `$${buyerWalletStats.pendingTopupAmount.toLocaleString()} إجمالي المبالغ`, color: 'amber', icon: Clock },
-                ].map((card, i) => {
-                  const Icon = card.icon;
-                  return (
-                    <div key={i} className="bg-white/5 hover:bg-white/10 rounded-2xl p-5 transition-all border border-white/5 group">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${card.color === 'orange' ? 'bg-orange-500/20 text-orange-400' :
-                        card.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-400' :
-                          card.color === 'blue' ? 'bg-blue-500/20 text-blue-400' :
-                            card.color === 'amber' ? 'bg-amber-500/20 text-amber-400' :
-                              'bg-slate-500/20 text-slate-400'
-                        }`}>
-                        <Icon className="w-6 h-6" />
-                      </div>
-                      <div className="text-2xl font-black text-white font-mono tracking-tight">{card.value}</div>
-                      <div className="text-xs text-slate-400 font-bold mt-1.5 uppercase tracking-wide">{card.label}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 capitalize">{card.sub}</div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => setSearchParams({ view: 'payment_requests' })}
-                  className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-white rounded-2xl font-black text-xs transition-all flex items-center gap-2 shadow-lg shadow-orange-500/20"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  مراجعة طلبات شحن المحافظ ({buyerWalletStats.pendingTopups})
-                </button>
-                <button
-                  onClick={() => setSearchParams({ view: 'withdrawal_requests' })}
-                  className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white border border-white/10 rounded-2xl font-black text-xs transition-all flex items-center gap-2"
-                >
-                  <Clock className="w-4 h-4" />
-                  طلبات سحب البائعين ({withdrawalStats.pendingCount})
-                </button>
-                <div className="mr-auto flex gap-6 px-6 py-3 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase">إجمالي العمولات المحصلة</div>
-                    <div className="text-sm font-black text-emerald-400 font-mono">${walletStats.totalWithdrawn.toLocaleString()}</div>
-                  </div>
-                  <div className="w-px h-full bg-white/10"></div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase">الالتزامات الضريبية</div>
-                    <div className="text-sm font-black text-slate-300 font-mono">$0.00</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-              {/* Chart */}
-              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm min-h-[400px]">
-                <h3 className="text-lg font-bold text-slate-800 mb-6">تحليلات الأداء</h3>
-                <div className="h-[320px] w-full min-w-0" dir="ltr">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <BarChart data={overviewMonthly.length > 0
-                      ? overviewMonthly.map((m: any) => ({ name: m.month, مبيعات: m.total || 0 }))
-                      : [{ name: '—', مبيعات: 0 }]
-                    }>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} stroke="#94a3b8" />
-                      <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', color: '#1e293b' }}
-                        itemStyle={{ color: '#1e293b' }}
-                      />
-                      <Bar dataKey="مبيعات" fill="#f97316" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">إجراءات سريعة</h3>
-                <div className="space-y-3">
-                  <button onClick={() => setSearchParams({ view: 'cars' })} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors">
-                    <span className="font-medium text-slate-700">إضافة سيارة جديدة</span>
-                    <Plus className="w-5 h-5 text-orange-500" />
-                  </button>
-                  <button onClick={() => setSearchParams({ view: 'financial_approvals' })} className="w-full flex items-center justify-between p-4 bg-orange-50 hover:bg-orange-100 rounded-xl transition-colors border border-orange-200">
-                    <span className="font-medium text-orange-700 flex items-center gap-2">
-                      💰 مراجعة الإيداعات المعلقة
-                      {pendingDeposits.length > 0 && <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">{pendingDeposits.length}</span>}
-                    </span>
-                    <DollarSign className="w-5 h-5 text-orange-500" />
-                  </button>
-                  <button className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors">
-                    <span className="font-medium text-slate-700">مراجعة المزادات المعلقة</span>
-                    <Gavel className="w-5 h-5 text-blue-500" />
-                  </button>
-                  <button className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors">
-                    <span className="font-medium text-slate-700">تحديث أسعار الشحن</span>
-                    <Truck className="w-5 h-5 text-green-500" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <EnhancedOverviewPanel
+            onNavigate={(v) => setSearchParams({ view: v })}
+            stats={stats}
+            users={users}
+            walletStats={walletStats}
+            withdrawalStats={withdrawalStats}
+            buyerWalletStats={buyerWalletStats}
+            receivables={receivables}
+            pendingDeposits={pendingDeposits}
+            overviewMonthly={overviewMonthly}
+          />
         );
 
       case 'cars':
@@ -7066,6 +6906,7 @@ export const AdminDashboard = () => {
               items: [
                 { id: 'user_management', label: 'إدارة المشتركين', icon: Users, badge: (pendingUsers?.length || 0) },
                 { id: 'kyc_review', label: 'مراجعة التوثيق KYC', icon: ShieldCheck, badge: (kycUsers || []).filter((u: any) => u.kycStatus === 'pending').length || undefined },
+                { id: 'employee_management', label: 'إدارة الموظفين', icon: Shield },
               ]
             },
             {
