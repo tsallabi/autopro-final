@@ -18,6 +18,7 @@ import { CAR_MAKES_AND_MODELS } from '../data/carData';
 import { DualRangeSlider } from '../components/DualRangeSlider';
 import { FeaturedCarsBanner } from '../components/FeaturedCarsBanner';
 import { useClickOutside } from '../hooks/useClickOutside';
+import { useSavedSearches, SavedSearch } from '../hooks/useSavedSearches';
 
 const ListCarTimer = ({ car }: { car: Car }) => {
   const [timeLeft, setTimeLeft] = useState('00:00:00');
@@ -71,6 +72,18 @@ export const Home = () => {
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Saved searches
+  const { searches: savedSearches, save: saveSearch, remove: removeSavedSearch } = useSavedSearches();
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState('');
   const [activeSidebarTab, setActiveSidebarTab] = useState<'events' | 'saved'>('events');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
@@ -96,6 +109,12 @@ export const Home = () => {
   const [filterFuelTypes, setFilterFuelTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'ending_soonest' | 'recommended' | 'priced_to_sell'>('ending_soonest');
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [displayCount, setDisplayCount] = useState(24);
+
+  // Reset pagination when filters/search change
+  useEffect(() => {
+    setDisplayCount(24);
+  }, [searchTerm, filterMake, filterModel, filterYearMin, filterYearMax, filterMileageMin, filterMileageMax, filterPriceMin, filterPriceMax, filterAuctionTypes, filterDriveTypes, filterBodyTypes, filterFuelTypes, sortBy]);
 
   // Refs for outside click detection
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -119,6 +138,7 @@ export const Home = () => {
 
   const clearAllFilters = () => {
     setSearchTerm('');
+    setSearchInput('');
     setFilterMake('');
     setFilterModel('');
     setFilterYearMin('');
@@ -144,6 +164,120 @@ export const Home = () => {
     setIsBottomSheetOpen(false);
     setIsDesktopMoreOpen(false);
     setActiveFilterPopover(null);
+  };
+
+  // Read filters FROM URL on mount
+  const didHydrateFromUrl = useRef(false);
+  useEffect(() => {
+    if (didHydrateFromUrl.current) return;
+    didHydrateFromUrl.current = true;
+    const p = searchParams;
+    const getArr = (k: string) => {
+      const v = p.get(k);
+      return v ? v.split(',').filter(Boolean) : [];
+    };
+    const getNum = (k: string): number | '' => {
+      const v = p.get(k);
+      if (v === null || v === '') return '';
+      const n = Number(v);
+      return isNaN(n) ? '' : n;
+    };
+    const s = p.get('search') || '';
+    if (s) { setSearchInput(s); setSearchTerm(s); }
+    const mk = p.get('make') || '';
+    if (mk && mk !== 'all') setFilterMake(mk);
+    const md = p.get('model') || '';
+    if (md) setFilterModel(md);
+    const yMin = getNum('minYear'); if (yMin !== '') setFilterYearMin(yMin);
+    const yMax = getNum('maxYear'); if (yMax !== '') setFilterYearMax(yMax);
+    const pMin = getNum('minPrice'); if (pMin !== '') setFilterPriceMin(pMin);
+    const pMax = getNum('maxPrice'); if (pMax !== '') setFilterPriceMax(pMax);
+    const mMin = getNum('minMileage'); if (mMin !== '') setFilterMileageMin(mMin);
+    const mMax = getNum('maxMileage'); if (mMax !== '') setFilterMileageMax(mMax);
+    const at = getArr('auctionTypes'); if (at.length) setFilterAuctionTypes(at);
+    const dt = getArr('driveTypes'); if (dt.length) setFilterDriveTypes(dt);
+    const bt = getArr('bodyTypes'); if (bt.length) setFilterBodyTypes(bt);
+    const ft = getArr('fuelTypes'); if (ft.length) setFilterFuelTypes(ft);
+    const sb = p.get('sortBy');
+    if (sb === 'recommended' || sb === 'priced_to_sell' || sb === 'ending_soonest') setSortBy(sb);
+    const vm = p.get('viewMode');
+    if (vm === 'grid' || vm === 'list') setViewMode(vm);
+  }, []);
+
+  // Write filters TO URL on change
+  useEffect(() => {
+    if (!didHydrateFromUrl.current) return;
+    const p = new URLSearchParams(searchParams);
+    const setOrDel = (k: string, v: string | number | '' | undefined | null) => {
+      if (v === '' || v === undefined || v === null) p.delete(k);
+      else p.set(k, String(v));
+    };
+    const setArrOrDel = (k: string, arr: string[]) => {
+      if (!arr || arr.length === 0) p.delete(k);
+      else p.set(k, arr.join(','));
+    };
+    setOrDel('search', searchTerm);
+    setOrDel('make', filterMake);
+    setOrDel('model', filterModel);
+    setOrDel('minYear', filterYearMin);
+    setOrDel('maxYear', filterYearMax);
+    setOrDel('minPrice', filterPriceMin);
+    setOrDel('maxPrice', filterPriceMax);
+    setOrDel('minMileage', filterMileageMin);
+    setOrDel('maxMileage', filterMileageMax);
+    setArrOrDel('auctionTypes', filterAuctionTypes);
+    setArrOrDel('driveTypes', filterDriveTypes);
+    setArrOrDel('bodyTypes', filterBodyTypes);
+    setArrOrDel('fuelTypes', filterFuelTypes);
+    if (sortBy && sortBy !== 'ending_soonest') p.set('sortBy', sortBy); else p.delete('sortBy');
+    if (viewMode && viewMode !== 'list') p.set('viewMode', viewMode); else p.delete('viewMode');
+    setSearchParams(p, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterMake, filterModel, filterYearMin, filterYearMax, filterPriceMin, filterPriceMax,
+      filterMileageMin, filterMileageMax, filterAuctionTypes, filterDriveTypes, filterBodyTypes,
+      filterFuelTypes, sortBy, viewMode]);
+
+  // Save / Apply / compute active filter list
+  const currentFiltersSnapshot = () => ({
+    searchTerm, filterMake, filterModel,
+    filterYearMin, filterYearMax, filterPriceMin, filterPriceMax,
+    filterMileageMin, filterMileageMax,
+    filterAuctionTypes, filterDriveTypes, filterBodyTypes, filterFuelTypes,
+    sortBy, activeTab: searchParams.get('tab') || 'all', viewMode,
+  });
+
+  const applySavedSearch = (s: SavedSearch) => {
+    const f = s.filters || {};
+    setSearchInput(f.searchTerm || '');
+    setSearchTerm(f.searchTerm || '');
+    setFilterMake(f.filterMake || '');
+    setFilterModel(f.filterModel || '');
+    setFilterYearMin(f.filterYearMin ?? '');
+    setFilterYearMax(f.filterYearMax ?? '');
+    setFilterPriceMin(f.filterPriceMin ?? '');
+    setFilterPriceMax(f.filterPriceMax ?? '');
+    setFilterMileageMin(f.filterMileageMin ?? '');
+    setFilterMileageMax(f.filterMileageMax ?? '');
+    setFilterAuctionTypes(f.filterAuctionTypes || []);
+    setFilterDriveTypes(f.filterDriveTypes || []);
+    setFilterBodyTypes(f.filterBodyTypes || []);
+    setFilterFuelTypes(f.filterFuelTypes || []);
+    setSortBy(f.sortBy || 'ending_soonest');
+    if (f.viewMode === 'grid' || f.viewMode === 'list') setViewMode(f.viewMode);
+    if (f.activeTab) {
+      const np = new URLSearchParams(searchParams);
+      np.set('tab', f.activeTab);
+      setSearchParams(np);
+    }
+  };
+
+  const handleSaveSearchConfirm = () => {
+    const name = saveSearchName.trim();
+    if (!name) return;
+    saveSearch(name, currentFiltersSnapshot());
+    setSaveSearchName('');
+    setShowSaveModal(false);
+    setActiveSidebarTab('saved');
   };
 
   useEffect(() => {
@@ -178,11 +312,14 @@ export const Home = () => {
     const urlSearch = searchParams.get('search')?.toLowerCase() || '';
     const urlMake = searchParams.get('make')?.toLowerCase() || 'all';
 
-    const matchesSearch =
-      (car.make?.toLowerCase() || '').includes(searchTerm.toLowerCase() || urlSearch) ||
-      (car.model?.toLowerCase() || '').includes(searchTerm.toLowerCase() || urlSearch) ||
-      (car.lotNumber?.toString() || '').includes(searchTerm || urlSearch) ||
-      (car.year?.toString() || '').includes(searchTerm || urlSearch);
+    const effectiveSearch = (searchTerm || urlSearch).toLowerCase().trim();
+    const anyCar = car as any;
+    const searchableText = [
+      car.make, car.model, car.lotNumber, car.year,
+      anyCar.vin, anyCar.trim, anyCar.primaryDamage, anyCar.damage,
+      anyCar.location, anyCar.notes,
+    ].filter(Boolean).map((v: any) => String(v).toLowerCase()).join(' ');
+    const matchesSearch = !effectiveSearch || searchableText.includes(effectiveSearch);
 
     let matchesTab = true;
     if (activeTab === 'all') matchesTab = ['live', 'upcoming', 'offer_market', 'closed'].includes(car.status);
@@ -211,10 +348,15 @@ export const Home = () => {
     const isPriceMaxMatching = filterPriceMax === '' || carPrice <= Number(filterPriceMax);
 
     // Advanced Checkboxes Filters
-    const isAuctionTypeMatching = filterAuctionTypes.length === 0 || filterAuctionTypes.includes((car as any).auctionType || 'بيع مباشر');
-    const isDriveTypeMatching = filterDriveTypes.length === 0 || filterDriveTypes.includes((car as any).driveType || 'دفع رباعي 4x4');
-    const isBodyTypeMatching = filterBodyTypes.length === 0 || filterBodyTypes.includes((car as any).bodyType || 'سيدان');
-    const isFuelTypeMatching = filterFuelTypes.length === 0 || filterFuelTypes.includes((car as any).fuelType || 'بنزين');
+    // When a filter is set but the car lacks the field, EXCLUDE it (no fallback pollution)
+    const carAuctionType = (car as any).auctionType;
+    const isAuctionTypeMatching = filterAuctionTypes.length === 0 || (!!carAuctionType && filterAuctionTypes.includes(carAuctionType));
+    const carDriveType = (car as any).driveType;
+    const isDriveTypeMatching = filterDriveTypes.length === 0 || (!!carDriveType && filterDriveTypes.includes(carDriveType));
+    const carBodyType = (car as any).bodyType;
+    const isBodyTypeMatching = filterBodyTypes.length === 0 || (!!carBodyType && filterBodyTypes.includes(carBodyType));
+    const carFuelType = (car as any).fuelType;
+    const isFuelTypeMatching = filterFuelTypes.length === 0 || (!!carFuelType && filterFuelTypes.includes(carFuelType));
 
     return matchesSearch && matchesTab && isUrlMakeMatching && isStateMakeMatching && isStateModelMatching &&
       isYearMinMatching && isYearMaxMatching && isMileageMinMatching && isMileageMaxMatching &&
@@ -411,8 +553,8 @@ export const Home = () => {
               type="text"
               placeholder={t('home.search.placeholder')}
               className="w-full bg-white border-2 border-slate-200 rounded-lg py-2.5 pr-12 pl-4 outline-none focus:border-orange-500 focus:shadow-[0_0_0_4px_rgba(249,115,22,0.1)] transition-all text-sm font-bold placeholder:text-slate-400 hover:border-slate-300"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
 
@@ -806,11 +948,56 @@ export const Home = () => {
                   })()}
                 </div>
               ) : (
-                <div className="text-center py-10">
-                  <Save className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <h3 className="text-base font-black text-slate-900 mb-2">{t('home.sidebar.noSavedSearches')}</h3>
-                  <p className="text-xs text-slate-500 font-bold mb-6">{t('home.sidebar.saveSearchAlert')}</p>
-                  <button className="bg-slate-900 text-white px-6 py-2.5 rounded-2xl font-black text-xs">{t('home.sidebar.saveCurrentSearch')}</button>
+                <div className="space-y-3">
+                  {savedSearches.length === 0 ? (
+                    <div className="text-center py-10">
+                      <Save className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                      <h3 className="text-base font-black text-slate-900 mb-2">{t('home.sidebar.noSavedSearches')}</h3>
+                      <p className="text-xs text-slate-500 font-bold mb-6">{t('home.sidebar.saveSearchAlert')}</p>
+                      <button onClick={() => setShowSaveModal(true)} className="bg-slate-900 text-white px-6 py-2.5 rounded-2xl font-black text-xs hover:bg-slate-800 transition-colors">{t('home.sidebar.saveCurrentSearch')}</button>
+                    </div>
+                  ) : (
+                    <>
+                      <button onClick={() => setShowSaveModal(true)} className="w-full bg-slate-900 text-white px-4 py-2.5 rounded-2xl font-black text-xs hover:bg-slate-800 transition-colors flex items-center justify-center gap-2">
+                        <Save className="w-4 h-4" /> {t('home.sidebar.saveCurrentSearch')}
+                      </button>
+                      {savedSearches.map((s) => {
+                        const f = s.filters || {};
+                        const summary: string[] = [];
+                        if (f.searchTerm) summary.push(`"${f.searchTerm}"`);
+                        if (f.filterMake) summary.push(f.filterMake);
+                        if (f.filterModel) summary.push(f.filterModel);
+                        if (f.filterYearMin || f.filterYearMax) summary.push(`${f.filterYearMin || '—'}-${f.filterYearMax || '—'}`);
+                        if (f.filterPriceMin || f.filterPriceMax) summary.push(`$${f.filterPriceMin || 0}-$${f.filterPriceMax || '∞'}`);
+                        if ((f.filterAuctionTypes || []).length) summary.push((f.filterAuctionTypes || []).join(', '));
+                        if ((f.filterBodyTypes || []).length) summary.push((f.filterBodyTypes || []).join(', '));
+                        if ((f.filterFuelTypes || []).length) summary.push((f.filterFuelTypes || []).join(', '));
+                        if ((f.filterDriveTypes || []).length) summary.push((f.filterDriveTypes || []).join(', '));
+                        const summaryText = summary.length ? summary.join(' · ') : 'بدون فلاتر';
+                        return (
+                          <div key={s.id} className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white hover:border-orange-200 transition-all group">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <div className="font-black text-sm text-slate-900 truncate">{s.name}</div>
+                              <button
+                                aria-label="حذف"
+                                onClick={() => removeSavedSearch(s.id)}
+                                className="shrink-0 p-1 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <div className="text-[11px] font-bold text-slate-500 mb-3 line-clamp-2">{summaryText}</div>
+                            <button
+                              onClick={() => applySavedSearch(s)}
+                              className="w-full bg-orange-500 text-white px-3 py-1.5 rounded-xl font-black text-[11px] hover:bg-orange-600 transition-colors"
+                            >
+                              تطبيق (Apply)
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -855,6 +1042,50 @@ export const Home = () => {
             ))}
           </div>
 
+          {/* Active Filter Chips */}
+          {(() => {
+            const chips: { label: string; onRemove: () => void; key: string }[] = [];
+            if (searchTerm) chips.push({ key: 'search', label: `بحث: ${searchTerm}`, onRemove: () => { setSearchTerm(''); setSearchInput(''); } });
+            if (filterMake) chips.push({ key: 'make', label: `الماركة: ${filterMake}`, onRemove: () => setFilterMake('') });
+            if (filterModel) chips.push({ key: 'model', label: `الموديل: ${filterModel}`, onRemove: () => setFilterModel('') });
+            if (filterYearMin !== '') chips.push({ key: 'ymin', label: `سنة من: ${filterYearMin}`, onRemove: () => setFilterYearMin('') });
+            if (filterYearMax !== '') chips.push({ key: 'ymax', label: `سنة إلى: ${filterYearMax}`, onRemove: () => setFilterYearMax('') });
+            if (filterPriceMin !== '') chips.push({ key: 'pmin', label: `سعر من: $${filterPriceMin}`, onRemove: () => setFilterPriceMin('') });
+            if (filterPriceMax !== '') chips.push({ key: 'pmax', label: `سعر إلى: $${filterPriceMax}`, onRemove: () => setFilterPriceMax('') });
+            if (filterMileageMin !== '') chips.push({ key: 'mmin', label: `عداد من: ${filterMileageMin}`, onRemove: () => setFilterMileageMin('') });
+            if (filterMileageMax !== '') chips.push({ key: 'mmax', label: `عداد إلى: ${filterMileageMax}`, onRemove: () => setFilterMileageMax('') });
+            filterAuctionTypes.forEach((a) => chips.push({ key: `at-${a}`, label: `نوع المزاد: ${a}`, onRemove: () => setFilterAuctionTypes(filterAuctionTypes.filter((x) => x !== a)) }));
+            filterDriveTypes.forEach((a) => chips.push({ key: `dt-${a}`, label: `الدفع: ${a}`, onRemove: () => setFilterDriveTypes(filterDriveTypes.filter((x) => x !== a)) }));
+            filterBodyTypes.forEach((a) => chips.push({ key: `bt-${a}`, label: `الهيكل: ${a}`, onRemove: () => setFilterBodyTypes(filterBodyTypes.filter((x) => x !== a)) }));
+            filterFuelTypes.forEach((a) => chips.push({ key: `ft-${a}`, label: `الوقود: ${a}`, onRemove: () => setFilterFuelTypes(filterFuelTypes.filter((x) => x !== a)) }));
+            if (chips.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-2 px-2 py-3 items-center">
+                {chips.map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={c.onRemove}
+                    className="inline-flex items-center gap-1 bg-slate-900 text-white px-3 py-1.5 rounded-full text-xs font-bold hover:bg-slate-700 transition-colors"
+                  >
+                    {c.label} <X className="w-3 h-3" />
+                  </button>
+                ))}
+                <button
+                  onClick={clearAllFilters}
+                  className="text-xs font-black text-orange-600 hover:text-orange-700 underline ml-2"
+                >
+                  مسح الكل (Clear all)
+                </button>
+                <button
+                  onClick={() => setShowSaveModal(true)}
+                  className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold hover:border-orange-300 hover:text-orange-600 transition-colors"
+                >
+                  <Save className="w-3 h-3" /> حفظ البحث
+                </button>
+              </div>
+            );
+          })()}
+
           {filteredCars.length === 0 ? (
             <div className="bg-white rounded-[3rem] p-20 text-center border-2 border-dashed border-slate-200 mt-8">
               <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
@@ -866,7 +1097,7 @@ export const Home = () => {
             </div>
           ) : (
             <div className={`mt-20 ${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10' : 'flex flex-col gap-8'}`}>
-              {filteredCars.map((car) => {
+              {filteredCars.slice(0, displayCount).map((car) => {
                 const seller = users.find(u => u.id === car.sellerId);
                 const showroomName = car.showroomName || seller?.companyName || (seller?.firstName ? `${seller.firstName || ''} ${seller.lastName || ''}`.trim() : 'AutoPro Auctions');
                 const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active';
@@ -1049,6 +1280,13 @@ export const Home = () => {
               })}
             </div>
           )}
+          {filteredCars.length > displayCount && (
+            <div className="flex justify-center mt-8">
+              <button onClick={() => setDisplayCount(d => d + 24)} className="bg-orange-500 hover:bg-orange-600 text-white px-10 py-3 rounded-xl font-black text-sm transition-all shadow-lg">
+                عرض {Math.min(24, filteredCars.length - displayCount)} سيارة إضافية ({filteredCars.length - displayCount} متبقية)
+              </button>
+            </div>
+          )}
         </main>
 
         {/* Right Sidebar (Desktop Only) */}
@@ -1124,7 +1362,7 @@ export const Home = () => {
                 <Filter className="w-5 h-5 text-orange-500" /> الفلاتر المتقدمة
               </h2>
               <div className="flex items-center gap-3">
-                <button onClick={() => { setSearchTerm(''); setFilterMake(''); setFilterModel(''); setFilterYearMin(''); setFilterYearMax(''); setFilterMileageMin(''); setFilterMileageMax(''); setFilterPriceMin(''); setFilterPriceMax(''); setFilterAuctionTypes([]); }} className="text-[11px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-wider">إعادة ضبط</button>
+                <button onClick={() => { setSearchTerm(''); setSearchInput(''); setFilterMake(''); setFilterModel(''); setFilterYearMin(''); setFilterYearMax(''); setFilterMileageMin(''); setFilterMileageMax(''); setFilterPriceMin(''); setFilterPriceMax(''); setFilterAuctionTypes([]); }} className="text-[11px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-wider">إعادة ضبط</button>
                 <button aria-label="إغلاق" onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-all">
                   <X className="w-5 h-5" />
                 </button>
@@ -1142,8 +1380,8 @@ export const Home = () => {
                     type="text"
                     placeholder="رقم اللوت، الشاصي، الخ..."
                     className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 pr-12 pl-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                   />
                 </div>
               </div>
@@ -1311,14 +1549,21 @@ export const Home = () => {
                   <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right flex items-center gap-2">
                       <Gavel className="w-4 h-4 text-orange-500" />
-                      {t('home.rightSidebar.activeAuctions')} (2)
+                      {t('home.rightSidebar.activeAuctions')} ({cars.filter(c => c.winnerId === currentUser?.id && (c.status === 'live' || c.status === 'upcoming' || (c as any).status === 'ultimo')).length})
                     </h4>
+                    {cars.filter(c => c.winnerId === currentUser?.id && (c.status === 'live' || c.status === 'upcoming' || (c as any).status === 'ultimo')).length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <Gavel className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                        <div className="text-sm font-black text-slate-600">لا توجد مزايدات نشطة</div>
+                      </div>
+                    ) : (
                     <div className="space-y-3">
-                      {[
-                        { year: 2016, make: 'Chevrolet', model: 'Silverado 25...', trim: 'LT 1LT • 4WD • 8cyl', miles: '131,332 miles', time: '26:37', bid: 22550, winning: true, image: 'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&q=80&w=300', lot: '448555' },
-                        { year: 2014, make: 'Chevrolet', model: 'Corvette', trim: 'Stingray Z51 2LT', miles: '48,565 miles', time: '38:44', bid: 28500, winning: false, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300', lot: '184920' },
-                        { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
-                      ].map((item, idx) => (
+                      {cars.filter(c => c.winnerId === currentUser?.id && (c.status === 'live' || c.status === 'upcoming' || (c as any).status === 'ultimo')).map((carItem) => {
+                        const carImg = Array.isArray(carItem.images) && carItem.images.length > 0 && carItem.images[0].length > 5 ? carItem.images[0] : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=300';
+                        const remainingMin = carItem.auctionEndDate ? Math.max(0, Math.floor((new Date(carItem.auctionEndDate).getTime() - Date.now()) / 60000)) : 0;
+                        const item = { year: carItem.year, make: carItem.make, model: carItem.model, trim: carItem.trim || '', miles: `${(carItem.odometer || 0).toLocaleString()} miles`, time: `${remainingMin}m`, bid: carItem.currentBid || 0, winning: true, image: carImg };
+                        const idx = carItem.id;
+                        return (
                         <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
                           <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
                             <img src={item.image} alt="car" className="w-full h-full object-cover" />
@@ -1347,8 +1592,10 @@ export const Home = () => {
                             </div>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
+                    )}
                   </div>
 
                   <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20">
@@ -1414,6 +1661,48 @@ export const Home = () => {
               <button onClick={() => { setSortBy('priced_to_sell'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'priced_to_sell' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
                 <span className="font-black text-sm">سعر منافس (Priced to Sell)</span>
                 {sortBy === 'priced_to_sell' && <CheckCircle2 className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Search Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowSaveModal(false)}></div>
+          <div className="relative w-full max-w-md bg-white rounded-[2rem] shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
+                <Save className="w-5 h-5 text-orange-500" /> حفظ البحث الحالي
+              </h3>
+              <button aria-label="إغلاق" onClick={() => setShowSaveModal(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs font-bold text-slate-500 mb-4">أدخل اسماً لهذا البحث حتى تتمكن من استعادته لاحقاً.</p>
+            <input
+              type="text"
+              value={saveSearchName}
+              onChange={(e) => setSaveSearchName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSearchConfirm(); }}
+              placeholder="مثال: بي ام دبليو X5 2020+"
+              autoFocus
+              className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm mb-4"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveSearchConfirm}
+                disabled={!saveSearchName.trim()}
+                className="flex-1 bg-slate-900 text-white px-4 py-3 rounded-xl font-black text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                حفظ
+              </button>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="flex-1 bg-slate-100 text-slate-700 px-4 py-3 rounded-xl font-black text-sm hover:bg-slate-200 transition-colors"
+              >
+                إلغاء
               </button>
             </div>
           </div>
