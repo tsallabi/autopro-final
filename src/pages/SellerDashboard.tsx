@@ -10,6 +10,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useStore, authFetch } from '../context/StoreContext';
 import { IbanUpdateCard, KycUploadCard } from '../components/SellerKycComponents';
 import { UnifiedCarForm } from '../components/UnifiedCarForm';
+import DealerYardPortal from '../components/dealer/DealerYardPortal';
 export const SellerDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
@@ -1941,6 +1942,9 @@ export const SellerDashboard = () => {
           </div>
         );
 
+      case 'yard_portal':
+        return <DealerYardPortal />;
+
       default:
 
         return (
@@ -2078,7 +2082,8 @@ export const SellerDashboard = () => {
           { id: 'logistics', icon: Truck, label: 'الشحن والتسليم' },
           { id: 'messages', icon: MessageSquare, label: 'صندوق البريد' },
           { id: 'market_insights', icon: LineChartIcon, label: 'رؤى السوق' },
-          { id: 'profile', icon: CreditCard, label: 'الملف الشخصي / KYC' }
+          { id: 'profile', icon: CreditCard, label: 'الملف الشخصي / KYC' },
+          { id: 'yard_portal', icon: Car, label: 'سياراتي في الحضيرة' }
         ].map(tab => (
           <button
             key={tab.id}

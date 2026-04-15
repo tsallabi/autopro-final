@@ -16,12 +16,37 @@ interface Employee {
   name: string;
   email: string;
   role: string;
+  yardRole?: string | null;  // yard-specific role
   lastActive: string;
   pendingTasks: number;
   carsAdded: number;
   rating: number;
   avatar?: string;
   isOnline?: boolean;
+}
+
+// Role display labels in Arabic
+const ROLE_LABELS: Record<string, { label: string; color: string }> = {
+  // Platform roles
+  admin:       { label: 'مدير المنصة',    color: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  manager:     { label: 'مدير',           color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+  staff:       { label: 'موظف',           color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  employee:    { label: 'موظف',           color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  accountant:  { label: 'محاسب',          color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  // Yard roles
+  yard_manager:    { label: 'مدير حضيرة',   color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+  yard_supervisor: { label: 'مشرف حضيرة',  color: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+  yard_employee:   { label: 'موظف حضيرة',   color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+  gatekeeper:      { label: 'حارس بوابة',  color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+  sales_agent:     { label: 'مندوب مبيعات', color: 'bg-pink-500/10 text-pink-400 border-pink-500/20' },
+  auditor:         { label: 'مدقق',         color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+};
+
+function displayRole(role: string, yardRole?: string | null): { label: string; color: string } {
+  // Prefer yard role if exists
+  if (yardRole && ROLE_LABELS[yardRole]) return ROLE_LABELS[yardRole];
+  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+  return { label: role, color: 'bg-slate-700/60 text-slate-300 border-slate-600/50' };
 }
 
 interface EmployeeStats {
@@ -136,6 +161,9 @@ export const EmployeeManagementPanel: React.FC = () => {
   // Modals
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [roleEditModal, setRoleEditModal] = useState<{ employeeId: string; currentRole: string; currentYardRole: string } | null>(null);
+  const [roleForm, setRoleForm] = useState({ role: '', yardRole: '' });
+  const [roleSaving, setRoleSaving] = useState(false);
 
   // Task form
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' });
@@ -180,6 +208,37 @@ export const EmployeeManagementPanel: React.FC = () => {
   useEffect(() => {
     fetchEmployees();
   }, [fetchEmployees]);
+
+  // Sync role form when modal opens
+  useEffect(() => {
+    if (roleEditModal) {
+      setRoleForm({ role: roleEditModal.currentRole || '', yardRole: roleEditModal.currentYardRole || '' });
+    }
+  }, [roleEditModal]);
+
+  // Save role assignment
+  const saveRoleAssignment = async () => {
+    if (!roleEditModal) return;
+    setRoleSaving(true);
+    try {
+      const res = await authFetch(`/api/admin/employees/${roleEditModal.employeeId}/assign-role`, {
+        method: 'POST',
+        body: JSON.stringify({ role: roleForm.role, yardRole: roleForm.yardRole || null }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showAlert(data.message || 'تم تحديث الصلاحية', 'success');
+        setRoleEditModal(null);
+        fetchEmployees();
+      } else {
+        showAlert(data.error || 'فشل تحديث الصلاحية', 'error');
+      }
+    } catch (e: any) {
+      showAlert(e.message || 'خطأ في الاتصال', 'error');
+    } finally {
+      setRoleSaving(false);
+    }
+  };
 
   // ─── Fetch detail data when expanding ────────────────────────────────────
 
@@ -490,9 +549,14 @@ export const EmployeeManagementPanel: React.FC = () => {
 
               {/* Role */}
               <span className="hidden md:block">
-                <span className="bg-slate-700/60 text-slate-300 text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-600/50">
-                  {emp.role}
-                </span>
+                {(() => {
+                  const r = displayRole(emp.role, emp.yardRole);
+                  return (
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${r.color}`}>
+                      {r.label}
+                    </span>
+                  );
+                })()}
               </span>
 
               {/* Last active */}
@@ -526,7 +590,7 @@ export const EmployeeManagementPanel: React.FC = () => {
 
               {/* Mobile extra info */}
               <div className="flex md:hidden items-center gap-4 text-xs text-slate-400">
-                <span>{emp.role}</span>
+                <span>{displayRole(emp.role, emp.yardRole).label}</span>
                 <span>|</span>
                 <span>مهام: {emp.pendingTasks}</span>
                 <span>|</span>
@@ -537,6 +601,31 @@ export const EmployeeManagementPanel: React.FC = () => {
             {/* ─── Expanded Detail Panel ─────────────────────────────────────── */}
             {expandedId === emp.id && (
               <div className="border-t border-slate-700 bg-slate-800/60 px-6 py-5 animate-in slide-in-from-top-2 duration-300">
+
+                {/* Role Assignment Quick Actions */}
+                <div className="mb-5 p-4 bg-slate-900/60 rounded-xl border border-slate-700/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-xs text-slate-400 font-bold mb-1">الصلاحيات الحالية</div>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const r = displayRole(emp.role, emp.yardRole);
+                          return <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${r.color}`}>{r.label}</span>;
+                        })()}
+                        {emp.yardRole && emp.role !== emp.yardRole && (
+                          <span className="text-xs text-slate-500">+ {ROLE_LABELS[emp.role]?.label || emp.role}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setRoleEditModal({ employeeId: emp.id, currentRole: emp.role, currentYardRole: emp.yardRole || '' })}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all"
+                    >
+                      تعيين صلاحية
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-slate-500">يمكن للموظف أن يحمل دور منصة + دور حضيرة منفصلين.</div>
+                </div>
 
                 {/* Tabs */}
                 <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
@@ -948,6 +1037,96 @@ export const EmployeeManagementPanel: React.FC = () => {
               </button>
               <button
                 onClick={() => setShowReviewModal(false)}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-6 py-3 rounded-xl font-bold text-sm transition-all"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Role Assignment Modal ═══ */}
+      {roleEditModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRoleEditModal(null)}>
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-black text-white flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-orange-400" /> تعيين صلاحيات الموظف
+              </h3>
+              <button onClick={() => setRoleEditModal(null)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Platform role */}
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">دور المنصة</label>
+                <select
+                  value={roleForm.role}
+                  onChange={e => setRoleForm({ ...roleForm, role: e.target.value })}
+                  aria-label="دور المنصة"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500"
+                >
+                  <option value="buyer">مشتري (عادي)</option>
+                  <option value="seller">بائع (تاجر)</option>
+                  <option value="staff">موظف</option>
+                  <option value="accountant">محاسب</option>
+                  <option value="manager">مدير</option>
+                  <option value="admin">مدير المنصة (كامل الصلاحيات)</option>
+                </select>
+              </div>
+
+              {/* Yard role */}
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">دور الحضيرة (اختياري)</label>
+                <select
+                  value={roleForm.yardRole}
+                  onChange={e => setRoleForm({ ...roleForm, yardRole: e.target.value })}
+                  aria-label="دور الحضيرة"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-purple-500"
+                >
+                  <option value="">— لا يوجد —</option>
+                  <option value="yard_manager">مدير حضيرة</option>
+                  <option value="yard_supervisor">مشرف حضيرة</option>
+                  <option value="yard_employee">موظف حضيرة</option>
+                  <option value="gatekeeper">حارس بوابة</option>
+                  <option value="sales_agent">مندوب مبيعات</option>
+                  <option value="auditor">مدقق (جرد)</option>
+                </select>
+                <div className="text-[11px] text-slate-500 mt-2">
+                  💡 موظفو الحضيرة يمكنهم استلام مهام ومتابعة أداؤهم من هذه اللوحة.
+                </div>
+              </div>
+
+              {/* Info badges about current */}
+              <div className="bg-slate-900/60 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-[11px] text-slate-500 mb-2">الصلاحيات بعد التحديث:</div>
+                <div className="flex gap-2 flex-wrap">
+                  {roleForm.role && (
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${ROLE_LABELS[roleForm.role]?.color || 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+                      {ROLE_LABELS[roleForm.role]?.label || roleForm.role}
+                    </span>
+                  )}
+                  {roleForm.yardRole && (
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${ROLE_LABELS[roleForm.yardRole]?.color || 'bg-purple-700 text-purple-300 border-purple-600'}`}>
+                      {ROLE_LABELS[roleForm.yardRole]?.label || roleForm.yardRole}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={saveRoleAssignment}
+                disabled={roleSaving}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+              >
+                {roleSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                حفظ
+              </button>
+              <button
+                onClick={() => setRoleEditModal(null)}
                 className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-6 py-3 rounded-xl font-bold text-sm transition-all"
               >
                 إلغاء

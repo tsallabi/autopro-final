@@ -2148,21 +2148,58 @@ export function registerAdminRoutes(ctx: AppContext) {
   //  ADMIN: EMPLOYEE MANAGEMENT
   // ══════════════════════════════════════════════════════════════
 
-  // GET /api/admin/employees — list all staff/admin users with activity stats
+  // GET /api/admin/employees — list all staff/admin + yard users with activity stats
   app.get("/api/admin/employees", requireAdmin, (_req, res) => {
     try {
       const employees: any[] = db.prepare(`
-        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.role, u.status,
+        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.role, u.yardRole, u.status,
                u.joinDate, u.lastLogin, u.lastActiveAt, u.loginCount, u.totalLoginMinutes,
                (SELECT COUNT(*) FROM employee_tasks WHERE assignedTo = u.id AND status = 'completed') as tasksCompleted,
                (SELECT COUNT(*) FROM employee_tasks WHERE assignedTo = u.id AND status = 'pending') as tasksPending,
                (SELECT COUNT(*) FROM employee_activity_log WHERE userId = u.id) as totalActions,
-               (SELECT COUNT(*) FROM cars WHERE sellerId = u.id OR acceptedBy = u.id) as carsHandled
+               (SELECT COUNT(*) FROM cars WHERE sellerId = u.id OR acceptedBy = u.id) as carsHandled,
+               (SELECT COUNT(*) FROM yard_vehicles WHERE createdBy = u.id) as yardVehiclesHandled,
+               (SELECT COUNT(*) FROM yard_gate_movements WHERE gatekeeperId = u.id) as gateMovements
         FROM users u
-        WHERE u.role = 'admin' OR u.role = 'staff' OR u.role = 'manager'
+        WHERE u.role IN ('admin','staff','manager','accountant')
+           OR u.yardRole IN ('yard_manager','yard_supervisor','yard_employee','gatekeeper','sales_agent','auditor')
         ORDER BY u.joinDate DESC
       `).all();
       res.json({ employees });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/admin/employees/:id/assign-role — assign role/yardRole (manager only)
+  app.post("/api/admin/employees/:id/assign-role", requireAdmin, (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { role, yardRole } = req.body || {};
+      const allowedRoles = ['admin', 'staff', 'manager', 'accountant', 'buyer', 'seller'];
+      const allowedYardRoles = [null, '', 'yard_manager', 'yard_supervisor', 'yard_employee', 'gatekeeper', 'sales_agent', 'auditor'];
+
+      if (role && !allowedRoles.includes(role)) {
+        return res.status(400).json({ error: 'صلاحية غير صالحة' });
+      }
+      if (yardRole !== undefined && !allowedYardRoles.includes(yardRole)) {
+        return res.status(400).json({ error: 'دور حضيرة غير صالح' });
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role) { updates.push('role = ?'); values.push(role); }
+      if (yardRole !== undefined) { updates.push('yardRole = ?'); values.push(yardRole || null); }
+      if (updates.length === 0) return res.status(400).json({ error: 'لم يتم تحديد أي تغيير' });
+
+      values.push(id);
+      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+      // Log the role change
+      try {
+        db.prepare(`INSERT INTO employee_activity_log (id, userId, action, category, details, timestamp) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(`act-${Date.now()}`, id, 'role_changed', 'admin', JSON.stringify({ role, yardRole, changedBy: req.user?.id }), new Date().toISOString());
+      } catch {}
+
+      res.json({ success: true, message: 'تم تحديث الصلاحية بنجاح' });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

@@ -29,6 +29,14 @@ import { JournalEntries } from '../components/admin/accounting/JournalEntries';
 import { ChartOfAccounts } from '../components/admin/accounting/ChartOfAccounts';
 import { ReportsHub } from '../components/admin/accounting/ReportsHub';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
+import { YardMap } from '../components/admin/yard/YardMap';
+import { QuickVINScan } from '../components/admin/yard/QuickVINScan';
+import { YardReportsDashboard } from '../components/admin/yard/YardReportsDashboard';
+import { GateInForm } from '../components/admin/yard/GateInForm';
+import { GateOutForm } from '../components/admin/yard/GateOutForm';
+import { VehicleDetail as YardVehicleDetail } from '../components/admin/yard/VehicleDetail';
+import { VehiclesList as YardVehiclesList } from '../components/admin/yard/VehiclesList';
+import AuditWorkflow from '../components/admin/yard/AuditWorkflow';
 
 /* ============================================================
    SellerInfoRow — Lazy-loaded seller info for car review cards
@@ -4210,6 +4218,39 @@ export const AdminDashboard = () => {
 
   const renderContent = () => {
     switch (view) {
+      // ─── Yard Management System ──────────────────────────────
+      case 'yard_gate_in':
+        return (
+          <GateInForm
+            onBack={() => setSearchParams({ view: 'yard_vehicles_list' })}
+            onSuccess={(id) => setSearchParams({ view: 'yard_vehicle_detail', id })}
+          />
+        );
+      case 'yard_gate_out':
+        return (
+          <GateOutForm
+            onBack={() => setSearchParams({ view: 'yard_vehicles_list' })}
+            onSuccess={() => setSearchParams({ view: 'yard_vehicles_list' })}
+          />
+        );
+      case 'yard_vehicles_list':
+        return (
+          <YardVehiclesList
+            onOpen={(id) => setSearchParams({ view: 'yard_vehicle_detail', id })}
+            onGateIn={() => setSearchParams({ view: 'yard_gate_in' })}
+            onGateOut={() => setSearchParams({ view: 'yard_gate_out' })}
+          />
+        );
+      case 'yard_vehicle_detail': {
+        const id = searchParams.get('id') || '';
+        return (
+          <YardVehicleDetail
+            vehicleId={id}
+            onBack={() => setSearchParams({ view: 'yard_vehicles_list' })}
+            currentUserRole={currentUser?.role}
+          />
+        );
+      }
       case 'accounting_dashboard':
         return <AccountingDashboard onNavigate={(v) => setSearchParams({ view: v })} />;
       case 'accounting_invoices':
@@ -7021,6 +7062,19 @@ export const AdminDashboard = () => {
       case 'audit_log':
         return <AuditLogPanel />;
 
+      // ── Yard Management ──
+      case 'yard_map':
+        return <YardMap onSelectVehicle={(id) => setSearchParams({ view: 'yard_vehicle', id })} />;
+      case 'yard_quick_scan':
+        return <QuickVINScan onOpenDetail={(id) => setSearchParams({ view: 'yard_vehicle', id })} />;
+      case 'yard_reports':
+      case 'yard_daily_report':
+        return <YardReportsDashboard />;
+      case 'yard_stale':
+        return <YardReportsDashboard />;
+      case 'yard_audit':
+        return <AuditWorkflow />;
+
       default:
         return null;
     }
@@ -7135,6 +7189,22 @@ export const AdminDashboard = () => {
                 { id: 'shipments_tracking', label: 'تتبع حركة الشحن والسيارات', icon: Truck, badge: (adminShipments?.length || 0) },
                 { id: 'shipping_settings', label: 'تعريفة وأسعار الشحن', icon: Ship },
                 { id: 'calculator', label: 'حاسبة التكلفة الجمركية', icon: Calculator },
+              ]
+            },
+            {
+              group: 'Yard Management',
+              label: 'إدارة الحضيرة',
+              icon: MapPin,
+              items: [
+                { id: 'yard_vehicles_list', label: 'قائمة السيارات 🚗', icon: Car },
+                { id: 'yard_gate_in', label: 'إدخال سيارة ✅', icon: PlusCircle },
+                { id: 'yard_gate_out', label: 'إخراج سيارة 🚪', icon: Send },
+                { id: 'yard_map', label: 'خريطة الحضيرة 🗺️', icon: Map },
+                { id: 'yard_quick_scan', label: 'بحث سريع VIN 🔍', icon: Search },
+                { id: 'yard_reports', label: 'تقارير الحضيرة 📊', icon: BarChart3 },
+                { id: 'yard_daily_report', label: 'التقرير اليومي 📋', icon: FileText },
+                { id: 'yard_stale', label: 'السيارات الراكدة ⏰', icon: Clock },
+                { id: 'yard_audit', label: 'الجرد الفعلي 📝', icon: ShieldCheck },
               ]
             },
             {

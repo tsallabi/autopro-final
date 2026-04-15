@@ -45,3 +45,19 @@ export function requireAccountant(req: any, res: any, next: any) {
     next();
   });
 }
+
+/**
+ * Yard-specific role middleware.
+ * Admin always passes. Otherwise, user's `role` or `yardRole` must be in allowedRoles.
+ */
+export function requireYardRole(allowedRoles: string[]) {
+  return (req: any, res: any, next: any) => {
+    authenticateToken(req, res, () => {
+      const role = req.user?.role;
+      const yardRole = req.user?.yardRole;
+      if (role === 'admin') return next();
+      if (allowedRoles.includes(role) || (yardRole && allowedRoles.includes(yardRole))) return next();
+      res.status(403).json({ error: "غير مصرح لك بهذا الإجراء" });
+    });
+  };
+}

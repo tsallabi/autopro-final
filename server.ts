@@ -9,6 +9,7 @@ import { registerCarRoutes } from './routes/cars.ts';
 import { registerShippingRoutes } from './routes/shipping.ts';
 import { registerAccountingRoutes } from './routes/accounting.ts';
 import { registerAnalyticsRoutes } from './routes/analytics.ts';
+import { registerYardRoutes, registerYardBackgroundJobs } from './routes/yard.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
   seedChartOfAccounts,
@@ -18,6 +19,7 @@ import {
   recordWithdrawal,
   recordCommission,
 } from './lib/accounting.ts';
+import { createYardSchema } from './lib/yardSchema.ts';
 console.log('[BOOT] All route modules imported successfully');
 
 // Crash protection — prevent server from dying on unhandled errors
@@ -1439,6 +1441,7 @@ db.exec(`
 
 // Safe column additions for Phase 10
 try { db.exec("ALTER TABLE users ADD COLUMN walletBalance REAL DEFAULT 0"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN yardRole TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE invoices ADD COLUMN paidAt TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE invoices ADD COLUMN paidVia TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE notifications ADD COLUMN link TEXT"); } catch (_) { }
@@ -1575,6 +1578,13 @@ try {
   console.log(`[BOOT] Chart of Accounts ready — ${acctCount?.c || 0} accounts.`);
 } catch (err: any) {
   console.error('[BOOT] seedChartOfAccounts failed:', err?.message);
+}
+
+// ━━ YARD MANAGEMENT SYSTEM — create schema on boot ━━
+try {
+  createYardSchema(db);
+} catch (err: any) {
+  console.error('[BOOT] createYardSchema failed:', err?.message);
 }
 
 // ━━ CREATE SERVER IMMEDIATELY for health check ━━
@@ -3200,7 +3210,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       // Return user data + JWT token IMMEDIATELY — don't wait for email
       const newUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-      const authToken = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '24h' });
+      const authToken = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role, yardRole: newUser.yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
       const { password: _p, ...userWithoutPassword } = newUser;
       res.json({ ...userWithoutPassword, token: authToken });
 
@@ -3403,7 +3413,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       }
 
       // Generate JWT for authenticated session
-      const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+      const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role, yardRole: (user as any).yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
       res.json({ ...user, token: authToken });
     } catch (err: any) {
       console.error('[GOOGLE AUTH ERROR]', err?.message);
@@ -4333,6 +4343,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   console.log('[BOOT] ✓ accounting routes');
   registerAnalyticsRoutes(ctx as any);
   console.log('[BOOT] ✓ analytics routes');
+  registerYardRoutes(ctx as any);
+  try { registerYardBackgroundJobs(ctx as any); } catch (e: any) { console.error('[BOOT] yard jobs failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 

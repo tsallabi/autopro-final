@@ -66,7 +66,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       // Return user data + JWT token IMMEDIATELY — don't wait for email
       const newUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-      const authToken = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '24h' });
+      const authToken = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role, yardRole: newUser.yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
       const { password: _p, ...userWithoutPassword } = newUser;
       res.json({ ...userWithoutPassword, token: authToken });
 
@@ -270,7 +270,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       }
 
       // Generate JWT for authenticated session
-      const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+      const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role, yardRole: (user as any).yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
       res.json({ ...user, token: authToken });
     } catch (err: any) {
       console.error('[GOOGLE AUTH ERROR]', err?.message);
