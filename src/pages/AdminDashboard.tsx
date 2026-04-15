@@ -7499,6 +7499,8 @@ export const AdminDashboard = () => {
               onCancel={() => setShowAddCarModal(false)}
               onSubmit={async (data, images, engineSound, inspectionReport) => {
                 try {
+                  const existingCar: any = editingCarId ? cars.find(c => c.id === editingCarId) : null;
+
                   const uploadedImages: string[] = [];
                   if (images && images.length > 0) {
                     const formData = new FormData();
@@ -7513,63 +7515,61 @@ export const AdminDashboard = () => {
                     }
                   }
 
-                  let engineAudioUrl = '';
-                  let inspectionPdf = '';
+                  // Preserve existing media URLs when editing — only overwrite if a new file was selected
+                  let engineAudioUrl = existingCar?.engineAudioUrl || '';
+                  let inspectionPdf  = existingCar?.inspectionPdf  || '';
 
-                  // Upload engine sound
+                  // Upload engine sound (replaces existing if provided)
                   if (engineSound) {
                     const soundData = new FormData();
                     soundData.append('media', engineSound);
                     const soundRes = await authFetch('/api/upload/media', { method: 'POST', body: soundData });
                     if (soundRes.ok) {
                       const soundJson = await soundRes.json();
-                      engineAudioUrl = soundJson.url || '';
+                      engineAudioUrl = soundJson.url || engineAudioUrl;
+                    } else {
+                      const errData = await soundRes.json().catch(() => ({}));
+                      throw new Error(errData.error || 'فشل رفع الملف الصوتي');
                     }
                   }
 
-                  // Upload inspection PDF
+                  // Upload inspection PDF (replaces existing if provided)
                   if (inspectionReport) {
                     const pdfData = new FormData();
                     pdfData.append('media', inspectionReport);
                     const pdfRes = await authFetch('/api/upload/media', { method: 'POST', body: pdfData });
                     if (pdfRes.ok) {
                       const pdfJson = await pdfRes.json();
-                      inspectionPdf = pdfJson.url || '';
+                      inspectionPdf = pdfJson.url || inspectionPdf;
+                    } else {
+                      const errData = await pdfRes.json().catch(() => ({}));
+                      throw new Error(errData.error || 'فشل رفع تقرير الفحص');
                     }
                   }
 
-                  const car = {
-                    id: Date.now().toString(),
-                    lotNumber: Math.floor(Math.random() * 100000000).toString(),
+                  // Final image list: new uploads → keep existing → fallback placeholder
+                  const finalImages = uploadedImages.length > 0
+                    ? uploadedImages
+                    : (existingCar?.images && existingCar.images.length > 0
+                        ? existingCar.images
+                        : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800']);
+
+                  // Spread ALL form fields first so nothing (isRecommended, damage flags, etc.) gets dropped
+                  const car: any = {
+                    ...data,
+                    id: editingCarId || Date.now().toString(),
+                    lotNumber: existingCar?.lotNumber || Math.floor(Math.random() * 100000000).toString(),
                     vin: data.vin || ('1G1' + Math.random().toString(36).substring(7).toUpperCase()),
-                    make: data.make,
-                    model: data.model,
-                    year: data.year,
-                    odometer: data.odometer,
-                    actualOdometer: data.actualOdometer,
-                    engine: data.engine,
-                    cylinders: data.cylinders,
-                    transmission: data.transmission,
-                    drive: data.drive,
-                    fuelType: data.fuelType,
-                    auctionLane: data.auctionLane,
-                    showroomName: data.showroomName,
-                    startingBid: data.startingBid,
-                    reservePrice: data.reservePrice,
-                    saleStatus: data.saleStatus,
-                    locationDetails: data.locationDetails,
-                    exchangeRate: data.exchangeRate,
-                    minPrice: data.minPrice,
-                    specialNote: data.specialNote,
-                    images: uploadedImages.length > 0 ? uploadedImages : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800'],
-                    engineVideoUrl: data.youtubeVideoUrl || '',
+                    images: finalImages,
+                    engineVideoUrl: data.youtubeVideoUrl || data.engineVideoUrl || existingCar?.engineVideoUrl || '',
                     engineAudioUrl,
                     inspectionPdf,
-                    status: 'upcoming' as const,
-                    acceptOffers: true,
-                    currency: 'USD',
-                    location: data.locationDetails || 'Unknown Location', // Added location
-                    currentBid: data.currentBid || 0 // Added currentBid
+                    isRecommended: !!data.isRecommended,
+                    status: existingCar?.status || 'upcoming',
+                    acceptOffers: data.acceptOffers !== undefined ? data.acceptOffers : true,
+                    currency: data.currency || 'USD',
+                    location: data.locationDetails || data.location || existingCar?.location || 'Unknown Location',
+                    currentBid: data.currentBid || existingCar?.currentBid || 0,
                   };
 
                   if (editingCarId) {

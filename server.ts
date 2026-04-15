@@ -6947,7 +6947,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
       actualOdometer, cylinders, auctionLane, showroomName, saleStatus,
       locationDetails, exchangeRate, minPrice, specialNote, buyNowPrice,
-      acceptedOfferPercentage, youtubeVideoUrl, engineSoundUrl, inspectionReportUrl
+      acceptedOfferPercentage, youtubeVideoUrl, engineSoundUrl, inspectionReportUrl,
+      isRecommended
     } = req.body;
 
     try {

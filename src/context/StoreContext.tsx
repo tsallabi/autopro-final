@@ -493,19 +493,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateCar = async (id: string, updates: Partial<Car>) => {
-    try {
-      const res = await authFetch(`/api/cars/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
+    const res = await authFetch(`/api/cars/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
 
-      if (res.ok) {
-        setCars(prev => prev.map(car => car.id === id ? { ...car, ...updates } : car));
-      }
-    } catch (e) {
-      console.error('Failed to update car:', e);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'فشل تحديث السيارة على الخادم');
     }
+
+    setCars(prev => prev.map(car => car.id === id ? { ...car, ...updates } : car));
   };
 
   const deleteCar = async (id: string) => {
