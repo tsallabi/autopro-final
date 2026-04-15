@@ -28,6 +28,7 @@ import { InvoiceDetail } from '../components/admin/accounting/InvoiceDetail';
 import { JournalEntries } from '../components/admin/accounting/JournalEntries';
 import { ChartOfAccounts } from '../components/admin/accounting/ChartOfAccounts';
 import { ReportsHub } from '../components/admin/accounting/ReportsHub';
+import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 
 /* ============================================================
    SellerInfoRow — Lazy-loaded seller info for car review cards
@@ -6392,6 +6393,9 @@ export const AdminDashboard = () => {
       case 'reports':
         return <ReportsPanel reportsAnalytics={reportsAnalytics} setReportsAnalytics={setReportsAnalytics} />;
 
+      case 'analytics':
+        return <AnalyticsDashboard />;
+
       case 'kyc_review':
         return <KycReviewPanel kycUsers={kycUsers} setKycUsers={setKycUsers} showAlert={showAlert} />;
 
@@ -7070,6 +7074,7 @@ export const AdminDashboard = () => {
               items: [
                 { id: 'overview', label: 'الرئيسية (الإحصائيات)', icon: Store },
                 { id: 'reports', label: 'تقارير السوق', icon: BookOpen },
+                { id: 'analytics', label: 'تحليلات الزوار 📈', icon: TrendingUp },
                 { id: 'messages', label: 'مركز الرسائل', icon: MessageSquare, badge: (messages || []).filter((m: any) => !m.isRead).length },
               ]
             },

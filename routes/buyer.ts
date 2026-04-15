@@ -8,6 +8,11 @@ import type { AppContext } from '../lib/types.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function safeJsonParse(raw: any, fallback: any) {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
 export function registerBuyerRoutes(ctx: AppContext) {
   const { app, io, db, sendNotification, sendInternalMessage, createWinInvoices } = ctx;
 
@@ -564,6 +569,150 @@ export function registerBuyerRoutes(ctx: AppContext) {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "Failed to mark as read" });
+    }
+  });
+
+  // ======= SAVED SEARCHES (Marketing Email Alerts) =======
+
+  // List the current user's saved searches
+  app.get("/api/saved-searches", requireAuth, (req, res) => {
+    const userId = (req as any).user.id;
+    try {
+      const rows: any[] = db.prepare(
+        "SELECT * FROM saved_searches WHERE userId = ? ORDER BY createdAt DESC"
+      ).all(userId);
+      res.json(rows.map((r: any) => ({
+        ...r,
+        emailAlerts: !!r.emailAlerts,
+        filters: safeJsonParse(r.filters, {})
+      })));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "فشل جلب عمليات البحث المحفوظة" });
+    }
+  });
+
+  // Create a saved search
+  app.post("/api/saved-searches", requireAuth, (req, res) => {
+    const userId = (req as any).user.id;
+    const { name, filters, emailAlerts, alertFrequency } = req.body || {};
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: "الاسم مطلوب" });
+    }
+    const filtersObj = (filters && typeof filters === 'object') ? filters : {};
+    const freq = ['instant', 'daily', 'weekly'].includes(alertFrequency) ? alertFrequency : 'instant';
+    const id = `search-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const createdAt = new Date().toISOString();
+    try {
+      db.prepare(`INSERT INTO saved_searches
+        (id, userId, name, filters, emailAlerts, alertFrequency, lastResultCount, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?)`).run(
+          id,
+          userId,
+          name.trim().slice(0, 200),
+          JSON.stringify(filtersObj),
+          emailAlerts === false ? 0 : 1,
+          freq,
+          createdAt
+      );
+      res.json({
+        id, userId, name: name.trim().slice(0, 200),
+        filters: filtersObj,
+        emailAlerts: emailAlerts === false ? false : true,
+        alertFrequency: freq,
+        lastResultCount: 0,
+        createdAt
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "فشل حفظ البحث" });
+    }
+  });
+
+  // Update a saved search (owner only)
+  app.put("/api/saved-searches/:id", requireAuth, (req, res) => {
+    const userId = (req as any).user.id;
+    const { id } = req.params;
+    try {
+      const row: any = db.prepare("SELECT * FROM saved_searches WHERE id = ?").get(id);
+      if (!row) return res.status(404).json({ error: "البحث غير موجود" });
+      if (row.userId !== userId) return res.status(403).json({ error: "غير مصرح" });
+
+      const { name, filters, emailAlerts, alertFrequency } = req.body || {};
+      const newName = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 200) : row.name;
+      const newFilters = (filters && typeof filters === 'object') ? JSON.stringify(filters) : row.filters;
+      const newEmail = (emailAlerts === undefined) ? row.emailAlerts : (emailAlerts ? 1 : 0);
+      const newFreq = ['instant', 'daily', 'weekly'].includes(alertFrequency) ? alertFrequency : row.alertFrequency;
+
+      db.prepare(`UPDATE saved_searches
+        SET name = ?, filters = ?, emailAlerts = ?, alertFrequency = ?
+        WHERE id = ?`).run(newName, newFilters, newEmail, newFreq, id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "فشل تحديث البحث" });
+    }
+  });
+
+  // Delete a saved search (owner only)
+  app.delete("/api/saved-searches/:id", requireAuth, (req, res) => {
+    const userId = (req as any).user.id;
+    const { id } = req.params;
+    try {
+      const row: any = db.prepare("SELECT userId FROM saved_searches WHERE id = ?").get(id);
+      if (!row) return res.status(404).json({ error: "البحث غير موجود" });
+      if (row.userId !== userId) return res.status(403).json({ error: "غير مصرح" });
+      db.prepare("DELETE FROM saved_searches WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "فشل حذف البحث" });
+    }
+  });
+
+  // Admin-only: trigger a test alert for a single saved search
+  app.post("/api/saved-searches/:id/test-alert", requireAuth, async (req, res) => {
+    const jwtUser = (req as any).user;
+    if (jwtUser.role !== 'admin') return res.status(403).json({ error: "صلاحيات المدير مطلوبة" });
+    const { id } = req.params;
+    try {
+      const row: any = db.prepare(
+        "SELECT s.*, u.email, u.firstName FROM saved_searches s JOIN users u ON s.userId = u.id WHERE s.id = ?"
+      ).get(id);
+      if (!row) return res.status(404).json({ error: "البحث غير موجود" });
+
+      const buildSearchAlertEmail = (app as any).locals.buildSearchAlertEmail;
+      if (!buildSearchAlertEmail) return res.status(500).json({ error: "قالب البريد غير جاهز" });
+
+      const sampleCars: any[] = db.prepare(
+        "SELECT * FROM cars WHERE status IN ('upcoming','live') ORDER BY COALESCE(createdAt, '') DESC LIMIT 3"
+      ).all();
+
+      await ctx.sendEmail({
+        to: row.email,
+        subject: `🧪 (اختبار) سيارات تطابق بحثك "${row.name}"`,
+        html: buildSearchAlertEmail(row, sampleCars, row.firstName)
+      });
+      res.json({ success: true, to: row.email, count: sampleCars.length });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || "فشل إرسال البريد التجريبي" });
+    }
+  });
+
+  // Unsubscribe link (clickable from email — no auth, token == search id for now)
+  app.get("/api/saved-searches/unsubscribe/:id", (req, res) => {
+    const { id } = req.params;
+    const { token } = req.query as any;
+    try {
+      if (!token || token !== id) {
+        return res.status(400).send("<h3 dir=\"rtl\">رابط غير صالح</h3>");
+      }
+      const row: any = db.prepare("SELECT id FROM saved_searches WHERE id = ?").get(id);
+      if (!row) return res.status(404).send("<h3 dir=\"rtl\">البحث غير موجود</h3>");
+      db.prepare("UPDATE saved_searches SET emailAlerts = 0 WHERE id = ?").run(id);
+      res.send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تم إلغاء الاشتراك</title></head>
+        <body style="font-family:Cairo,sans-serif;background:#f8fafc;padding:48px;text-align:center;">
+          <h2 style="color:#0f172a;">تم إلغاء اشتراك التنبيهات لهذا البحث ✅</h2>
+          <p style="color:#475569;">لن تستلم بعد الآن رسائل بريد لهذا البحث المحفوظ.</p>
+        </body></html>`);
+    } catch (e: any) {
+      res.status(500).send("<h3 dir=\"rtl\">حدث خطأ</h3>");
     }
   });
 

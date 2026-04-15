@@ -8,6 +8,7 @@ import { registerBuyerRoutes } from './routes/buyer.ts';
 import { registerCarRoutes } from './routes/cars.ts';
 import { registerShippingRoutes } from './routes/shipping.ts';
 import { registerAccountingRoutes } from './routes/accounting.ts';
+import { registerAnalyticsRoutes } from './routes/analytics.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
   seedChartOfAccounts,
@@ -1171,6 +1172,38 @@ if (pkgCount.cnt === 0) {
 try { db.exec("ALTER TABLE users ADD COLUMN packageId TEXT DEFAULT 'basic'"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN packageExpiresAt TEXT"); } catch (_) { }
 
+// Ensure cars has createdAt for new-car filtering used by saved search alerts
+try { db.exec("ALTER TABLE cars ADD COLUMN createdAt TEXT"); } catch (_) { }
+// Backfill existing rows where createdAt is NULL so the hourly cron still behaves sanely
+try { db.prepare("UPDATE cars SET createdAt = COALESCE(createdAt, datetime('now'))").run(); } catch (_) { }
+
+// ======= SAVED SEARCHES (Marketing Alerts) =======
+db.exec(`
+  CREATE TABLE IF NOT EXISTS saved_searches (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    name TEXT NOT NULL,
+    filters TEXT NOT NULL,
+    emailAlerts INTEGER DEFAULT 1,
+    alertFrequency TEXT DEFAULT 'instant',
+    lastAlertSent TEXT,
+    lastResultCount INTEGER DEFAULT 0,
+    createdAt TEXT,
+    FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS saved_search_alerts_sent (
+    id TEXT PRIMARY KEY,
+    searchId TEXT NOT NULL,
+    carId TEXT NOT NULL,
+    sentAt TEXT,
+    FOREIGN KEY(searchId) REFERENCES saved_searches(id) ON DELETE CASCADE,
+    UNIQUE(searchId, carId)
+  );
+`);
+
 // ======= AGENCY APPLICATIONS =======
 db.exec(`
   CREATE TABLE IF NOT EXISTS agency_applications (
@@ -1366,6 +1399,42 @@ db.exec(`
     createdAt TEXT NOT NULL,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
+
+  -- Visitor analytics: raw page views (every visit)
+  CREATE TABLE IF NOT EXISTS visitor_log (
+    id TEXT PRIMARY KEY,
+    sessionId TEXT,
+    userId TEXT,
+    path TEXT NOT NULL,
+    referrer TEXT,
+    userAgent TEXT,
+    ipHash TEXT,
+    country TEXT,
+    device TEXT,
+    browser TEXT,
+    os TEXT,
+    timestamp TEXT NOT NULL,
+    duration INTEGER DEFAULT 0
+  );
+
+  -- Pre-aggregated daily visitor stats (for fast dashboard queries)
+  CREATE TABLE IF NOT EXISTS visitor_daily_stats (
+    date TEXT PRIMARY KEY,
+    totalVisits INTEGER DEFAULT 0,
+    uniqueVisitors INTEGER DEFAULT 0,
+    uniqueLoggedIn INTEGER DEFAULT 0,
+    newRegistrations INTEGER DEFAULT 0,
+    topPagesJson TEXT,
+    topReferrersJson TEXT,
+    topCountriesJson TEXT,
+    deviceBreakdownJson TEXT,
+    hourlyTrafficJson TEXT,
+    avgSessionDuration INTEGER DEFAULT 0
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_visitor_log_timestamp ON visitor_log(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_visitor_log_session ON visitor_log(sessionId);
+  CREATE INDEX IF NOT EXISTS idx_visitor_log_path ON visitor_log(path);
 `);
 
 // Safe column additions for Phase 10
@@ -2253,6 +2322,204 @@ async function startServer() {
   };
 
   setInterval(tickUltimoAndOffers, 5000);
+
+  // ══════════════════════════════════════════════════════════════
+  //  SAVED SEARCH MARKETING EMAIL ALERTS
+  // ══════════════════════════════════════════════════════════════
+
+  function buildSearchAlertEmail(search: any, cars: any[], firstName: string | null | undefined): string {
+    const safeName = (firstName || 'عزيزي العميل').toString().replace(/</g, '&lt;');
+    const searchLabel = (search.name || '').toString().replace(/</g, '&lt;');
+    const unsubUrl = `${SITE_URL}/api/saved-searches/unsubscribe/${search.id}?token=${search.id}`;
+    const managePath = `${SITE_URL}/dashboard/user?view=saved-searches`;
+
+    const carBlocks = cars.map((car: any) => {
+      let imgs: string[] = [];
+      try { imgs = JSON.parse(car.images || '[]') || []; } catch {}
+      const img = imgs[0] || `${SITE_URL}/logo.png`;
+      const title = `${car.year || ''} ${car.make || ''} ${car.model || ''}`.trim() || 'سيارة جديدة';
+      const priceNum = Number(car.currentBid || 0);
+      const price = priceNum > 0 ? `$${priceNum.toLocaleString('en-US')}` : 'السعر عند الطلب';
+      const viewUrl = `${SITE_URL}/car-details/${car.id}`;
+      return `
+        <tr><td style="padding:0 0 16px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+            <tr>
+              <td style="padding:0;">
+                <img src="${img}" alt="${title}" width="100%" style="display:block;width:100%;max-height:240px;object-fit:cover;border:0;outline:none;text-decoration:none;"/>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 20px;" dir="rtl" align="right">
+                <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px;">${title}</div>
+                <div style="font-size:16px;font-weight:700;color:#f97316;margin-bottom:14px;">${price}</div>
+                <a href="${viewUrl}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:700;font-size:14px;">عرض السيارة الآن</a>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+      `;
+    }).join('');
+
+    return `<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>سيارات جديدة تطابق بحثك</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Cairo','Segoe UI',Tahoma,sans-serif;" dir="rtl">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.06);">
+        <tr>
+          <td style="background:#f97316;padding:24px;text-align:center;">
+            <div style="font-size:26px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">AutoPro | أوتو برو</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 28px 8px 28px;" dir="rtl" align="right">
+            <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:8px;">مرحباً ${safeName} 👋</div>
+            <h1 style="font-size:22px;font-weight:900;color:#0f172a;margin:0 0 8px 0;">سيارات جديدة تطابق بحثك</h1>
+            <p style="font-size:14px;color:#475569;margin:0 0 20px 0;line-height:1.7;">
+              وجدنا <strong style="color:#f97316;">${cars.length}</strong> سيارة جديدة تطابق بحثك المحفوظ
+              <strong>"${searchLabel}"</strong>. شاهدها الآن قبل أن تُباع!
+            </p>
+          </td>
+        </tr>
+        <tr><td style="padding:0 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${carBlocks}
+          </table>
+        </td></tr>
+        <tr>
+          <td style="padding:16px 28px 28px 28px;" dir="rtl" align="right">
+            <a href="${managePath}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:700;font-size:14px;">إدارة عمليات البحث المحفوظة</a>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8fafc;padding:20px 28px;border-top:1px solid #e2e8f0;text-align:center;" dir="rtl">
+            <div style="font-size:12px;color:#64748b;margin-bottom:6px;">تستلم هذا الإيشعار لأنك فعّلت التنبيهات على بحث محفوظ.</div>
+            <a href="${unsubUrl}" style="font-size:12px;color:#64748b;text-decoration:underline;">إلغاء الاشتراك في هذا التنبيه</a>
+            <div style="font-size:11px;color:#94a3b8;margin-top:10px;">© ${new Date().getFullYear()} AutoPro Libya</div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  }
+
+  function matchesFilters(car: any, filters: any): boolean {
+    if (!filters || typeof filters !== 'object') return true;
+    const norm = (v: any) => (v === null || v === undefined) ? '' : String(v).toLowerCase().trim();
+    // make / model (string equality, case-insensitive)
+    if (filters.make && norm(car.make) !== norm(filters.make)) return false;
+    if (filters.model && norm(car.model) !== norm(filters.model)) return false;
+    // year range
+    if (filters.minYear && Number(car.year || 0) < Number(filters.minYear)) return false;
+    if (filters.maxYear && Number(car.year || 0) > Number(filters.maxYear)) return false;
+    // price range against currentBid
+    const bid = Number(car.currentBid || 0);
+    if (filters.minPrice && bid < Number(filters.minPrice)) return false;
+    if (filters.maxPrice > 0 && bid > Number(filters.maxPrice)) return false;
+    // mileage
+    const odo = Number(car.odometer || 0);
+    if (filters.filterMileageMin && odo < Number(filters.filterMileageMin)) return false;
+    if (filters.filterMileageMax && odo > Number(filters.filterMileageMax)) return false;
+    // array filters (filterBodyTypes, filterFuelTypes, filterDriveTypes, filterAuctionTypes)
+    const arrIncludes = (arr: any, val: any) => Array.isArray(arr) && arr.length > 0
+      ? arr.map((x: any) => norm(x)).includes(norm(val))
+      : true;
+    if (!arrIncludes(filters.filterFuelTypes, car.fuelType)) return false;
+    if (!arrIncludes(filters.filterDriveTypes, car.drive || car.drivetrain)) return false;
+    if (!arrIncludes(filters.filterBodyTypes, car.bodyType)) return false;
+    // free text search on make/model/trim/vin
+    if (filters.searchText) {
+      const q = norm(filters.searchText);
+      const hay = [car.make, car.model, car.trim, car.vin, car.year].map(norm).join(' ');
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+
+  async function runSavedSearchAlerts() {
+    try {
+      const searches: any[] = db.prepare(
+        "SELECT s.*, u.email, u.firstName FROM saved_searches s JOIN users u ON s.userId = u.id WHERE s.emailAlerts = 1"
+      ).all();
+
+      for (const search of searches) {
+        let filters: any = {};
+        try { filters = JSON.parse(search.filters || '{}'); } catch { continue; }
+
+        // Frequency-aware cadence (default: instant = hourly cron). Skip if sent too recently.
+        const freq = (search.alertFrequency || 'instant').toLowerCase();
+        const now = Date.now();
+        if (search.lastAlertSent) {
+          const last = new Date(search.lastAlertSent).getTime();
+          const hours = (now - last) / (1000 * 60 * 60);
+          if (freq === 'daily' && hours < 24) continue;
+          if (freq === 'weekly' && hours < 24 * 7) continue;
+        }
+
+        // Pull cars from a reasonable lookback window based on frequency
+        const windowHours = freq === 'weekly' ? 168 : (freq === 'daily' ? 24 : 1);
+        const cutoffIso = new Date(now - windowHours * 60 * 60 * 1000).toISOString();
+        let cars: any[] = db.prepare(
+          "SELECT * FROM cars WHERE status IN ('upcoming','live') AND (createdAt IS NOT NULL AND createdAt > ?)"
+        ).all(cutoffIso);
+
+        cars = cars.filter((c: any) => matchesFilters(c, filters));
+
+        if (cars.length > 0) {
+          const alreadySent: any[] = db.prepare(
+            "SELECT carId FROM saved_search_alerts_sent WHERE searchId = ?"
+          ).all(search.id);
+          const sentIds = new Set(alreadySent.map((a: any) => a.carId));
+          cars = cars.filter((c: any) => !sentIds.has(c.id));
+        }
+
+        if (cars.length === 0) continue;
+
+        if (!search.email) continue;
+
+        try {
+          await sendEmail({
+            to: search.email,
+            subject: `🚗 ${cars.length} سيارة جديدة تطابق بحثك "${search.name}"`,
+            html: buildSearchAlertEmail(search, cars.slice(0, 5), search.firstName)
+          });
+        } catch (e: any) {
+          console.error(`[SAVED SEARCH ALERTS] send failed for ${search.id}:`, e?.message || e);
+          continue;
+        }
+
+        const insertSent = db.prepare(
+          "INSERT OR IGNORE INTO saved_search_alerts_sent (id, searchId, carId, sentAt) VALUES (?, ?, ?, ?)"
+        );
+        const nowIso = new Date().toISOString();
+        db.transaction(() => {
+          cars.forEach((car: any) => {
+            insertSent.run(
+              `alert-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              search.id,
+              car.id,
+              nowIso
+            );
+          });
+          db.prepare("UPDATE saved_searches SET lastAlertSent = ?, lastResultCount = ? WHERE id = ?")
+            .run(nowIso, cars.length, search.id);
+        })();
+
+        console.log(`[SAVED SEARCH ALERTS] sent ${cars.length} car(s) to ${search.email} for "${search.name}"`);
+      }
+    } catch (e: any) {
+      console.error('[SAVED SEARCH ALERTS]', e?.message || e);
+    }
+  }
+
+  // Expose helpers for routes
+  (app as any).locals.runSavedSearchAlerts = runSavedSearchAlerts;
+  (app as any).locals.buildSearchAlertEmail = buildSearchAlertEmail;
+
+  // Run every hour
+  setInterval(runSavedSearchAlerts, 60 * 60 * 1000);
 
   // Placeholder for old helper location (cleaned)
 
@@ -4064,6 +4331,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   console.log('[BOOT] ✓ shipping routes');
   registerAccountingRoutes(ctx as any);
   console.log('[BOOT] ✓ accounting routes');
+  registerAnalyticsRoutes(ctx as any);
+  console.log('[BOOT] ✓ analytics routes');
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 

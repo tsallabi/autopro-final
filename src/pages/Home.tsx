@@ -84,6 +84,8 @@ export const Home = () => {
   const { searches: savedSearches, save: saveSearch, remove: removeSavedSearch } = useSavedSearches();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSearchName, setSaveSearchName] = useState('');
+  const [saveSearchEmailAlerts, setSaveSearchEmailAlerts] = useState(true);
+  const [saveSearchFrequency, setSaveSearchFrequency] = useState<'instant' | 'daily' | 'weekly'>('instant');
   const [activeSidebarTab, setActiveSidebarTab] = useState<'events' | 'saved'>('events');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
@@ -271,11 +273,26 @@ export const Home = () => {
     }
   };
 
-  const handleSaveSearchConfirm = () => {
+  const handleSaveSearchConfirm = async () => {
     const name = saveSearchName.trim();
     if (!name) return;
-    saveSearch(name, currentFiltersSnapshot());
+    const loggedIn = !!currentUser;
+    try {
+      await saveSearch(name, currentFiltersSnapshot(), {
+        emailAlerts: saveSearchEmailAlerts,
+        alertFrequency: saveSearchFrequency,
+      });
+      if (!loggedIn && saveSearchEmailAlerts) {
+        // Gentle prompt: let the user know they need to log in for email alerts
+        try {
+          // eslint-disable-next-line no-alert
+          alert('تم حفظ البحث محلياً. لتفعيل تنبيهات البريد، يرجى تسجيل الدخول.');
+        } catch {}
+      }
+    } catch {}
     setSaveSearchName('');
+    setSaveSearchEmailAlerts(true);
+    setSaveSearchFrequency('instant');
     setShowSaveModal(false);
     setActiveSidebarTab('saved');
   };
@@ -1690,6 +1707,31 @@ export const Home = () => {
               autoFocus
               className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm mb-4"
             />
+            <label className="flex items-start gap-3 mb-3 p-3 bg-orange-50 border-2 border-orange-100 rounded-xl cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={saveSearchEmailAlerts}
+                onChange={(e) => setSaveSearchEmailAlerts(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-orange-500"
+              />
+              <div className="text-xs font-bold text-slate-700 leading-relaxed">
+                إرسال إيشعار بالبريد عند توفر سيارات جديدة تطابق هذا البحث
+              </div>
+            </label>
+            {saveSearchEmailAlerts && (
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">تكرار التنبيهات</label>
+                <select
+                  value={saveSearchFrequency}
+                  onChange={(e) => setSaveSearchFrequency(e.target.value as 'instant' | 'daily' | 'weekly')}
+                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm"
+                >
+                  <option value="instant">فوري (كل ساعة)</option>
+                  <option value="daily">ملخص يومي</option>
+                  <option value="weekly">ملخص أسبوعي</option>
+                </select>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSaveSearchConfirm}

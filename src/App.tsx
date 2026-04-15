@@ -25,6 +25,7 @@ import { StoreProvider, useStore } from './context/StoreContext';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AdminErrorBoundary } from './components/AdminErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
+import { useVisitorTracking } from './hooks/useVisitorTracking';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -65,12 +66,12 @@ const DashboardRedirect = () => {
   return <Navigate to="user" replace />;
 };
 
-export default function App() {
+function AppContent() {
+  useVisitorTracking();
   return (
-    <StoreProvider>
-      <BrowserRouter>
-        <ScrollToTop />
-        <Routes>
+    <>
+      <ScrollToTop />
+      <Routes>
           {/* Public Website Routes */}
           <Route path="/" element={<MainLayout />}>
             <Route index element={<LandingPage />} />
@@ -125,6 +126,15 @@ export default function App() {
           </Route>
         </Routes>
         <MobileBottomNav />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <StoreProvider>
+      <BrowserRouter>
+        <AppContent />
       </BrowserRouter>
     </StoreProvider>
   );
