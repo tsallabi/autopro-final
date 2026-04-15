@@ -1,117 +1,111 @@
 /* ============================================================
-   AutoPro Libya — Service Worker  (Phase 13 PWA)
+   AutoPro Libya — Service Worker (PWA)
+   Strategy: Network-first for API, Cache-first for static assets
    ============================================================ */
-const CACHE_NAME = 'autopro-v1';
-const API_CACHE = 'autopro-api-v1';
+const CACHE_VERSION = 'v3';
+const STATIC_CACHE = `autopro-static-${CACHE_VERSION}`;
+const RUNTIME_CACHE = `autopro-runtime-${CACHE_VERSION}`;
 const OFFLINE_PAGE = '/offline.html';
 
-const STATIC_ASSETS = [
-    '/',
-    '/marketplace',
-    '/calculator',
-    '/shipping',
-    '/wallet',
-    '/auth',
-    OFFLINE_PAGE,
+// Critical assets to pre-cache
+const PRECACHE_URLS = [
+  '/',
+  '/offline.html',
+  '/manifest.json',
+  '/favicon.ico',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
-/* ── Install ── */
-self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => {
-            // Cache static assets (ignore failures for individual files)
-            return Promise.allSettled(STATIC_ASSETS.map(url => cache.add(url)));
-        }).then(() => self.skipWaiting())
-    );
+// ─────── INSTALL ───────
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(STATIC_CACHE)
+      .then((cache) => Promise.allSettled(PRECACHE_URLS.map(u => cache.add(u))))
+      .then(() => self.skipWaiting())
+  );
 });
 
-/* ── Activate ── */
-self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(keys =>
-            Promise.all(
-                keys.filter(k => k !== CACHE_NAME && k !== API_CACHE)
-                    .map(k => caches.delete(k))
-            )
-        ).then(() => self.clients.claim())
-    );
+// ─────── ACTIVATE ───────
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((k) => k !== STATIC_CACHE && k !== RUNTIME_CACHE)
+          .map((k) => caches.delete(k))
+      )
+    ).then(() => self.clients.claim())
+  );
 });
 
-/* ── Fetch Strategy ── */
-self.addEventListener('fetch', event => {
-    // Phase 14: Emergency bypass to fix POST request crashes
-    return;
-    // ... dead code below
+// ─────── FETCH HANDLER ───────
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
 
-    // API routes → Network First, fallback to cache
-    if (url.pathname.startsWith('/api/')) {
-        event.respondWith(
-            fetch(request)
-                .then(res => {
-                    const clone = res.clone();
-                    caches.open(API_CACHE).then(c => c.put(request, clone));
-                    return res;
-                })
-                .catch(() => caches.match(request).then(cached => cached || new Response(
-                    JSON.stringify({ error: 'offline', message: 'لا يوجد اتصال بالإنترنت' }),
-                    { status: 503, headers: { 'Content-Type': 'application/json' } }
-                )))
-        );
-        return;
-    }
+  // Skip non-GET requests entirely (prevents POST crashes)
+  if (request.method !== 'GET') return;
 
-    // Static assets → Cache First
-    if (url.pathname.match(/\.(js|css|png|jpg|webp|svg|ico|woff2?)$/)) {
-        event.respondWith(
-            caches.match(request).then(cached => cached || fetch(request).then(res => {
-                const clone = res.clone();
-                caches.open(CACHE_NAME).then(c => c.put(request, clone));
-                return res;
-            }))
-        );
-        return;
-    }
+  // Skip cross-origin requests (e.g., Google Fonts, YouTube)
+  if (url.origin !== self.location.origin) return;
 
-    // HTML navigation → Network First
+  // Skip API calls — always go to network (real-time data)
+  if (url.pathname.startsWith('/api/')) return;
+
+  // Skip uploads (user files)
+  if (url.pathname.startsWith('/uploads/')) return;
+
+  // Skip socket.io
+  if (url.pathname.startsWith('/socket.io')) return;
+
+  // Navigation requests → network first, fallback to cached / offline page
+  if (request.mode === 'navigate') {
     event.respondWith(
-        fetch(request)
-            .then(res => {
-                const clone = res.clone();
-                caches.open(CACHE_NAME).then(c => c.put(request, clone));
-                return res;
-            })
-            .catch(() => caches.match(request) || caches.match(OFFLINE_PAGE))
+      fetch(request)
+        .then((response) => {
+          // Cache a copy of successful HTML navigations
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then(c => c.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(request)
+            .then(cached => cached || caches.match('/'))
+            .then(r => r || caches.match(OFFLINE_PAGE))
+        )
     );
+    return;
+  }
+
+  // Static assets (JS, CSS, images, fonts) → Cache-first
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) {
+        // Update cache in background
+        fetch(request).then((res) => {
+          if (res.ok) caches.open(RUNTIME_CACHE).then(c => c.put(request, res));
+        }).catch(() => {});
+        return cached;
+      }
+      return fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(RUNTIME_CACHE).then(c => c.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(OFFLINE_PAGE));
+    })
+  );
 });
 
-/* ── Push Notifications ── */
-self.addEventListener('push', event => {
-    if (!event.data) return;
-    const data = event.data.json();
-    event.waitUntil(
-        self.registration.showNotification(data.title || 'أوتو برو 🚗', {
-            body: data.body || 'لديك إشعار جديد',
-            icon: data.icon || '/icons/icon-192.png',
-            badge: data.badge || '/icons/icon-72.png',
-            tag: data.tag || 'autopro-notification',
-            data: data.url || '/',
-            actions: data.actions || [],
-            vibrate: [200, 100, 200],
-            dir: 'rtl',
-            lang: 'ar',
-        })
-    );
-});
-
-/* ── Notification Click ── */
-self.addEventListener('notificationclick', event => {
-    event.notification.close();
-    const url = event.notification.data || '/';
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-            const existing = list.find(c => c.url.includes(url) && 'focus' in c);
-            if (existing) return existing.focus();
-            if (clients.openWindow) return clients.openWindow(url);
-        })
-    );
+// ─────── MESSAGE HANDLER (for manual updates) ───────
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

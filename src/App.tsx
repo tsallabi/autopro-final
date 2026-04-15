@@ -26,6 +26,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { AdminErrorBoundary } from './components/AdminErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
 import { useVisitorTracking } from './hooks/useVisitorTracking';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -126,6 +127,7 @@ function AppContent() {
           </Route>
         </Routes>
         <MobileBottomNav />
+        <PWAInstallPrompt />
     </>
   );
 }

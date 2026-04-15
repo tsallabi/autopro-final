@@ -33,13 +33,28 @@
   <meta name="twitter:image"
     content="https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&q=80&w=1200" />
 
-  <!-- ===== PWA ===== -->
+  <!-- ===== PWA Core ===== -->
   <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <meta name="theme-color" content="#f97316" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <!-- ===== iOS PWA ===== -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="أوتو برو" />
+  <meta name="apple-mobile-web-app-title" content="AutoPro" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+
+  <!-- ===== Microsoft Tiles ===== -->
+  <meta name="msapplication-TileColor" content="#0f172a" />
+  <meta name="msapplication-TileImage" content="/icons/icon-144.png" />
+
+  <!-- ===== Favicon ===== -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
 
   <!-- ===== Fonts (Outfit & Cairo) ===== -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -65,6 +80,29 @@
 <body>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
+
+  <!-- ===== Service Worker Registration (PWA) ===== -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(reg => {
+            console.log('[PWA] Service Worker registered:', reg.scope);
+            // Check for updates every hour
+            setInterval(() => reg.update(), 60 * 60 * 1000);
+          })
+          .catch(err => console.log('[PWA] SW registration failed:', err));
+      });
+
+      // Auto-reload when new SW takes control
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    }
+  </script>
 </body>
 
 </html>
