@@ -38,7 +38,13 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
     };
 
     const getTeamLabel = (category?: string) => {
+        if (category === 'libyapro_inquiry') return '🏢 ليبيا برو للتقنية';
         return teams.find(t => t.id === category)?.label || 'دعم العملاء';
+    };
+
+    const getCategoryStyle = (category?: string) => {
+        if (category === 'libyapro_inquiry') return 'text-amber-600 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300';
+        return 'text-blue-500 bg-blue-50';
     };
 
     return (
@@ -95,7 +101,7 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
                                         className={`p-4 rounded-2xl border transition-all cursor-pointer relative group ${msg.isRead ? 'border-slate-50 hover:bg-slate-50' : 'border-blue-100 bg-blue-50/30'}`}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-[10px] font-black text-blue-500 uppercase bg-blue-50 px-2 py-0.5 rounded-full">
+                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${getCategoryStyle(msg.category)}`}>
                                                 {getTeamLabel(msg.category)}
                                             </span>
                                             {!msg.isRead && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shadow-sm shadow-blue-500/50"></div>}

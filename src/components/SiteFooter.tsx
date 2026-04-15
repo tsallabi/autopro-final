@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Car, Phone, Mail, MapPin, Facebook, Twitter, Instagram, Youtube } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useTranslation } from 'react-i18next';
+import { LibyaProModal } from './LibyaProModal';
 
 // Key must match FOOTER_KEY in AdminDashboard
 const FOOTER_KEY = 'autopro_footer_settings_v7';
@@ -41,6 +42,7 @@ const loadFooter = () => {
 export const SiteFooter = () => {
     const { branchConfig } = useStore();
     const [cfg, setCfg] = useState(loadFooter);
+    const [showLibyaPro, setShowLibyaPro] = useState(false);
     const { t, i18n } = useTranslation();
 
     // Reload whenever admin saves footer settings
@@ -144,7 +146,18 @@ export const SiteFooter = () => {
             {/* ── Bottom bar ── */}
             <div className="border-t border-slate-800 py-5">
                 <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                    <p>© {year} {siteName}. {t('footer.rightsReserved')}</p>
+                    <p className="text-center sm:text-right">
+                        © {year} منصة <span className="text-white font-semibold">ليبيا أوتو برو</span> من تصميم{' '}
+                        <button
+                            type="button"
+                            onClick={() => setShowLibyaPro(true)}
+                            className="inline-flex items-center gap-1 font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 underline decoration-amber-500/40 hover:decoration-amber-400 underline-offset-4 transition-all cursor-pointer"
+                            title="ليبيا برو للتقنية — تصميم وبناء المواقع والمنصات"
+                        >
+                            ليبيا برو للتقنية
+                        </button>
+                        . جميع الحقوق محفوظة.
+                    </p>
                     <div className="flex items-center gap-4">
                         {cfg.legalLinks.map((l: any) => (
                             <Link key={l.href} to={l.href} className="hover:text-orange-400 transition-colors">
@@ -154,6 +167,7 @@ export const SiteFooter = () => {
                     </div>
                 </div>
             </div>
+            <LibyaProModal open={showLibyaPro} onClose={() => setShowLibyaPro(false)} />
         </footer>
     );
 };

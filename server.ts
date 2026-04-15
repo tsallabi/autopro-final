@@ -11,6 +11,7 @@ import { registerAccountingRoutes } from './routes/accounting.ts';
 import { registerAnalyticsRoutes } from './routes/analytics.ts';
 import { registerYardRoutes, registerYardBackgroundJobs } from './routes/yard.ts';
 import { registerPushRoutes } from './routes/push.ts';
+import { registerLibyaProRoutes } from './routes/libyapro.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
@@ -4425,6 +4426,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   registerYardRoutes(ctx as any);
   try { registerYardBackgroundJobs(ctx as any); } catch (e: any) { console.error('[BOOT] yard jobs failed:', e?.message); }
   try { registerPushRoutes(ctx as any); console.log('[BOOT] ✓ push routes'); } catch (e: any) { console.error('[BOOT] push routes failed:', e?.message); }
+  try { registerLibyaProRoutes(ctx as any); console.log('[BOOT] ✓ libyapro routes'); } catch (e: any) { console.error('[BOOT] libyapro routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 
