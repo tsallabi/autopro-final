@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FileCheck, Camera } from 'lucide-react';
+import { CameraCapture } from './CameraCapture';
 
 interface KycPanelProps {
     kycStatus?: string;
@@ -25,6 +26,20 @@ export const KycPanel: React.FC<KycPanelProps> = ({ kycStatus, userId, showAlert
     const [frontPreview, setFrontPreview] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const [showCamera, setShowCamera] = useState(false);
+
+    const handleCameraCapture = async (url: string) => {
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            const file = new File([blob], `kyc-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+            setFrontFile(file);
+            setFrontPreview(url);
+        } catch (e) {
+            console.error('[KycPanel] camera capture conversion failed', e);
+        }
+        setShowCamera(false);
+    };
 
     const handleFile = (file: File | null) => {
         if (!file) return;
@@ -135,7 +150,24 @@ export const KycPanel: React.FC<KycPanelProps> = ({ kycStatus, userId, showAlert
 
                     {/* Single front image upload */}
                     <div>
-                        <label className="block text-[11px] font-black text-slate-400 uppercase mb-2">صورة المستند *</label>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="block text-[11px] font-black text-slate-400 uppercase">صورة المستند *</label>
+                            <button
+                                type="button"
+                                onClick={() => setShowCamera(true)}
+                                className="bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 transition-colors"
+                            >
+                                <Camera className="w-3.5 h-3.5" /> التقط بالكاميرا
+                            </button>
+                        </div>
+                        {showCamera && (
+                            <CameraCapture
+                                overlayGuide="document"
+                                allowMultiple={false}
+                                onCapture={handleCameraCapture}
+                                onCancel={() => setShowCamera(false)}
+                            />
+                        )}
                         <label className="block cursor-pointer">
                             <input
                                 type="file"

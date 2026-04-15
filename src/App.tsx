@@ -21,12 +21,14 @@ import { DepositPage } from './pages/DepositPage';
 import { DealerPackagesPage } from './pages/DealerPackagesPage';
 import { GulfBranchesPage } from './pages/GulfBranchesPage';
 import { DealerClearancePage } from './pages/DealerClearancePage';
+import { NearestShippingCenterPage } from './pages/NearestShippingCenterPage';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AdminErrorBoundary } from './components/AdminErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
 import { useVisitorTracking } from './hooks/useVisitorTracking';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { PushNotificationPrompt } from './components/PushNotificationPrompt';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -96,6 +98,7 @@ function AppContent() {
             <Route path="dealer-packages" element={<DealerPackagesPage />} />
             <Route path="gulf-branches" element={<GulfBranchesPage />} />
             <Route path="dealer-clearance" element={<DealerClearancePage />} />
+            <Route path="nearest-shipping-center" element={<NearestShippingCenterPage />} />
           </Route>
 
           {/* Redirects */}
@@ -128,6 +131,7 @@ function AppContent() {
         </Routes>
         <MobileBottomNav />
         <PWAInstallPrompt />
+        <PushNotificationPrompt />
     </>
   );
 }

@@ -23,6 +23,7 @@ const FOOTER_DEFAULT = {
         { label: 'footer.browseCars', href: '/marketplace' },
         { label: 'footer.costCalculator', href: '/calculator' },
         { label: 'footer.shippingServices', href: '/shipping' },
+        { label: 'أقرب مركز شحن', href: '/nearest-shipping-center' },
     ],
     legalLinks: [
         { label: 'footer.termsAndConditions', href: '/terms' },

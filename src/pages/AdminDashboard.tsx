@@ -22,6 +22,7 @@ import { ReportsPanel } from '../components/admin/ReportsPanel';
 import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
+import { ShippingCentersManager } from '../components/admin/ShippingCentersManager';
 import { AccountingDashboard } from '../components/admin/accounting/AccountingDashboard';
 import { InvoicesList } from '../components/admin/accounting/InvoicesList';
 import { InvoiceDetail } from '../components/admin/accounting/InvoiceDetail';
@@ -111,7 +112,7 @@ const TEAM_PERMISSIONS: Record<string, string[]> = {
   'purchasing': ['overview', 'cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'reports'],
   'transport': ['overview', 'shipments_tracking', 'document_approvals'],
   'clearance': ['overview', 'shipments_tracking', 'document_approvals'],
-  'shipping': ['overview', 'shipments_tracking', 'document_approvals', 'shipping_settings'],
+  'shipping': ['overview', 'shipments_tracking', 'document_approvals', 'shipping_settings', 'shipping_centers'],
   'complaints': ['overview', 'messages', 'user_management'],
   'admin': ['*'],
 };
@@ -4269,6 +4270,8 @@ export const AdminDashboard = () => {
         return <MarketingPanel />;
       case 'shipping_settings':
         return <ShippingSettingsPanel />;
+      case 'shipping_centers':
+        return <ShippingCentersManager />;
       case 'footer_settings':
         return (
           <div className="p-6 md:p-8">
@@ -4626,6 +4629,33 @@ export const AdminDashboard = () => {
                               className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-blue-500 hover:border-blue-200 shadow-sm transition-all"
                             >
                               <Mail className="w-4 h-4" />
+                            </button>
+                            <button aria-label="إرسال إشعار Push تجريبي" title="إرسال إشعار Push تجريبي"
+                              onClick={async () => {
+                                try {
+                                  const res = await authFetch('/api/admin/push/send-test', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      userId: user.id,
+                                      title: 'إشعار تجريبي من AutoPro',
+                                      body: `مرحباً ${user.firstName}! هذا إشعار تجريبي من لوحة التحكم.`,
+                                      url: '/dashboard/user'
+                                    })
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (res.ok) {
+                                    showAlert(`تم إرسال ${data.sent || 0} إشعار. ${data.removed ? `(تم حذف ${data.removed} اشتراك منتهي)` : ''}`, data.sent > 0 ? 'success' : 'info');
+                                  } else {
+                                    showAlert(data.error || 'فشل إرسال الإشعار التجريبي', 'error');
+                                  }
+                                } catch (e) {
+                                  showAlert('حدث خطأ أثناء الإرسال', 'error');
+                                }
+                              }}
+                              className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-amber-500 hover:border-amber-200 shadow-sm transition-all"
+                            >
+                              <Bell className="w-4 h-4" />
                             </button>
                             <button aria-label="حذف المستخدم" title="حذف المستخدم"
                               onClick={() => {
@@ -7188,6 +7218,7 @@ export const AdminDashboard = () => {
                 { id: 'inventory_review', label: 'مراجعة السيارات الجديدة', icon: ShieldCheck, badge: (adminPendingCars?.length || 0) },
                 { id: 'shipments_tracking', label: 'تتبع حركة الشحن والسيارات', icon: Truck, badge: (adminShipments?.length || 0) },
                 { id: 'shipping_settings', label: 'تعريفة وأسعار الشحن', icon: Ship },
+                { id: 'shipping_centers', label: 'مراكز الشحن', icon: MapPin },
                 { id: 'calculator', label: 'حاسبة التكلفة الجمركية', icon: Calculator },
               ]
             },

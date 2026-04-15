@@ -29,4 +29,17 @@ export interface AppContext {
   PLUTU_BASE_URL: string;
   PLUTU_ENABLED: boolean;
   transporter: any;
+  sendPushToUser?: (userId: string, payload: {
+    title: string;
+    body: string;
+    icon?: string;
+    badge?: string;
+    image?: string;
+    url?: string;
+    tag?: string;
+    requireInteraction?: boolean;
+    actions?: Array<{ action: string; title: string }>;
+    data?: Record<string, any>;
+  }) => Promise<{ sent: number; removed: number }>;
+  webpush?: any;
 }

@@ -1,8 +1,123 @@
-import { requireAuth } from '../lib/middleware.ts';
+import { requireAuth, requireAdmin } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
+
+// Haversine distance between two (lat,lng) pairs, in kilometers
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function mapCenterRow(c: any) {
+  return {
+    id: c.id,
+    name: c.name,
+    nameEn: c.nameEn,
+    country: c.country,
+    countryCode: c.countryCode,
+    city: c.city,
+    address: c.address,
+    phone: c.phone,
+    whatsapp: c.whatsapp,
+    email: c.email,
+    lat: c.latitude,
+    lng: c.longitude,
+    latitude: c.latitude,
+    longitude: c.longitude,
+    workingHours: c.workingHours,
+    services: c.services ? String(c.services).split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+    isActive: !!c.isActive,
+    sortOrder: c.sortOrder || 0,
+  };
+}
 
 export function registerShippingRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, sendInternalMessage } = ctx;
+
+  // ── Shipping Centers (public) ──────────────────────────────
+  app.get('/api/shipping-centers', (req, res) => {
+    try {
+      const rows: any[] = db.prepare(`SELECT * FROM shipping_centers WHERE isActive = 1 ORDER BY sortOrder ASC, country ASC, city ASC`).all();
+      res.json(rows.map(mapCenterRow));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/shipping-centers/nearest', (req, res) => {
+    try {
+      const lat = parseFloat(String(req.query.lat));
+      const lng = parseFloat(String(req.query.lng));
+      const limit = Math.max(1, Math.min(20, parseInt(String(req.query.limit || '3'), 10)));
+      if (!isFinite(lat) || !isFinite(lng)) {
+        return res.status(400).json({ error: 'lat/lng مطلوبان' });
+      }
+      const rows: any[] = db.prepare(`SELECT * FROM shipping_centers WHERE isActive = 1`).all();
+      const withDist = rows
+        .map(r => ({ ...mapCenterRow(r), distance: haversineDistance(lat, lng, r.latitude, r.longitude) }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, limit)
+        .map(c => ({ ...c, distance: Math.round(c.distance * 10) / 10 }));
+      res.json({ userLocation: { lat, lng }, centers: withDist });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Shipping Centers (admin) ───────────────────────────────
+  app.post('/api/admin/shipping-centers', requireAdmin, (req, res) => {
+    try {
+      const b = req.body || {};
+      if (!b.name || !b.country || !b.city || b.latitude == null || b.longitude == null) {
+        return res.status(400).json({ error: 'الحقول المطلوبة: name, country, city, latitude, longitude' });
+      }
+      const id = b.id || `sc-${Date.now()}`;
+      const services = Array.isArray(b.services) ? b.services.join(',') : (b.services || '');
+      db.prepare(`INSERT INTO shipping_centers (id, name, nameEn, country, countryCode, city, address, phone, whatsapp, email, latitude, longitude, workingHours, services, isActive, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, b.name, b.nameEn || null, b.country, b.countryCode || null, b.city, b.address || null, b.phone || null, b.whatsapp || null, b.email || null, Number(b.latitude), Number(b.longitude), b.workingHours || null, services, b.isActive === false ? 0 : 1, Number(b.sortOrder) || 0);
+      const row: any = db.prepare(`SELECT * FROM shipping_centers WHERE id = ?`).get(id);
+      res.json(mapCenterRow(row));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/admin/shipping-centers/:id', requireAdmin, (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing: any = db.prepare(`SELECT * FROM shipping_centers WHERE id = ?`).get(id);
+      if (!existing) return res.status(404).json({ error: 'المركز غير موجود' });
+      const b = req.body || {};
+      const services = Array.isArray(b.services) ? b.services.join(',') : (b.services ?? existing.services);
+      db.prepare(`UPDATE shipping_centers SET name = ?, nameEn = ?, country = ?, countryCode = ?, city = ?, address = ?, phone = ?, whatsapp = ?, email = ?, latitude = ?, longitude = ?, workingHours = ?, services = ?, isActive = ?, sortOrder = ? WHERE id = ?`).run(
+        b.name ?? existing.name,
+        b.nameEn ?? existing.nameEn,
+        b.country ?? existing.country,
+        b.countryCode ?? existing.countryCode,
+        b.city ?? existing.city,
+        b.address ?? existing.address,
+        b.phone ?? existing.phone,
+        b.whatsapp ?? existing.whatsapp,
+        b.email ?? existing.email,
+        b.latitude != null ? Number(b.latitude) : existing.latitude,
+        b.longitude != null ? Number(b.longitude) : existing.longitude,
+        b.workingHours ?? existing.workingHours,
+        services,
+        b.isActive == null ? existing.isActive : (b.isActive ? 1 : 0),
+        b.sortOrder != null ? Number(b.sortOrder) : existing.sortOrder,
+        id,
+      );
+      const row: any = db.prepare(`SELECT * FROM shipping_centers WHERE id = ?`).get(id);
+      res.json(mapCenterRow(row));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/admin/shipping-centers/:id', requireAdmin, (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing: any = db.prepare(`SELECT id FROM shipping_centers WHERE id = ?`).get(id);
+      if (!existing) return res.status(404).json({ error: 'المركز غير موجود' });
+      db.prepare(`UPDATE shipping_centers SET isActive = 0 WHERE id = ?`).run(id);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
 
   // GET /api/shipments/user/:userId — shipments for a specific user
   app.get("/api/shipments/user/:userId", requireAuth, (req, res) => {

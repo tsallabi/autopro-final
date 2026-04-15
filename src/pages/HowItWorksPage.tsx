@@ -239,6 +239,12 @@ export const HowItWorksPage = () => {
                                             <div className="text-slate-500 text-xs mt-1">من الميناء أو توصيل لبابك</div>
                                         </div>
                                     </div>
+                                    <div className="mt-5 flex justify-center">
+                                        <a href="/nearest-shipping-center" className="inline-flex items-center gap-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 font-black rounded-xl px-5 py-2.5 text-sm transition-colors">
+                                            <MapPin className="w-4 h-4" />
+                                            <span>📍 ابحث عن أقرب مركز شحن إليك</span>
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>

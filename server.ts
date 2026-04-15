@@ -10,6 +10,8 @@ import { registerShippingRoutes } from './routes/shipping.ts';
 import { registerAccountingRoutes } from './routes/accounting.ts';
 import { registerAnalyticsRoutes } from './routes/analytics.ts';
 import { registerYardRoutes, registerYardBackgroundJobs } from './routes/yard.ts';
+import { registerPushRoutes } from './routes/push.ts';
+import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
   seedChartOfAccounts,
@@ -1437,7 +1439,43 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_visitor_log_timestamp ON visitor_log(timestamp);
   CREATE INDEX IF NOT EXISTS idx_visitor_log_session ON visitor_log(sessionId);
   CREATE INDEX IF NOT EXISTS idx_visitor_log_path ON visitor_log(path);
+
+  CREATE TABLE IF NOT EXISTS shipping_centers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    nameEn TEXT,
+    country TEXT NOT NULL,
+    countryCode TEXT,
+    city TEXT NOT NULL,
+    address TEXT,
+    phone TEXT,
+    whatsapp TEXT,
+    email TEXT,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    workingHours TEXT,
+    services TEXT,
+    isActive INTEGER DEFAULT 1,
+    sortOrder INTEGER DEFAULT 0,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_shipping_centers_active ON shipping_centers(isActive);
 `);
+
+// Seed shipping_centers with real Libya + Gulf ports
+try {
+  const shippingCentersSeed = [
+    { id: 'sc-tripoli-port', name: 'مركز طرابلس البحري', nameEn: 'Tripoli Port Center', country: 'ليبيا', countryCode: 'LY', city: 'طرابلس', address: 'ميناء طرابلس البحري', phone: '+218-91-1234567', whatsapp: '+218911234567', latitude: 32.8872, longitude: 13.1913, workingHours: 'السبت-الخميس 8ص - 5م', services: 'استلام,تخليص جمركي,تخزين' },
+    { id: 'sc-misrata-port', name: 'مركز مصراتة البحري', nameEn: 'Misrata Port Center', country: 'ليبيا', countryCode: 'LY', city: 'مصراتة', address: 'ميناء مصراتة', phone: '+218-91-7654321', whatsapp: '+218917654321', latitude: 32.3754, longitude: 15.0925, workingHours: 'السبت-الخميس 8ص - 5م', services: 'استلام,تخليص جمركي' },
+    { id: 'sc-benghazi-port', name: 'مركز بنغازي البحري', nameEn: 'Benghazi Port Center', country: 'ليبيا', countryCode: 'LY', city: 'بنغازي', address: 'ميناء بنغازي', phone: '+218-91-1111222', whatsapp: '+218911111222', latitude: 32.0872, longitude: 20.0569, workingHours: 'السبت-الخميس 8ص - 5م', services: 'استلام,تخليص جمركي' },
+    { id: 'sc-khoms-port', name: 'مركز الخمس البحري', nameEn: 'Khoms Port Center', country: 'ليبيا', countryCode: 'LY', city: 'الخمس', address: 'ميناء الخمس', phone: '+218-91-3333444', whatsapp: '+218913333444', latitude: 32.6483, longitude: 14.2625, workingHours: 'السبت-الخميس 8ص - 5م', services: 'استلام,تخليص جمركي,تخزين' },
+    { id: 'sc-zawia', name: 'مكتب الزاوية', nameEn: 'Zawia Office', country: 'ليبيا', countryCode: 'LY', city: 'الزاوية', address: 'شارع طرابلس', phone: '+218-91-5555666', whatsapp: '+218915555666', latitude: 32.7523, longitude: 12.7275, workingHours: 'السبت-الخميس 9ص - 6م', services: 'استشارات,متابعة' },
+    { id: 'sc-dubai-jafza', name: 'مركز دبي — جبل علي', nameEn: 'Dubai - Jebel Ali', country: 'الإمارات', countryCode: 'AE', city: 'دبي', address: 'جبل علي - منطقة المستودعات', phone: '+971-50-1234567', whatsapp: '+971501234567', latitude: 25.0077, longitude: 55.0614, workingHours: 'الأحد-الخميس 8ص - 5م', services: 'استلام,شحن دولي,تخزين' },
+    { id: 'sc-jeddah-port', name: 'مركز جدة الإسلامي', nameEn: 'Jeddah Islamic Port', country: 'السعودية', countryCode: 'SA', city: 'جدة', address: 'ميناء جدة الإسلامي', phone: '+966-50-1234567', whatsapp: '+966501234567', latitude: 21.4858, longitude: 39.1925, workingHours: 'الأحد-الخميس 8ص - 5م', services: 'استلام,شحن دولي,تخزين' },
+  ];
+  const insertShippingCenter = db.prepare(`INSERT OR IGNORE INTO shipping_centers (id, name, nameEn, country, countryCode, city, address, phone, whatsapp, latitude, longitude, workingHours, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  shippingCentersSeed.forEach(c => insertShippingCenter.run(c.id, c.name, c.nameEn || null, c.country, c.countryCode, c.city, c.address, c.phone, c.whatsapp, c.latitude, c.longitude, c.workingHours, c.services));
+} catch (e: any) { console.error('[BOOT] shipping_centers seed failed:', e?.message); }
 
 // Safe column additions for Phase 10
 try { db.exec("ALTER TABLE users ADD COLUMN walletBalance REAL DEFAULT 0"); } catch (_) { }
@@ -1845,6 +1883,24 @@ async function startServer() {
           subject: template?.subject?.replace(/\{\{title\}\}/g, title) || `${title} | تنبيه منصة أوتو برو`,
           html: TemplateEngine.getHtml(title, message, type, emailTemplateData)
         }).catch(err => console.error("Rich Email Error:", err.message));
+      }
+
+      // Web Push dispatch — fire-and-forget, best-effort
+      try {
+        const localSendPush = (app as any).locals?.sendPushToUser;
+        if (localSendPush) {
+          localSendPush(userId, {
+            title,
+            body: message,
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-96.png',
+            url: link || '/dashboard/user',
+            tag: templateId || 'autopro-notification',
+            data: { type, templateId, context: fullContext },
+          }).catch((e: any) => console.warn('[WEBPUSH] sendPushToUser failed:', e?.message));
+        }
+      } catch (pushErr: any) {
+        console.warn('[WEBPUSH] dispatch exception:', pushErr?.message);
       }
 
       if (wantsWhatsapp && user.phone) {
@@ -2499,6 +2555,21 @@ async function startServer() {
           console.error(`[SAVED SEARCH ALERTS] send failed for ${search.id}:`, e?.message || e);
           continue;
         }
+
+        // Web Push for saved-search match (best-effort)
+        try {
+          const pushFn = (app as any).locals?.sendPushToUser;
+          if (pushFn && search.userId) {
+            pushFn(search.userId, {
+              title: `🚗 ${cars.length} سيارة جديدة تطابق بحثك`,
+              body: `"${search.name}" — سيارات جديدة في انتظارك!`,
+              url: `/dashboard/user?view=saved-searches`,
+              icon: '/icons/icon-192.png',
+              tag: `saved-search-${search.id}`,
+              requireInteraction: false,
+            }).catch(() => {});
+          }
+        } catch {}
 
         const insertSent = db.prepare(
           "INSERT OR IGNORE INTO saved_search_alerts_sent (id, searchId, carId, sentAt) VALUES (?, ?, ?, ?)"
@@ -4316,6 +4387,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     return { txId, commission, netAmount };
   };
 
+  // ======= WEB PUSH INIT =======
+  const webpushHelpers = initWebPush(db);
+  const sendPushToUser = webpushHelpers.sendPushToUser;
+  // Expose on app.locals for use by functions outside of ctx
+  (app as any).locals.sendPushToUser = sendPushToUser;
+
   // ======= MODULE REGISTRATION (extracted routes) =======
   const ctx = {
     app, io, db, sendEmail, sendNotification, sendInternalMessage,
@@ -4323,6 +4400,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ensureSellerWallet, settleSaleToSellerWallet,
     JWT_SECRET, SITE_URL, SALT_ROUNDS, stripeClient, transporter,
     PLUTU_API_KEY, PLUTU_ACCESS_TOKEN, PLUTU_SECRET_KEY, PLUTU_BASE_URL, PLUTU_ENABLED,
+    sendPushToUser,
+    webpush: webpushHelpers,
   };
   console.log('[BOOT] Registering route modules...');
   registerAuthRoutes(ctx as any);
@@ -4345,6 +4424,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   console.log('[BOOT] ✓ analytics routes');
   registerYardRoutes(ctx as any);
   try { registerYardBackgroundJobs(ctx as any); } catch (e: any) { console.error('[BOOT] yard jobs failed:', e?.message); }
+  try { registerPushRoutes(ctx as any); console.log('[BOOT] ✓ push routes'); } catch (e: any) { console.error('[BOOT] push routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 

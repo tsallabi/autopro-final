@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, CheckCircle2, X, Info, Car as CarIcon, DollarSign, MapPin, Image as ImageIcon, Video, FileText, List, Save, ChevronDown, Search, RefreshCw } from 'lucide-react';
+import { UploadCloud, CheckCircle2, X, Info, Car as CarIcon, DollarSign, MapPin, Image as ImageIcon, Video, FileText, List, Save, ChevronDown, Search, RefreshCw, Camera } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { CameraCapture } from './CameraCapture';
 
 interface UnifiedCarFormProps {
     initialData?: any;
@@ -189,6 +190,22 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
     const extraInputRef = useRef<HTMLInputElement>(null);
     const soundInputRef = useRef<HTMLInputElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
+    const [showCameraMain, setShowCameraMain] = useState(false);
+    const [showCameraExtra, setShowCameraExtra] = useState(false);
+
+    // Convert an uploaded image URL back to a File so it slots into the existing
+    // File-based submission pipeline.
+    const urlToFile = async (url: string): Promise<File | null> => {
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            const name = url.split('/').pop() || `camera-${Date.now()}.jpg`;
+            return new File([blob], name, { type: blob.type || 'image/jpeg' });
+        } catch (e) {
+            console.error('[UnifiedCarForm] urlToFile failed', e);
+            return null;
+        }
+    };
 
     const handleFieldChange = (field: string, val: any) => {
         setFormData((prev: any) => ({ ...prev, [field]: val }));
@@ -517,8 +534,32 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
 
                         {/* Main Image */}
                         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-2xl relative overflow-hidden group">
-                            <h2 className="text-lg font-black text-orange-500 mb-4 flex items-center gap-2"><ImageIcon className="w-5 h-5" /> صورة السيارة الرئيسية</h2>
+                            <div className="flex items-center justify-between mb-4 gap-2">
+                                <h2 className="text-lg font-black text-orange-500 flex items-center gap-2"><ImageIcon className="w-5 h-5" /> صورة السيارة الرئيسية</h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCameraMain(true)}
+                                    className="bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 transition-colors"
+                                >
+                                    <Camera className="w-3.5 h-3.5" /> التقط صورة
+                                </button>
+                            </div>
                             <input title="الصورة الرئيسية" aria-label="الصورة الرئيسية" placeholder="رفع الصورة الرئيسية" type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleMainImageSelect} />
+                            {showCameraMain && (
+                                <CameraCapture
+                                    overlayGuide="vehicle-front"
+                                    allowMultiple={false}
+                                    onCapture={async (url) => {
+                                        const file = await urlToFile(url);
+                                        if (file) {
+                                            setMainImage(file);
+                                            setMainImagePreview(url);
+                                        }
+                                        setShowCameraMain(false);
+                                    }}
+                                    onCancel={() => setShowCameraMain(false)}
+                                />
+                            )}
 
                             <div
                                 onClick={() => fileInputRef.current?.click()}
@@ -546,17 +587,41 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
 
                         {/* Extra Images */}
                         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-2xl">
-                            <div className="flex justify-between items-center mb-4">
+                            <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
                                 <h2 className="text-lg font-black text-orange-500 flex items-center gap-2"><List className="w-5 h-5" /> صور إضافية</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => extraInputRef.current?.click()}
-                                    className="bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 transition-colors"
-                                >
-                                    حذف الكل <X className="w-3 h-3" />
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCameraExtra(true)}
+                                        className="bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 transition-colors"
+                                    >
+                                        <Camera className="w-3.5 h-3.5" /> التقط بالكاميرا
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setExtraImages([]); setExtraImagePreviews([]); }}
+                                        className="bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 transition-colors"
+                                    >
+                                        حذف الكل <X className="w-3 h-3" />
+                                    </button>
+                                </div>
                             </div>
                             <input title="صور إضافية" aria-label="صور إضافية" placeholder="رفع صور إضافية" type="file" ref={extraInputRef} accept="image/*" multiple className="hidden" onChange={handleExtraImagesSelect} />
+                            {showCameraExtra && (
+                                <CameraCapture
+                                    overlayGuide="vehicle-side"
+                                    allowMultiple={true}
+                                    maxPhotos={15}
+                                    onCapture={async (url) => {
+                                        const file = await urlToFile(url);
+                                        if (file) {
+                                            setExtraImages(prev => [...prev, file]);
+                                            setExtraImagePreviews(prev => [...prev, url]);
+                                        }
+                                    }}
+                                    onCancel={() => setShowCameraExtra(false)}
+                                />
+                            )}
 
                             <div className="grid grid-cols-2 gap-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                                 {extraImagePreviews.map((preview, idx) => (

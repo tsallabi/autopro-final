@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Camera, Keyboard, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, Upload, Loader2, Package, MapPin, X } from 'lucide-react';
 import { authFetch } from '../../../context/StoreContext';
 import { VINScanner } from '../../yard/VINScanner';
+import { CameraCapture } from '../../CameraCapture';
 
 interface GateInFormProps {
   onBack: () => void;
@@ -21,6 +22,7 @@ export const GateInForm: React.FC<GateInFormProps> = ({ onBack, onSuccess }) => 
   const [locations, setLocations] = useState<any[]>([]);
   const [dealers, setDealers] = useState<any[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [showCamera, setShowCamera] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [gatePass, setGatePass] = useState<string | null>(null);
 
@@ -300,12 +302,33 @@ export const GateInForm: React.FC<GateInFormProps> = ({ onBack, onSuccess }) => 
             <h3 className="text-xl font-black text-white">الخطوة 3: صور الدخول</h3>
             <p className="text-xs text-slate-400 font-bold mt-1">مطلوب 4-6 صور على الأقل (أمام، خلف، يمين، يسار، داخلية، عداد)</p>
           </div>
-          <label className="block border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-8 text-center cursor-pointer transition-all">
-            <input type="file" accept="image/*" multiple capture="environment" onChange={handlePhotoUpload} className="hidden" />
-            <Upload className="w-10 h-10 text-slate-500 mx-auto mb-2" />
-            <div className="font-black text-white">اضغط لالتقاط أو رفع الصور</div>
-            <div className="text-xs text-slate-500 mt-1">{photos.length} صورة تم رفعها</div>
-          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCamera(true)}
+              className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-orange-500/60 hover:border-orange-500 bg-orange-500/5 hover:bg-orange-500/10 rounded-xl p-6 transition-all"
+            >
+              <Camera className="w-10 h-10 text-orange-500" />
+              <div className="font-black text-white">التقط بالكاميرا</div>
+              <div className="text-xs text-slate-400 font-bold">متعدد الصور</div>
+            </button>
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer transition-all">
+              <input type="file" accept="image/*" multiple capture="environment" onChange={handlePhotoUpload} className="hidden" />
+              <Upload className="w-10 h-10 text-slate-500" />
+              <div className="font-black text-white">رفع من الجهاز</div>
+              <div className="text-xs text-slate-500 font-bold">{photos.length} صورة تم رفعها</div>
+            </label>
+          </div>
+
+          {showCamera && (
+            <CameraCapture
+              overlayGuide="vehicle-side"
+              allowMultiple={true}
+              maxPhotos={12}
+              onCapture={(url) => setPhotos(p => [...p, url])}
+              onCancel={() => setShowCamera(false)}
+            />
+          )}
 
           {photos.length > 0 && (
             <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
