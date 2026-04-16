@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Car } from '../types';
-import { ArrowUp, CheckCircle2, Clock, MapPin, AlertTriangle, ShieldCheck, Heart } from 'lucide-react';
+import { ArrowUp, CheckCircle2, Clock, MapPin, AlertTriangle, ShieldCheck, Heart, Volume2, VolumeX } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useTranslation } from 'react-i18next';
 import { calculateTotalCost, MOCK_LOCATIONS } from '../services/calculatorService';
 import { VehicleType } from '../types/calculator';
+
+// Global ref: only one audio plays at a time across all cards
+let globalPlayingId: string | null = null;
+let globalStopFn: (() => void) | null = null;
 
 interface CarCardProps {
   car: Car;
@@ -17,6 +21,58 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
   const { watchlist, toggleWatchlist, exchangeRate, users, marketEstimates } = useStore();
   const isLive = car.status === 'live';
   const isFavorite = watchlist.some((w) => w.carId === car.id);
+
+  // ── Engine Sound Player ──
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const hasAudio = !!(car as any).engineAudioUrl;
+
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if (globalPlayingId === car.id) { globalPlayingId = null; globalStopFn = null; }
+    };
+  }, [car.id]);
+
+  const handleToggleSound = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (isPlaying) {
+      // Stop
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      globalPlayingId = null;
+      globalStopFn = null;
+      return;
+    }
+
+    // Stop any other playing card first
+    if (globalStopFn && globalPlayingId !== car.id) {
+      globalStopFn();
+    }
+
+    if (!audioRef.current) {
+      audioRef.current = new Audio((car as any).engineAudioUrl);
+      audioRef.current.onended = () => {
+        setIsPlaying(false);
+        globalPlayingId = null;
+        globalStopFn = null;
+      };
+    }
+
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().then(() => {
+      setIsPlaying(true);
+      globalPlayingId = car.id;
+      globalStopFn = () => {
+        audioRef.current?.pause();
+        setIsPlaying(false);
+      };
+    }).catch(() => {});
+  };
 
   const seller = users.find(u => u.id === car.sellerId);
   const showroomName = car.showroomName || seller?.companyName || (seller?.firstName ? `${seller.firstName} ${seller.lastName}` : 'AutoPro Auctions');
@@ -139,6 +195,22 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
         <div className="absolute bottom-3 left-3 glass-dark text-white/90 px-3 py-1 rounded-lg text-[10px] font-mono tracking-tighter border border-white/5 z-20">
           #{car.lotNumber}
         </div>
+
+        {/* Engine Sound Button */}
+        {hasAudio && (
+          <button
+            onClick={handleToggleSound}
+            title={isPlaying ? 'إيقاف صوت المحرك' : 'تشغيل صوت المحرك'}
+            aria-label={isPlaying ? 'إيقاف صوت المحرك' : 'تشغيل صوت المحرك'}
+            className={`absolute bottom-3 right-3 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md ${
+              isPlaying
+                ? 'bg-orange-500 text-white shadow-orange-500/50 scale-110 animate-pulse'
+                : 'bg-black/50 text-white/90 hover:bg-orange-500 hover:text-white hover:shadow-orange-500/30'
+            }`}
+          >
+            {isPlaying ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+          </button>
+        )}
       </div>
 
       {/* Content */}
