@@ -18,6 +18,7 @@ import { SideAdBanners } from '../components/SideAdBanners';
 import { CAR_MAKES_AND_MODELS } from '../data/carData';
 import { DualRangeSlider } from '../components/DualRangeSlider';
 import { FeaturedCarsBanner } from '../components/FeaturedCarsBanner';
+import { FeaturedCarsSlider } from '../components/FeaturedCarsSlider';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useSavedSearches, SavedSearch } from '../hooks/useSavedSearches';
 
@@ -1080,6 +1081,9 @@ export const Home = () => {
 
         {/* Main Feed */}
         <main className="flex-1 space-y-6 min-w-0 overflow-hidden w-full max-w-[100vw] pb-32 lg:pb-0 pt-0">
+          {/* Featured Cars Hero Slider */}
+          <FeaturedCarsSlider />
+
           {/* Tabs Bar Sticky Fix */}
           <div className="flex items-center gap-2 overflow-x-auto pb-4 pt-2 mb-4 scrollbar-hide min-w-0 w-full max-w-[100vw] lg:sticky lg:top-[85px] sticky top-[40px] z-[40] bg-[#F8FAFC]">
             {[

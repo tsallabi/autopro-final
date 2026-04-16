@@ -1,13 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, TrendingUp, Award, Zap, Shield, Truck, Calculator, Gift } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 /**
  * SideAdBanners — sticky side advertisement banners for marketplace
- * Loaded from localStorage (admin-editable) with 4 default rotating banners.
+ * Fetches from /api/banners/sidebar API. Falls back to localStorage cache,
+ * then to hardcoded defaults if API is unavailable.
  *
  * Position is controlled by parent — pass side="left" or side="right".
  */
+
+interface ApiBanner {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  linkText: string;
+  position: string;
+  gradient: string;
+  isActive: number;
+  sortOrder: number;
+  clickCount: number;
+  viewCount: number;
+}
 
 interface AdBanner {
   id: string;
@@ -15,9 +31,10 @@ interface AdBanner {
   subtitle: string;
   cta: string;
   href: string;
-  icon: string; // icon name
+  icon: string;
   gradient: string;
   badge?: string;
+  imageUrl?: string;
 }
 
 const ICONS: Record<string, React.ComponentType<any>> = {
@@ -51,15 +68,36 @@ const DEFAULT_RIGHT: AdBanner[] = [
   },
 ];
 
+const CACHE_KEY = 'autopro_side_banners_cache';
 const STORAGE_KEY = 'autopro_side_ads_v1';
 
-const loadAds = () => {
+function apiBannerToAdBanner(b: ApiBanner): AdBanner {
+  // Guess icon from linkUrl
+  let icon = 'sparkles';
+  if (b.linkUrl?.includes('shipping')) icon = 'truck';
+  else if (b.linkUrl?.includes('calculator')) icon = 'calculator';
+  else if (b.linkUrl?.includes('dealer') || b.linkUrl?.includes('package')) icon = 'award';
+  else if (b.linkUrl?.includes('refund') || b.linkUrl?.includes('shield')) icon = 'shield';
+
+  return {
+    id: b.id,
+    title: b.title,
+    subtitle: b.subtitle || '',
+    cta: b.linkText || 'التفاصيل ←',
+    href: b.linkUrl || '#',
+    icon,
+    gradient: b.gradient || 'from-cyan-500 to-blue-600',
+    imageUrl: b.imageUrl || undefined,
+  };
+}
+
+function loadFallback(): { left: AdBanner[]; right: AdBanner[] } {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (saved && saved.left && saved.right) return saved;
   } catch {}
   return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT };
-};
+}
 
 interface Props {
   side: 'left' | 'right';
@@ -67,23 +105,67 @@ interface Props {
 }
 
 export const SideAdBanners: React.FC<Props> = ({ side, className = '' }) => {
-  const [ads, setAds] = useState(loadAds);
+  const [apiBanners, setApiBanners] = useState<AdBanner[] | null>(null);
+  const [fallback] = useState(loadFallback);
   const [activeIdx, setActiveIdx] = useState(0);
+  const trackedRef = useRef(false);
 
+  // Fetch from API on mount
   useEffect(() => {
-    const onStorage = () => setAds(loadAds());
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    let cancelled = false;
+    (async () => {
+      try {
+        // Try cache first for instant render
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0 && !cancelled) {
+            setApiBanners(parsed.map(apiBannerToAdBanner));
+          }
+        }
+
+        const res = await fetch('/api/banners/sidebar');
+        if (res.ok) {
+          const data: ApiBanner[] = await res.json();
+          if (!cancelled && Array.isArray(data) && data.length > 0) {
+            const mapped = data.map(apiBannerToAdBanner);
+            setApiBanners(mapped);
+            localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+
+            // Track views
+            if (!trackedRef.current) {
+              trackedRef.current = true;
+              fetch('/api/banners/track-view', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: data.map(b => b.id) }),
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch {
+        // API unavailable — use fallback
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  const list = side === 'left' ? ads.left : ads.right;
+  // Determine which list to show
+  const list = apiBanners
+    ? (side === 'left' ? apiBanners.slice(0, Math.ceil(apiBanners.length / 2)) : apiBanners.slice(Math.ceil(apiBanners.length / 2)))
+    : (side === 'left' ? fallback.left : fallback.right);
 
-  // Auto-rotate active banner every 7 sec for visual interest
+  // Auto-rotate active banner every 7 sec
   useEffect(() => {
     if (list.length <= 1) return;
     const t = setInterval(() => setActiveIdx(i => (i + 1) % list.length), 7000);
     return () => clearInterval(t);
   }, [list.length]);
+
+  const handleClick = (bannerId: string) => {
+    // Track click
+    fetch(`/api/banners/${bannerId}/click`, { method: 'POST' }).catch(() => {});
+  };
 
   if (!list || list.length === 0) return null;
 
@@ -96,11 +178,17 @@ export const SideAdBanners: React.FC<Props> = ({ side, className = '' }) => {
           <Link
             key={ad.id}
             to={ad.href}
+            onClick={() => handleClick(ad.id)}
             className={`group relative block rounded-2xl overflow-hidden shadow-lg transition-all duration-500 ${
               isActive ? 'scale-100 shadow-2xl' : 'scale-[0.98] opacity-90'
             } hover:scale-105 hover:shadow-2xl`}
           >
-            <div className={`bg-gradient-to-br ${ad.gradient} p-5 text-white min-h-[260px] flex flex-col justify-between`}>
+            <div className={`bg-gradient-to-br ${ad.gradient} p-5 text-white min-h-[260px] flex flex-col justify-between relative`}>
+              {/* Background image if available */}
+              {ad.imageUrl && (
+                <img src={ad.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />
+              )}
+
               {/* Decorative pulsing circle */}
               <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-xl group-hover:scale-150 transition-transform duration-700" />
               <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-white/10 rounded-full blur-xl" />

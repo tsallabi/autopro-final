@@ -8,7 +8,7 @@ import {
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key, Hash, BarChart3
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key, Hash, BarChart3, Image
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -23,6 +23,7 @@ import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
 import { ShippingCentersManager } from '../components/admin/ShippingCentersManager';
+import { BannersManager } from '../components/admin/BannersManager';
 import { AccountingDashboard } from '../components/admin/accounting/AccountingDashboard';
 import { InvoicesList } from '../components/admin/accounting/InvoicesList';
 import { InvoiceDetail } from '../components/admin/accounting/InvoiceDetail';
@@ -3504,7 +3505,7 @@ export const AdminDashboard = () => {
         { group: 'Vehicles & Auctions', items: ['cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'inspections'] },
         { group: 'Treasury & Accounting', items: ['financial_approvals', 'payment_requests', 'withdrawal_requests', 'all_invoices', 'financial_ledger', 'expenses', 'payment_gateways'] },
         { group: 'Logistics & Shipping', items: ['inventory_review', 'shipments_tracking', 'shipping_settings', 'calculator'] },
-        { group: 'Platform Settings', items: ['system_global', 'marketing', 'offices', 'footer_settings', 'api_keys', 'welcome_settings'] }
+        { group: 'Platform Settings', items: ['system_global', 'marketing', 'banners', 'offices', 'footer_settings', 'api_keys', 'welcome_settings'] }
       ];
       const activeGroup = groups.find(g => g.items.includes(view));
       if (activeGroup) {
@@ -4276,6 +4277,12 @@ export const AdminDashboard = () => {
         return (
           <div className="p-6 md:p-8">
             <FooterSettingsPanel />
+          </div>
+        );
+      case 'banners':
+        return (
+          <div className="p-6 md:p-8">
+            <BannersManager />
           </div>
         );
       case 'calculator':
@@ -7245,6 +7252,7 @@ export const AdminDashboard = () => {
               items: [
                 { id: 'system_global', label: 'إعدادات النظام الرئيسية ⚙️', icon: Settings },
                 { id: 'marketing', label: 'مركز التسويق 📧', icon: Mail },
+                { id: 'banners', label: 'البانرات الإعلانية 🖼️', icon: Image },
                 { id: 'crm', label: 'CRM إدارة العملاء', icon: Users },
                 { id: 'seller_journey', label: 'رحلة البائعين', icon: Car },
                 { id: 'financial_summary', label: 'الميزانية العمومية', icon: DollarSign },

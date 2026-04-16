@@ -252,6 +252,14 @@ export function registerCarRoutes(ctx: AppContext) {
         id
       );
 
+      // Package-based featuring check
+      if (isRecommended && sellerId) {
+        const seller: any = db.prepare("SELECT packageId FROM users WHERE id = ?").get(sellerId ?? existing.sellerId);
+        if (seller && !['gold', 'premium'].includes(seller.packageId)) {
+          console.log(`[WARN] Seller ${sellerId ?? existing.sellerId} package ${seller.packageId} doesn't include featuring`);
+        }
+      }
+
       res.json({ success: true, id });
     } catch (e: any) {
       console.error('Car update error:', e);

@@ -12,6 +12,7 @@ import { registerAnalyticsRoutes } from './routes/analytics.ts';
 import { registerYardRoutes, registerYardBackgroundJobs } from './routes/yard.ts';
 import { registerPushRoutes } from './routes/push.ts';
 import { registerLibyaProRoutes } from './routes/libyapro.ts';
+import { registerBannerRoutes } from './routes/banners.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
@@ -1170,6 +1171,39 @@ if (pkgCount.cnt === 0) {
     seedPkgs.run('silver', 'Silver', 'فضية', 250, 'LYD', 50, 10, 60, 'تاجر موثق', JSON.stringify(['عرض 50 سيارة', '10 محاولات مزايدة', 'دعم أولوية', 'عرض في السوق 60 يوم', 'شارة تاجر موثق', 'إحصائيات متقدمة']), 1, 1);
     seedPkgs.run('gold', 'Gold', 'ذهبية', 500, 'LYD', 100, -1, 120, 'تاجر مميز', JSON.stringify(['عرض 100 سيارة', 'محاولات مزايدة غير محدودة', 'دعم مباشر 24/7', 'عرض في السوق 120 يوم', 'شارة تاجر مميز', 'ظهور مميز في الإعلانات', 'تقارير أداء شهرية']), 1, 2);
     seedPkgs.run('premium', 'Premium', 'متميزون', -1, 'LYD', 999, -1, 365, 'VIP', JSON.stringify(['عدد سيارات غير محدود', 'محاولات مزايدة غير محدودة', 'مدير حساب مخصص', 'عرض في السوق غير محدود', 'شارة VIP', 'أولوية في جميع المزادات', 'دعم مخصص على مدار الساعة', 'تقارير وتحليلات حصرية']), 1, 3);
+  })();
+}
+
+// ======= AD BANNERS =======
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ad_banners (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    subtitle TEXT,
+    imageUrl TEXT,
+    linkUrl TEXT,
+    linkText TEXT DEFAULT 'التفاصيل',
+    position TEXT DEFAULT 'sidebar',
+    gradient TEXT DEFAULT 'from-cyan-500 to-blue-600',
+    isActive INTEGER DEFAULT 1,
+    sortOrder INTEGER DEFAULT 0,
+    startDate TEXT,
+    endDate TEXT,
+    clickCount INTEGER DEFAULT 0,
+    viewCount INTEGER DEFAULT 0,
+    createdAt TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+// Seed default banners if empty
+const bannerCount = db.prepare("SELECT COUNT(*) as cnt FROM ad_banners").get() as any;
+if (bannerCount.cnt === 0) {
+  const seedBanner = db.prepare(`INSERT INTO ad_banners (id, title, subtitle, linkUrl, linkText, position, gradient, isActive, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`);
+  db.transaction(() => {
+    seedBanner.run('banner-shipping', 'شحن دولي مضمون', 'من ميناء أمريكي مباشرةً إلى طرابلس وبنغازي بأمان وسرعة.', '/shipping', 'تتبع شحنتك ←', 'sidebar', 'from-cyan-500 to-teal-600', 0);
+    seedBanner.run('banner-dealer', 'باقات التجار VIP', 'انضم لشبكة التجار المعتمدين واحصل على عمولات مخفّضة.', '/dealer-packages', 'اعرف المزيد ←', 'sidebar', 'from-amber-500 to-orange-500', 1);
+    seedBanner.run('banner-calculator', 'حاسبة التكلفة الذكية', 'حاسبة ذكية تشمل الشحن، الجمارك، والتأمين بدقة عالية.', '/calculator', 'احسب الآن ←', 'sidebar', 'from-blue-500 to-indigo-600', 2);
+    seedBanner.run('banner-refund', 'ضمان المزايدة الآمنة', 'وديعتك محمية بنظام Escrow حتى تتسلم سيارتك.', '/refund', 'تعرف على الضمان ←', 'sidebar', 'from-emerald-500 to-green-600', 3);
   })();
 }
 
@@ -4427,6 +4461,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerYardBackgroundJobs(ctx as any); } catch (e: any) { console.error('[BOOT] yard jobs failed:', e?.message); }
   try { registerPushRoutes(ctx as any); console.log('[BOOT] ✓ push routes'); } catch (e: any) { console.error('[BOOT] push routes failed:', e?.message); }
   try { registerLibyaProRoutes(ctx as any); console.log('[BOOT] ✓ libyapro routes'); } catch (e: any) { console.error('[BOOT] libyapro routes failed:', e?.message); }
+  try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 
