@@ -1590,7 +1590,7 @@ for (let i = 1; i <= 18; i++) {
 
   try {
     db.prepare(`
-      INSERT OR REPLACE INTO cars (id, lotNumber, vin, make, model, year, odometer, engine, drive, primaryDamage, titleType, location, currentBid, status, images, reservePrice, offerMarketEndTime)
+      INSERT OR IGNORE INTO cars (id, lotNumber, vin, make, model, year, odometer, engine, drive, primaryDamage, titleType, location, currentBid, status, images, reservePrice, offerMarketEndTime)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, lotNumber, `VIN-${make.slice(0, 3)}-${i}`, make, model, 2020 + (i % 5), 1000 * i,
@@ -2298,7 +2298,7 @@ async function startServer() {
         ];
 
         db.prepare(`
-                INSERT OR REPLACE INTO cars (
+                INSERT OR IGNORE INTO cars (
                     id, lotNumber, vin, make, model, year, odometer, engineSize, horsepower,
                     transmission, drivetrain, fuelType, exteriorColor, interiorColor,
                     primaryDamage, secondaryDamage, titleType, location, currentBid,
@@ -6924,15 +6924,22 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  app.post('/api/upload/media', requireAuth, (uploadMedia.single('media') as any), ((req: any, res: any) => {
-    try {
-      if (!req.file) return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
-      const url = `/uploads/media/${req.file.filename}`;
-      res.json({ success: true, url, filename: req.file.filename });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message || 'فشل رفع الملف' });
-    }
-  }) as any);
+  app.post('/api/upload/media', requireAuth, (req: any, res: any, next: any) => {
+    (uploadMedia.single('media') as any)(req, res, (err: any) => {
+      if (err) {
+        console.error('[UPLOAD/MEDIA] Multer error:', err.message);
+        return res.status(400).json({ error: err.message || 'نوع الملف غير مدعوم' });
+      }
+      try {
+        if (!req.file) return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
+        const url = `/uploads/media/${req.file.filename}`;
+        console.log('[UPLOAD/MEDIA] OK:', req.file.originalname, '->', url);
+        res.json({ success: true, url, filename: req.file.filename });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message || 'فشل رفع الملف' });
+      }
+    });
+  });
 
   // 4b) PUT /api/cars/:id — update existing car
   app.put("/api/cars/:id", requireAuth, (req, res) => {

@@ -88,7 +88,7 @@ export const SideAdBanners: React.FC<Props> = ({ side, className = '' }) => {
   if (!list || list.length === 0) return null;
 
   return (
-    <aside className={`hidden xl:flex flex-col gap-4 sticky top-24 self-start w-full ${className}`} dir="rtl">
+    <aside className={`flex flex-col gap-4 w-full ${className}`} dir="rtl">
       {list.map((ad: AdBanner, idx: number) => {
         const Icon = ICONS[ad.icon] || Sparkles;
         const isActive = idx === activeIdx;

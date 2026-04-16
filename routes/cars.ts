@@ -197,12 +197,13 @@ export function registerCarRoutes(ctx: AppContext) {
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
       buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
-      acceptOffers, videoUrl, inspectionPdf,
+      acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
       actualOdometer, cylinders, auctionLane, showroomName, saleStatus,
       locationDetails, exchangeRate, minPrice, specialNote, buyNowPrice,
-      acceptedOfferPercentage, youtubeVideoUrl, engineSoundUrl, inspectionReportUrl
+      acceptedOfferPercentage, youtubeVideoUrl, engineSoundUrl, inspectionReportUrl,
+      isRecommended
     } = req.body;
 
     try {
@@ -218,7 +219,8 @@ export function registerCarRoutes(ctx: AppContext) {
           exteriorColor = ?, interiorColor = ?, keys = ?, runsDrives = ?,
           location = ?, primaryDamage = ?, secondaryDamage = ?, titleType = ?,
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
-          drivetrain = ?, auctionEndDate = ?
+          drivetrain = ?, auctionEndDate = ?,
+          engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?, isRecommended = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -227,7 +229,7 @@ export function registerCarRoutes(ctx: AppContext) {
         transmission ?? existing.transmission, drive ?? existing.drive,
         fuelType ?? existing.fuelType, reservePrice ?? existing.reservePrice,
         JSON.stringify(images || JSON.parse(existing.images || '[]')),
-        videoUrl ?? youtubeVideoUrl ?? existing.videoUrl,
+        videoUrl ?? engineVideoUrl ?? youtubeVideoUrl ?? existing.videoUrl,
         inspectionPdf ?? inspectionReportUrl ?? existing.inspectionPdf,
         sellerId ?? existing.sellerId, currency ?? existing.currency,
         acceptOffers !== undefined ? (acceptOffers ? 1 : 0) : existing.acceptOffers,
@@ -240,6 +242,10 @@ export function registerCarRoutes(ctx: AppContext) {
         trim ?? existing.trim, mileageUnit ?? existing.mileageUnit,
         engineSize ?? existing.engineSize, horsepower ?? existing.horsepower,
         drivetrain ?? existing.drivetrain, auctionEndDate ?? existing.auctionEndDate,
+        engineAudioUrl ?? engineSoundUrl ?? existing.engineAudioUrl ?? '',
+        engineVideoUrl ?? youtubeVideoUrl ?? existing.engineVideoUrl ?? '',
+        showroomName ?? existing.showroomName ?? '',
+        isRecommended !== undefined ? (isRecommended ? 1 : 0) : existing.isRecommended ?? 0,
         id
       );
 

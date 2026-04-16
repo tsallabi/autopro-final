@@ -1119,15 +1119,11 @@ export const Home = () => {
               <button onClick={clearAllFilters} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black text-sm">{t('home.emptyState.clearFilters')}</button>
             </div>
           ) : (
-            <div className="mt-20 grid grid-cols-1 xl:grid-cols-[260px_1fr_260px] gap-6">
-              {/* Right banner (RTL: appears on the right) */}
-              <SideAdBanners side="right" />
-
-              <div className={`${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8' : 'flex flex-col gap-8'}`}>
+            <div className={`mt-20 ${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10' : 'flex flex-col gap-8'}`}>
               {filteredCars.slice(0, displayCount).map((car) => {
                 const seller = users.find(u => u.id === car.sellerId);
                 const showroomName = car.showroomName || seller?.companyName || (seller?.firstName ? `${seller.firstName || ''} ${seller.lastName || ''}`.trim() : 'AutoPro Auctions');
-                const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active';
+                const isVerified = seller?.kycStatus === 'approved' || seller?.status === 'active' || seller?.role === 'admin' || !car.sellerId;
 
                 return (
                   <div
@@ -1305,10 +1301,6 @@ export const Home = () => {
                   </div>
                 );
               })}
-              </div>
-
-              {/* Left banner */}
-              <SideAdBanners side="left" />
             </div>
           )}
           {filteredCars.length > displayCount && (
@@ -1326,6 +1318,9 @@ export const Home = () => {
             <aside className="hidden lg:flex w-80 flex-col gap-6 sticky top-[90px] z-10">
               {/* Featured Cars Banner — Premium Gold Dealers */}
               <FeaturedCarsBanner />
+
+              {/* Ad Banner — Right side (under news) */}
+              <SideAdBanners side="right" className="!hidden lg:!flex" />
 
               <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-4">
                 <div onClick={() => setIsMyAuctionsOpen(!isMyAuctionsOpen)} className="flex items-center justify-between mb-2 cursor-pointer group pb-3 border-b border-slate-100">
@@ -1376,6 +1371,9 @@ export const Home = () => {
                   </div>
                 )}
               </div>
+
+              {/* Ad Banner — Left side (under my auctions) */}
+              <SideAdBanners side="left" className="!hidden lg:!flex" />
             </aside>
           )
         }
