@@ -381,8 +381,13 @@ export const Home = () => {
       isPriceMinMatching && isPriceMaxMatching && isAuctionTypeMatching &&
       isDriveTypeMatching && isBodyTypeMatching && isFuelTypeMatching;
   }).sort((a, b) => {
+    // Recommended cars ALWAYS float to top regardless of sort
+    const aRec = (a as any).isRecommended ? 1 : 0;
+    const bRec = (b as any).isRecommended ? 1 : 0;
+    if (aRec !== bRec) return bRec - aRec;
+
     if (sortBy === 'recommended') {
-      return ((b as any).isRecommended ? 1 : 0) - ((a as any).isRecommended ? 1 : 0);
+      return 0; // already sorted above
     } else if (sortBy === 'priced_to_sell') {
       const aPrice = a.buyItNow || a.currentBid || 0;
       const bPrice = b.buyItNow || b.currentBid || 0;

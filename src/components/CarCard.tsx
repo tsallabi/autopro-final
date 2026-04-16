@@ -57,7 +57,7 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
   return (
     <div
       onClick={() => onClick(car)}
-      className={`rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.1)] transition-all duration-500 cursor-pointer group flex flex-col hover:-translate-y-2 ${car.isRecommended ? 'bg-gradient-to-b from-amber-50 to-white border-2 border-amber-400 ring-2 ring-amber-300/30 shadow-amber-200/50' : 'bg-white border border-slate-100'}`}
+      className={`relative rounded-3xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.1)] transition-all duration-500 cursor-pointer group flex flex-col hover:-translate-y-2 ${car.isRecommended ? 'bg-gradient-to-b from-amber-50 to-white border-2 border-amber-400 ring-2 ring-amber-300/30 shadow-amber-200/50' : 'bg-white border border-slate-100'}`}
     >
       {/* Featured Badge */}
       {car.isRecommended && (
