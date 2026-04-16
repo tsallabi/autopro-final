@@ -1250,15 +1250,15 @@ export const Home = () => {
                           </div>
                           <div className="text-left">
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-                              {car.status === 'offer_market' ? t('home.carCard.lastOffer') : car.status === 'upcoming' ? t('home.carCard.startingPrice') : car.status === 'closed' ? t('home.carCard.finalSalePrice') : t('home.carCard.currentAuction')}
+                              {activeTab === 'buy_now' ? 'سعر الشراء الفوري' : car.status === 'offer_market' ? t('home.carCard.lastOffer') : car.status === 'upcoming' ? t('home.carCard.startingPrice') : car.status === 'closed' ? t('home.carCard.finalSalePrice') : t('home.carCard.currentAuction')}
                             </div>
-                            <div className={`text-2xl font-black font-mono mt-1 ${car.status === 'live' ? 'text-emerald-600' :
+                            <div className={`text-2xl font-black font-mono mt-1 ${activeTab === 'buy_now' ? 'text-orange-600' : car.status === 'live' ? 'text-emerald-600' :
                               car.status === 'offer_market' ? 'text-purple-600' :
                                 car.status === 'closed' ? 'text-slate-600' :
                                   'text-slate-900'
-                              }`}>${(car.currentBid || car.startingBid || 0).toLocaleString()}
+                              }`}>${(activeTab === 'buy_now' && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0)).toLocaleString()}
                               <div className="text-sm font-bold text-slate-400 font-mono mt-0.5">
-                                {Math.round((car.currentBid || car.startingBid || 0) * (exchangeRate || 7)).toLocaleString()} د.ل
+                                {Math.round((activeTab === 'buy_now' && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0)) * (exchangeRate || 7)).toLocaleString()} د.ل
                               </div>
                             </div>
                           </div>
@@ -1303,6 +1303,16 @@ export const Home = () => {
                             {t('home.carCard.details')}
                           </button>
 
+                          {/* ── Buy Now button (only in buy_now tab) ── */}
+                          {activeTab === 'buy_now' && (car as any).isBuyNow && car.buyItNow ? (
+                            <button
+                              onClick={() => navigate(`/car-details/${car.id}`)}
+                              className="flex-1 sm:w-44 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-black text-xs hover:from-orange-600 hover:to-amber-600 transition-all active:scale-95 shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2"
+                            >
+                              🛒 اشتري الآن — ${car.buyItNow.toLocaleString()}
+                            </button>
+                          ) : (
+                          <>
                           {/* ── Status-aware action button ── */}
                           {car.status === 'live' && (
                             <button
@@ -1348,6 +1358,8 @@ export const Home = () => {
                             >
                               {t('home.carCard.viewDetails')}
                             </button>
+                          )}
+                          </>
                           )}
                         </div>
                       </div>
