@@ -9,7 +9,7 @@ import {
   Calendar, Gauge, Info, Gavel, User, Menu, Settings,
   Car as CarIcon, Mail, Laptop, Truck, BookOpen,
   Calculator as CalcIcon, Wallet, LayoutDashboard, Plus, Handshake,
-  Droplets, Settings2, ShieldCheck, AlertTriangle, Star
+  Droplets, Settings2, ShieldCheck, AlertTriangle, Star, Volume2, VolumeX
 } from 'lucide-react';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
@@ -113,6 +113,42 @@ export const Home = () => {
   const [sortBy, setSortBy] = useState<'ending_soonest' | 'recommended' | 'priced_to_sell'>('ending_soonest');
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [displayCount, setDisplayCount] = useState(24);
+
+  // ── Engine Sound Player (global singleton) ──
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const [playingCarId, setPlayingCarId] = useState<string | null>(null);
+
+  const handleToggleSound = (e: React.MouseEvent, carId: string, audioUrl: string | null) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    // If same car is playing → stop
+    if (playingCarId === carId) {
+      audioPlayerRef.current?.pause();
+      setPlayingCarId(null);
+      return;
+    }
+
+    // No audio for this car
+    if (!audioUrl) return;
+
+    // Stop previous
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+    }
+
+    const audio = new Audio(audioUrl);
+    audio.onended = () => setPlayingCarId(null);
+    audio.play().then(() => {
+      audioPlayerRef.current = audio;
+      setPlayingCarId(carId);
+    }).catch(() => {});
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { audioPlayerRef.current?.pause(); };
+  }, []);
 
   // Reset pagination when filters/search change
   useEffect(() => {
@@ -1171,6 +1207,22 @@ export const Home = () => {
                           <Heart className={`w-5 h-5 ${watchlist.some((w: any) => w.carId === car.id) ? 'fill-current' : ''}`} />
                         </button>
                       </div>
+
+                      {/* 🔊 Engine Sound Button — bottom-left of image */}
+                      <button
+                        onClick={(e) => handleToggleSound(e, car.id, (car as any).engineAudioUrl || null)}
+                        title={playingCarId === car.id ? 'إيقاف صوت المحرك' : (car as any).engineAudioUrl ? 'تشغيل صوت المحرك' : 'لا يوجد ملف صوتي'}
+                        aria-label="صوت المحرك"
+                        className={`absolute bottom-4 left-4 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md ${
+                          playingCarId === car.id
+                            ? 'bg-orange-500 text-white shadow-orange-500/50 scale-110 ring-4 ring-orange-400/30 animate-pulse'
+                            : (car as any).engineAudioUrl
+                              ? 'bg-black/50 text-white hover:bg-orange-500 hover:text-white hover:shadow-orange-500/30 cursor-pointer'
+                              : 'bg-black/20 text-white/30 cursor-default'
+                        }`}
+                      >
+                        {playingCarId === car.id ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                      </button>
                     </div>
 
                     {/* Content Section */}

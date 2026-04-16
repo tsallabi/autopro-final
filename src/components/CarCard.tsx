@@ -196,21 +196,21 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
           #{car.lotNumber}
         </div>
 
-        {/* Engine Sound Button */}
-        {hasAudio && (
-          <button
-            onClick={handleToggleSound}
-            title={isPlaying ? 'إيقاف صوت المحرك' : 'تشغيل صوت المحرك'}
-            aria-label={isPlaying ? 'إيقاف صوت المحرك' : 'تشغيل صوت المحرك'}
-            className={`absolute bottom-3 right-3 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md ${
-              isPlaying
-                ? 'bg-orange-500 text-white shadow-orange-500/50 scale-110 animate-pulse'
-                : 'bg-black/50 text-white/90 hover:bg-orange-500 hover:text-white hover:shadow-orange-500/30'
-            }`}
-          >
-            {isPlaying ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-          </button>
-        )}
+        {/* Engine Sound Button — shows on ALL cars */}
+        <button
+          onClick={(e) => { e.stopPropagation(); if (hasAudio) handleToggleSound(e); }}
+          title={isPlaying ? 'إيقاف صوت المحرك' : hasAudio ? 'تشغيل صوت المحرك' : 'لا يوجد ملف صوتي'}
+          aria-label="صوت المحرك"
+          className={`absolute bottom-3 right-3 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md ${
+            isPlaying
+              ? 'bg-orange-500 text-white shadow-orange-500/50 scale-110 ring-4 ring-orange-400/30 animate-pulse'
+              : hasAudio
+                ? 'bg-black/50 text-white/90 hover:bg-orange-500 hover:text-white hover:shadow-orange-500/30 cursor-pointer'
+                : 'bg-black/20 text-white/30 cursor-default'
+          }`}
+        >
+          {isPlaying ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* Content */}
