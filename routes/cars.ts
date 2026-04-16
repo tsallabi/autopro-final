@@ -203,7 +203,7 @@ export function registerCarRoutes(ctx: AppContext) {
       actualOdometer, cylinders, auctionLane, showroomName, saleStatus,
       locationDetails, exchangeRate, minPrice, specialNote, buyNowPrice,
       acceptedOfferPercentage, youtubeVideoUrl, engineSoundUrl, inspectionReportUrl,
-      isRecommended
+      isRecommended, isBuyNow
     } = req.body;
 
     try {
@@ -220,7 +220,8 @@ export function registerCarRoutes(ctx: AppContext) {
           location = ?, primaryDamage = ?, secondaryDamage = ?, titleType = ?,
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
           drivetrain = ?, auctionEndDate = ?,
-          engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?, isRecommended = ?
+          engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?, isRecommended = ?,
+          isBuyNow = ?, buyItNow = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -246,6 +247,8 @@ export function registerCarRoutes(ctx: AppContext) {
         engineVideoUrl ?? youtubeVideoUrl ?? existing.engineVideoUrl ?? '',
         showroomName ?? existing.showroomName ?? '',
         isRecommended !== undefined ? (isRecommended ? 1 : 0) : existing.isRecommended ?? 0,
+        isBuyNow !== undefined ? (isBuyNow ? 1 : 0) : existing.isBuyNow ?? 0,
+        buyItNow ?? buyNowPrice ?? existing.buyItNow ?? null,
         id
       );
 

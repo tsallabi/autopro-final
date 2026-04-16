@@ -381,6 +381,7 @@ export const Home = () => {
     if (activeTab === 'watchlist') matchesTab = (watchlist || []).some((w: any) => w.carId === car.id);
     if (activeTab === 'upcoming') matchesTab = car.status === 'upcoming';
     if (activeTab === 'offer_market') matchesTab = car.status === 'offer_market';
+    if (activeTab === 'buy_now') matchesTab = !!(car as any).isBuyNow && car.buyItNow && car.buyItNow > 0 && car.status !== 'closed';
     if (activeTab === 'closed') matchesTab = car.status === 'closed';
 
     // Additional Brand Filter from URL or Advanced Filter Menu
@@ -1086,6 +1087,7 @@ export const Home = () => {
               { id: 'upcoming', label: t('home.tabs.upcoming'), count: (cars || []).filter(c => c.status === 'upcoming').length },
               { id: 'live', label: t('home.tabs.liveAuctions'), count: (cars || []).filter(c => c.status === 'live').length },
               { id: 'offer_market', label: t('home.tabs.offersMarket'), count: (cars || []).filter(c => c.status === 'offer_market').length },
+              { id: 'buy_now', label: 'اشتري الآن', count: (cars || []).filter(c => (c as any).isBuyNow && c.buyItNow && c.buyItNow > 0 && c.status !== 'closed').length },
               { id: 'closed', label: t('home.tabs.soldCars'), count: (cars || []).filter(c => c.status === 'closed').length },
               { id: 'watchlist', label: t('home.tabs.favorites'), count: (watchlist || []).length },
             ].map((tab) => (
