@@ -1688,20 +1688,34 @@ async function startServer() {
 
   const allowedOrigins = [
     SITE_URL,
+    'https://autopro.ac',
+    'https://www.autopro.ac',
+    'https://autopro-final.onrender.com',
     'http://localhost:3005',
     'http://localhost:5173',
     process.env.FRONTEND_URL,
   ].filter(Boolean) as string[];
 
+  // CORS origin checker — safe (never throws)
+  const corsOriginCheck = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow any autopro.ac subdomain
+    if (/^https?:\/\/(.*\.)?autopro\.ac$/i.test(origin)) return callback(null, true);
+    // Allow explicit list
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow localhost for dev
+    if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+    // Log and REJECT gracefully (don't throw — just deny origin header)
+    console.warn('[CORS] Blocked origin:', origin);
+    callback(null, false);
+  };
+
   const io = new Server(httpServer, {
     cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true }
   });
   app.use(cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, server-to-server)
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error('Not allowed by CORS'));
-    },
+    origin: corsOriginCheck,
     credentials: true,
   }));
   app.use(express.json({ limit: '10mb' }));
