@@ -1712,7 +1712,7 @@ async function startServer() {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     if (process.env.NODE_ENV === 'production') {
       res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://youtube.com; media-src 'self' blob:; frame-ancestors 'self';");
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://connect.facebook.net https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' wss: https: https://accounts.google.com https://graph.facebook.com; frame-src 'self' https://www.youtube.com https://youtube.com https://accounts.google.com https://www.facebook.com; media-src 'self' blob:; frame-ancestors 'self';");
     }
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     next();

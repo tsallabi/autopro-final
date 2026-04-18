@@ -5,11 +5,29 @@ import type { AppContext } from '../lib/types.ts';
 export function registerAnalyticsRoutes(ctx: AppContext) {
   const { app, db } = ctx;
 
+  // Ensure visitor_log table exists (idempotent)
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS visitor_log (
+      id TEXT PRIMARY KEY,
+      sessionId TEXT,
+      userId TEXT,
+      path TEXT,
+      referrer TEXT,
+      userAgent TEXT,
+      ipHash TEXT,
+      device TEXT,
+      browser TEXT,
+      os TEXT,
+      timestamp TEXT,
+      duration INTEGER DEFAULT 0
+    )`);
+  } catch {}
+
   // Public: track a page view
   app.post('/api/analytics/track', (req: any, res: any) => {
     try {
       const { sessionId, path, referrer, userAgent, duration } = req.body || {};
-      if (!sessionId || !path) return res.status(400).json({ error: 'Missing required fields' });
+      if (!sessionId || !path) return res.json({ success: true }); // fail silently
 
       const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || '';
       const ipHash = crypto.createHash('sha256').update(ip + 'autopro-salt').digest('hex').slice(0, 16);
@@ -42,7 +60,8 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
       res.json({ success: true });
     } catch (e: any) {
       console.error('[ANALYTICS]', e.message);
-      res.status(500).json({ error: e.message });
+      // Fail silently — analytics should never break the UX
+      res.json({ success: false });
     }
   });
 
