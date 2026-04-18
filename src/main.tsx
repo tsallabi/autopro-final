@@ -16,12 +16,38 @@ if (themeColorMeta) {
   document.head.appendChild(m);
 }
 
-/* ── Ensure Service Workers are Unregistered in Dev ── */
-if ('serviceWorker' in navigator) {
+/* ── Service Worker: register in production only ── */
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  // Register service worker for PWA functionality
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then((registration) => {
+        console.log('[SW] Registered:', registration.scope);
+
+        // Check for updates once per hour (not on every load)
+        setInterval(() => registration.update(), 60 * 60 * 1000);
+
+        // When a new SW is installed, tell it to take over — but DON'T reload automatically
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[SW] New version available — will activate on next visit');
+                // Optional: show user a notification to reload manually
+              }
+            });
+          }
+        });
+      })
+      .catch((err) => console.error('[SW] Registration failed:', err));
+  });
+} else if ('serviceWorker' in navigator) {
+  // In development, unregister any stale service workers
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     for (let registration of registrations) {
       registration.unregister();
-      console.log('[SW] Unregistered:', registration.scope);
+      console.log('[SW] Unregistered (dev):', registration.scope);
     }
   });
 }

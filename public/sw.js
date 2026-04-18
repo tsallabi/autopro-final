@@ -2,7 +2,7 @@
    AutoPro Libya — Service Worker (PWA)
    Strategy: Network-first for API, Cache-first for static assets
    ============================================================ */
-const CACHE_VERSION = 'v4-push';
+const CACHE_VERSION = 'v5-stable';
 const STATIC_CACHE = `autopro-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `autopro-runtime-${CACHE_VERSION}`;
 const OFFLINE_PAGE = '/offline.html';
