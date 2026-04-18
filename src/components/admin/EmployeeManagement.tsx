@@ -534,7 +534,7 @@ export const EmployeeManagementPanel: React.FC = () => {
                     {emp.avatar ? (
                       <img src={emp.avatar} alt="" className="w-full h-full rounded-full object-cover" />
                     ) : (
-                      emp.name.charAt(0)
+                      (emp.name || emp.email || '?').charAt(0).toUpperCase()
                     )}
                   </div>
                   {emp.isOnline && (

@@ -1028,4 +1028,85 @@ export function registerAccountingRoutes(ctx: AppContext) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // ───────── Dashboard helper endpoints ─────────
+
+  // GET /api/accounting/reports/cash-balance
+  app.get('/api/accounting/reports/cash-balance', requireAccountant, (_req: any, res: any) => {
+    try {
+      // Sum of Cash/Bank account balances (assets)
+      const row: any = db.prepare(`
+        SELECT COALESCE(SUM(
+          CASE WHEN a.normalBalance = 'debit'
+               THEN (a.openingBalance + IFNULL((SELECT SUM(debit - credit) FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE jl.accountCode = a.code AND je.status = 'posted'), 0))
+               ELSE (a.openingBalance + IFNULL((SELECT SUM(credit - debit) FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE jl.accountCode = a.code AND je.status = 'posted'), 0))
+          END
+        ), 0) as balance
+        FROM coa_accounts a
+        WHERE a.type = 'asset' AND (a.code LIKE '101%' OR a.code LIKE '102%' OR a.name LIKE '%Cash%' OR a.name LIKE '%Bank%' OR a.nameAr LIKE '%نقد%' OR a.nameAr LIKE '%بنك%')
+      `).get();
+      res.json({ balance: row?.balance || 0, cashBalance: row?.balance || 0 });
+    } catch (err: any) {
+      // Gracefully return zero instead of 500 if schema differs
+      res.json({ balance: 0, cashBalance: 0, error: err.message });
+    }
+  });
+
+  // GET /api/accounting/journal-entries?limit=10
+  app.get('/api/accounting/journal-entries', requireAccountant, (req: any, res: any) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 50, 500);
+      let rows: any[] = [];
+      try {
+        rows = db.prepare(`SELECT * FROM journal_entries ORDER BY date DESC, id DESC LIMIT ?`).all(limit) as any[];
+      } catch {
+        rows = [];
+      }
+      res.json(rows);
+    } catch (err: any) {
+      res.json([]);
+    }
+  });
+
+  // GET /api/accounting/reports/monthly-pl?months=6
+  app.get('/api/accounting/reports/monthly-pl', requireAccountant, (req: any, res: any) => {
+    try {
+      const months = Math.min(Number(req.query.months) || 6, 24);
+      const result: Array<{ month: string; revenue: number; expenses: number; netProfit: number }> = [];
+      const now = new Date();
+      for (let i = months - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+
+        let revenue = 0, expenses = 0;
+        try {
+          const revRow: any = db.prepare(`
+            SELECT COALESCE(SUM(jl.credit - jl.debit), 0) as total
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.entryId = je.id
+            JOIN coa_accounts a ON jl.accountCode = a.code
+            WHERE a.type = 'revenue' AND je.status = 'posted'
+              AND je.date >= ? AND je.date < ?
+          `).get(d.toISOString(), nextMonth.toISOString());
+          revenue = revRow?.total || 0;
+
+          const expRow: any = db.prepare(`
+            SELECT COALESCE(SUM(jl.debit - jl.credit), 0) as total
+            FROM journal_lines jl
+            JOIN journal_entries je ON jl.entryId = je.id
+            JOIN coa_accounts a ON jl.accountCode = a.code
+            WHERE a.type = 'expense' AND je.status = 'posted'
+              AND je.date >= ? AND je.date < ?
+          `).get(d.toISOString(), nextMonth.toISOString());
+          expenses = expRow?.total || 0;
+        } catch {}
+
+        result.push({ month: monthKey, revenue, expenses, netProfit: revenue - expenses });
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.json([]);
+    }
+  });
 }

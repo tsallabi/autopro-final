@@ -49,26 +49,34 @@ export const AccountingDashboard: React.FC<Props> = ({ onNavigate }) => {
         authFetch('/api/accounting/reports/monthly-pl?months=6').catch(() => null),
       ]);
 
-      if (incomeRes?.ok) {
-        const data = await incomeRes.json();
+      // Helper: safely parse JSON only if the response is actually JSON
+      const safeJson = async (res: Response | null) => {
+        if (!res?.ok) return null;
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) return null;
+        try { return await res.json(); } catch { return null; }
+      };
+
+      const incomeData = await safeJson(incomeRes);
+      if (incomeData) {
         setKpis(prev => ({
           ...prev,
-          revenue: data.revenue || data.totalRevenue || 0,
-          expenses: data.expenses || data.totalExpenses || 0,
-          netProfit: data.netProfit ?? ((data.revenue || 0) - (data.expenses || 0)),
+          revenue: incomeData.revenue || incomeData.totalRevenue || 0,
+          expenses: incomeData.expenses || incomeData.totalExpenses || 0,
+          netProfit: incomeData.netProfit ?? ((incomeData.revenue || 0) - (incomeData.expenses || 0)),
         }));
       }
-      if (cashRes?.ok) {
-        const data = await cashRes.json();
-        setKpis(prev => ({ ...prev, cashBalance: data.balance || data.cashBalance || 0 }));
+      const cashData = await safeJson(cashRes);
+      if (cashData) {
+        setKpis(prev => ({ ...prev, cashBalance: cashData.balance || cashData.cashBalance || 0 }));
       }
-      if (entriesRes?.ok) {
-        const data = await entriesRes.json();
-        setRecentEntries(Array.isArray(data) ? data.slice(0, 10) : (data.entries || []).slice(0, 10));
+      const entriesData = await safeJson(entriesRes);
+      if (entriesData) {
+        setRecentEntries(Array.isArray(entriesData) ? entriesData.slice(0, 10) : (entriesData.entries || []).slice(0, 10));
       }
-      if (monthlyRes?.ok) {
-        const data = await monthlyRes.json();
-        setMonthlyPL(Array.isArray(data) ? data : (data.months || []));
+      const monthlyData = await safeJson(monthlyRes);
+      if (monthlyData) {
+        setMonthlyPL(Array.isArray(monthlyData) ? monthlyData : (monthlyData.months || []));
       }
     } catch (e: any) {
       showAlert(e?.message || 'فشل تحميل البيانات المحاسبية', 'error');
