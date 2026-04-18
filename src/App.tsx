@@ -93,6 +93,7 @@ function AppContent() {
             <Route path="careers" element={<CareersPage />} />
             <Route path="terms" element={<TermsPage />} />
             <Route path="privacy" element={<PrivacyPage />} />
+            <Route path="data-deletion" element={<Navigate to="/privacy#data-deletion" replace />} />
             <Route path="refund" element={<RefundPage />} />
             <Route path="deposit" element={<DepositPage />} />
             <Route path="dealer-packages" element={<DealerPackagesPage />} />
