@@ -1031,24 +1031,35 @@ export function registerAccountingRoutes(ctx: AppContext) {
 
   // ───────── Dashboard helper endpoints ─────────
 
+  // GET /api/accounting/accounts — chart of accounts (for the admin tree view)
+  app.get('/api/accounting/accounts', requireAccountant, (_req: any, res: any) => {
+    try {
+      const rows = db.prepare(`
+        SELECT code, nameAr, nameEn, type, subType, normalBalance, balance, isActive, createdAt
+        FROM coa_accounts
+        WHERE isActive = 1
+        ORDER BY code ASC
+      `).all();
+      res.json(rows);
+    } catch (err: any) {
+      res.json([]);
+    }
+  });
+
   // GET /api/accounting/reports/cash-balance
   app.get('/api/accounting/reports/cash-balance', requireAccountant, (_req: any, res: any) => {
     try {
-      // Sum of Cash/Bank account balances (assets)
+      // Sum of Cash/Bank account balances (use `balance` column directly, maintained by lib/accounting.ts)
       const row: any = db.prepare(`
-        SELECT COALESCE(SUM(
-          CASE WHEN a.normalBalance = 'debit'
-               THEN (a.openingBalance + IFNULL((SELECT SUM(debit - credit) FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE jl.accountCode = a.code AND je.status = 'posted'), 0))
-               ELSE (a.openingBalance + IFNULL((SELECT SUM(credit - debit) FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE jl.accountCode = a.code AND je.status = 'posted'), 0))
-          END
-        ), 0) as balance
-        FROM coa_accounts a
-        WHERE a.type = 'asset' AND (a.code LIKE '101%' OR a.code LIKE '102%' OR a.name LIKE '%Cash%' OR a.name LIKE '%Bank%' OR a.nameAr LIKE '%نقد%' OR a.nameAr LIKE '%بنك%')
+        SELECT COALESCE(SUM(balance), 0) as balance
+        FROM coa_accounts
+        WHERE type = 'asset'
+          AND isActive = 1
+          AND (code LIKE '101%' OR code LIKE '102%' OR nameEn LIKE '%Cash%' OR nameEn LIKE '%Bank%' OR nameAr LIKE '%نقد%' OR nameAr LIKE '%بنك%')
       `).get();
       res.json({ balance: row?.balance || 0, cashBalance: row?.balance || 0 });
     } catch (err: any) {
-      // Gracefully return zero instead of 500 if schema differs
-      res.json({ balance: 0, cashBalance: 0, error: err.message });
+      res.json({ balance: 0, cashBalance: 0 });
     }
   });
 
@@ -1056,12 +1067,12 @@ export function registerAccountingRoutes(ctx: AppContext) {
   app.get('/api/accounting/journal-entries', requireAccountant, (req: any, res: any) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 50, 500);
-      let rows: any[] = [];
-      try {
-        rows = db.prepare(`SELECT * FROM journal_entries ORDER BY date DESC, id DESC LIMIT ?`).all(limit) as any[];
-      } catch {
-        rows = [];
-      }
+      const rows = db.prepare(`
+        SELECT id, entryNumber, description, referenceType, referenceId, createdBy,
+               date, totalDebit, totalCredit, createdAt
+        FROM coa_journal_entries
+        ORDER BY date DESC, id DESC LIMIT ?
+      `).all(limit);
       res.json(rows);
     } catch (err: any) {
       res.json([]);
@@ -1083,20 +1094,20 @@ export function registerAccountingRoutes(ctx: AppContext) {
         try {
           const revRow: any = db.prepare(`
             SELECT COALESCE(SUM(jl.credit - jl.debit), 0) as total
-            FROM journal_lines jl
-            JOIN journal_entries je ON jl.entryId = je.id
+            FROM coa_journal_lines jl
+            JOIN coa_journal_entries je ON jl.entryId = je.id
             JOIN coa_accounts a ON jl.accountCode = a.code
-            WHERE a.type = 'revenue' AND je.status = 'posted'
+            WHERE a.type = 'revenue'
               AND je.date >= ? AND je.date < ?
           `).get(d.toISOString(), nextMonth.toISOString());
           revenue = revRow?.total || 0;
 
           const expRow: any = db.prepare(`
             SELECT COALESCE(SUM(jl.debit - jl.credit), 0) as total
-            FROM journal_lines jl
-            JOIN journal_entries je ON jl.entryId = je.id
+            FROM coa_journal_lines jl
+            JOIN coa_journal_entries je ON jl.entryId = je.id
             JOIN coa_accounts a ON jl.accountCode = a.code
-            WHERE a.type = 'expense' AND je.status = 'posted'
+            WHERE a.type = 'expense'
               AND je.date >= ? AND je.date < ?
           `).get(d.toISOString(), nextMonth.toISOString());
           expenses = expRow?.total || 0;
