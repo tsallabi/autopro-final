@@ -18,6 +18,12 @@ declare global {
         };
       };
     };
+    FB?: {
+      init: (config: any) => void;
+      login: (cb: (resp: any) => void, opts?: any) => void;
+      api: (path: string, params: any, cb: (resp: any) => void) => void;
+    };
+    fbAsyncInit?: () => void;
   }
 }
 
@@ -87,6 +93,58 @@ export const AuthPage = () => {
         initGoogle(GOOGLE_CLIENT_ID);
       }
     }, []);
+
+    // Load Facebook SDK
+    useEffect(() => {
+      const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID;
+      if (!FB_APP_ID) return;
+      if (document.getElementById('fb-sdk-script')) return;
+      window.fbAsyncInit = function () {
+        window.FB?.init({ appId: FB_APP_ID, cookie: true, xfbml: false, version: 'v19.0' });
+      };
+      const s = document.createElement('script');
+      s.id = 'fb-sdk-script';
+      s.async = true;
+      s.defer = true;
+      s.crossOrigin = 'anonymous';
+      s.src = 'https://connect.facebook.net/en_US/sdk.js';
+      document.head.appendChild(s);
+    }, []);
+
+    const handleFacebookLogin = () => {
+      const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID;
+      if (!FB_APP_ID || !window.FB) {
+        setError('تسجيل الدخول بـ Facebook غير مفعّل حالياً — يرجى استخدام Google أو البريد الإلكتروني.');
+        return;
+      }
+      window.FB.login(async (response: any) => {
+        if (response.authResponse) {
+          const { accessToken, userID } = response.authResponse;
+          setLoading(true);
+          try {
+            const res = await fetch('/api/auth/facebook', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ accessToken, userID }),
+            });
+            const data = await res.json();
+            if (res.ok && data.token) {
+              localStorage.setItem('autopro_token', data.token);
+              localStorage.setItem('autopro_currentUser', JSON.stringify(data));
+              window.location.href = '/marketplace';
+            } else {
+              setError(data.error || 'فشل تسجيل الدخول بـ Facebook');
+            }
+          } catch (err: any) {
+            setError(err?.message || 'خطأ في الاتصال');
+          } finally {
+            setLoading(false);
+          }
+        } else {
+          setError('تم إلغاء تسجيل الدخول بـ Facebook');
+        }
+      }, { scope: 'public_profile,email' });
+    };
 
     const initGoogle = (clientId: string) => {
       if (!window.google) return;
@@ -655,7 +713,7 @@ export const AuthPage = () => {
                             type="button"
                             title="استمر مع Facebook"
                             aria-label="استمر مع Facebook"
-                            onClick={() => setError('تسجيل الدخول بـ Facebook قريباً — استخدم Google أو البريد الإلكتروني حالياً.')}
+                            onClick={handleFacebookLogin}
                             className="flex items-center justify-center gap-2 py-3.5 border-2 border-slate-100 rounded-2xl hover:bg-blue-50 hover:border-blue-200 transition-all text-sm font-black text-slate-600"
                         >
                             <svg className="w-5 h-5" fill="#1877F2" viewBox="0 0 24 24">

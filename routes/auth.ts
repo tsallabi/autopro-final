@@ -278,6 +278,98 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // ─── Facebook OAuth ─────────────────────────────────────────────────────────
+  app.post("/api/auth/facebook", async (req, res) => {
+    const { accessToken, userID } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'accessToken مطلوب' });
+    try {
+      const FB_APP_ID = process.env.FACEBOOK_APP_ID;
+      const FB_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
+      if (!FB_APP_ID || !FB_APP_SECRET) {
+        return res.status(500).json({ error: 'Facebook OAuth غير مُفعّل على الخادم — يرجى إضافة FACEBOOK_APP_ID و FACEBOOK_APP_SECRET' });
+      }
+
+      // 1) Verify the token with Facebook
+      const verifyUrl = `https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${FB_APP_ID}|${FB_APP_SECRET}`;
+      const verifyRes = await fetch(verifyUrl);
+      const verifyData: any = await verifyRes.json();
+      if (!verifyData?.data?.is_valid || verifyData?.data?.app_id !== FB_APP_ID) {
+        return res.status(401).json({ error: 'Facebook token غير صالح' });
+      }
+
+      // 2) Fetch user profile
+      const profileRes = await fetch(`https://graph.facebook.com/me?fields=id,name,first_name,last_name,email,picture.type(large)&access_token=${accessToken}`);
+      const profile: any = await profileRes.json();
+      if (!profile?.id) return res.status(401).json({ error: 'فشل جلب ملف Facebook' });
+
+      const fbId = profile.id;
+      const email = profile.email || `fb_${fbId}@facebook.autopro.ac`; // Facebook may omit email
+      const firstName = profile.first_name || profile.name?.split(' ')[0] || 'Facebook';
+      const lastName = profile.last_name || profile.name?.split(' ').slice(1).join(' ') || 'User';
+      const picture = profile.picture?.data?.url || null;
+
+      // 3) Find or create user
+      let user: any = db.prepare("SELECT * FROM users WHERE facebookId = ? OR email = ?").get(fbId, email);
+
+      if (user) {
+        if (!user.facebookId) {
+          try {
+            db.prepare("UPDATE users SET facebookId = ?, profilePic = COALESCE(profilePic, ?) WHERE id = ?")
+              .run(fbId, picture, user.id);
+          } catch (e: any) {
+            // Column may not exist yet — best-effort
+            console.log('[FB AUTH] facebookId column missing, run migration');
+          }
+        }
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+      } else {
+        const id = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const joinDate = new Date().toISOString();
+        const buyingPower = 0;
+        const role = 'buyer';
+        const status = 'active';
+        try {
+          db.prepare(`
+            INSERT INTO users(id, firstName, lastName, email, role, status, facebookId, profilePic,
+                              joinDate, buyingPower, isEmailVerified, password, country, phone)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '', 'ليبيا', '')
+          `).run(id, firstName, lastName, email, role, status, fbId, picture, joinDate, buyingPower);
+        } catch (e: any) {
+          // Fallback: insert without facebookId if column missing
+          db.prepare(`
+            INSERT INTO users(id, firstName, lastName, email, role, status, profilePic,
+                              joinDate, buyingPower, isEmailVerified, password, country, phone)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '', 'ليبيا', '')
+          `).run(id, firstName, lastName, email, role, status, picture, joinDate, buyingPower);
+        }
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      }
+
+      const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role, yardRole: (user as any).yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
+      res.json({ ...user, token: authToken });
+    } catch (err: any) {
+      console.error('[FACEBOOK AUTH ERROR]', err?.message);
+      res.status(401).json({ error: 'فشل التحقق من حساب Facebook: ' + (err?.message || 'خطأ غير معروف') });
+    }
+  });
+
+  // ─── Facebook Data Deletion Callback ────────────────────────────────────────
+  // Required by Facebook — returns a JSON with confirmation URL
+  app.post("/api/auth/facebook/data-deletion", async (req, res) => {
+    try {
+      const { signed_request } = req.body;
+      const confirmationCode = `del-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      // Log the deletion request — actual deletion happens asynchronously via privacy@autopro.ac
+      console.log('[FB DATA DELETION]', { signed_request: signed_request?.substring(0, 20) + '...', code: confirmationCode });
+      res.json({
+        url: `https://autopro.ac/privacy#data-deletion`,
+        confirmation_code: confirmationCode,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message });
+    }
+  });
+
   // ─── Login ──────────────────────────────────────────────────────────────────
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;

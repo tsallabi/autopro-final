@@ -1210,6 +1210,9 @@ if (bannerCount.cnt === 0) {
 // User package columns
 try { db.exec("ALTER TABLE users ADD COLUMN packageId TEXT DEFAULT 'basic'"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN packageExpiresAt TEXT"); } catch (_) { }
+// OAuth columns (idempotent)
+try { db.exec("ALTER TABLE users ADD COLUMN googleId TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN facebookId TEXT"); } catch (_) { }
 
 // Ensure cars has createdAt for new-car filtering used by saved search alerts
 try { db.exec("ALTER TABLE cars ADD COLUMN createdAt TEXT"); } catch (_) { }
