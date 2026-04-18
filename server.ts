@@ -7663,6 +7663,155 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // ==========================================
+  // ADDED ENDPOINTS (missing backend routes for frontend)
+  // ==========================================
+
+  // 1) GET /api/admin/all-invoices — alias returning all invoices
+  app.get("/api/admin/all-invoices", requireAdmin, (_req, res) => {
+    try {
+      const rows = db.prepare(`
+        SELECT i.*, u.firstName as buyerFirstName, u.lastName as buyerLastName, u.phone as buyerPhone,
+               c.make, c.model, c.year, c.lotNumber, c.vin
+        FROM invoices i
+        LEFT JOIN users u ON i.userId = u.id
+        LEFT JOIN cars c ON i.carId = c.id
+        ORDER BY i.timestamp DESC
+      `).all();
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Failed to fetch invoices" });
+    }
+  });
+
+  // 2) POST /api/auth/oauth — wrapper that dispatches to provider-specific handler
+  app.post("/api/auth/oauth", async (req, res, next) => {
+    const { provider } = req.body || {};
+    if (provider === 'google') {
+      // Delegate to existing /api/auth/google handler by re-dispatching the request
+      (req as any).url = '/api/auth/google';
+      return (app as any)._router.handle(req, res, next);
+    }
+    if (provider === 'facebook') {
+      return res.status(501).json({ error: 'تسجيل الدخول عبر Facebook غير مُفعّل حالياً' });
+    }
+    return res.status(400).json({ error: 'provider غير مدعوم' });
+  });
+
+  // 3) POST /api/bids/proxy — set/update proxy max for a user's bid on a car
+  // Ensure proxyMax column exists on bids
+  try { db.prepare("ALTER TABLE bids ADD COLUMN proxyMax REAL").run(); } catch (_) { /* exists */ }
+  try { db.prepare("ALTER TABLE bids ADD COLUMN updatedAt TEXT").run(); } catch (_) { /* exists */ }
+  try { db.prepare("ALTER TABLE bids ADD COLUMN status TEXT").run(); } catch (_) { /* exists */ }
+  app.post("/api/bids/proxy", requireAuth, (req, res) => {
+    const { carId, maxAmount } = req.body || {};
+    const userId = (req as any).user?.id;
+    if (!carId || !maxAmount) return res.status(400).json({ error: 'carId and maxAmount required' });
+    try {
+      const now = new Date().toISOString();
+      const existing: any = db.prepare('SELECT id FROM bids WHERE carId = ? AND userId = ? ORDER BY timestamp DESC LIMIT 1').get(carId, userId);
+      if (existing) {
+        db.prepare('UPDATE bids SET proxyMax = ?, updatedAt = ? WHERE id = ?').run(Number(maxAmount), now, existing.id);
+      } else {
+        const id = `bid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const car: any = db.prepare('SELECT currentBid, startingBid FROM cars WHERE id = ?').get(carId);
+        const amount = car?.currentBid || car?.startingBid || 0;
+        db.prepare('INSERT INTO bids (id, carId, userId, amount, proxyMax, timestamp, type) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(id, carId, userId, amount, Number(maxAmount), now, 'proxy');
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to set proxy bid' });
+    }
+  });
+
+  // 4) PATCH /api/admin/invoices/:id/status — update invoice status
+  app.patch("/api/admin/invoices/:id/status", requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body || {};
+    if (!status) return res.status(400).json({ error: 'status required' });
+    try {
+      try { db.prepare("ALTER TABLE invoices ADD COLUMN updatedAt TEXT").run(); } catch (_) { /* exists */ }
+      db.prepare('UPDATE invoices SET status = ?, updatedAt = ? WHERE id = ?')
+        .run(status, new Date().toISOString(), id);
+      res.json({ success: true, id, status });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to update invoice status' });
+    }
+  });
+
+  // 5) POST /api/admin/users/:userId/kyc — unified KYC approve/reject alias
+  app.post("/api/admin/users/:userId/kyc", requireAdmin, (req, res) => {
+    const { userId } = req.params;
+    const { action, notes } = req.body || {};
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({ error: "action must be 'approve' or 'reject'" });
+    }
+    try {
+      const now = new Date().toISOString();
+      if (action === 'approve') {
+        db.prepare("UPDATE users SET kycStatus = 'approved' WHERE id = ?").run(userId);
+        db.prepare("UPDATE kyc_documents SET status = 'approved', reviewedAt = ?, reviewNote = ? WHERE userId = ? AND status = 'pending'")
+          .run(now, notes || '', userId);
+        try { sendNotification(userId, '✅ تم توثيق حسابك (KYC)', 'تمت مراجعة وثائقك وتوثيق حسابك.', 'success'); } catch (_) {}
+      } else {
+        db.prepare("UPDATE users SET kycStatus = 'rejected' WHERE id = ?").run(userId);
+        db.prepare("UPDATE kyc_documents SET status = 'rejected', reviewedAt = ?, reviewNote = ? WHERE userId = ? AND status = 'pending'")
+          .run(now, notes || '', userId);
+        try { sendNotification(userId, '❌ تم رفض وثائق التوثيق', `السبب: ${notes || 'غير محدد'}`, 'alert'); } catch (_) {}
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'KYC action failed' });
+    }
+  });
+
+  // 6) POST /api/bids/:bidId/reject-counter — mark bid as rejected_counter
+  app.post("/api/bids/:bidId/reject-counter", requireAuth, (req, res) => {
+    const { bidId } = req.params;
+    try {
+      db.prepare('UPDATE bids SET status = ?, updatedAt = ? WHERE id = ?')
+        .run('rejected_counter', new Date().toISOString(), bidId);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to reject counter' });
+    }
+  });
+
+  // 7) POST /api/user/invoices/:id/confirm-delivery — buyer confirms delivery
+  app.post("/api/user/invoices/:id/confirm-delivery", requireAuth, (req, res) => {
+    const { id } = req.params;
+    try {
+      try { db.prepare("ALTER TABLE invoices ADD COLUMN deliveredAt TEXT").run(); } catch (_) { /* exists */ }
+      db.prepare('UPDATE invoices SET status = ?, deliveredAt = ? WHERE id = ?')
+        .run('delivered_to_buyer', new Date().toISOString(), id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to confirm delivery' });
+    }
+  });
+
+  // 8) POST /api/admin/manual-topup — admin manually credits a user's wallet
+  app.post("/api/admin/manual-topup", requireAdmin, (req, res) => {
+    const { userId, amount, description } = req.body || {};
+    if (!userId || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'userId and positive amount required' });
+    }
+    try {
+      try { db.prepare("ALTER TABLE users ADD COLUMN walletBalance REAL DEFAULT 0").run(); } catch (_) { /* exists */ }
+      db.prepare('UPDATE users SET walletBalance = COALESCE(walletBalance, 0) + ? WHERE id = ?')
+        .run(Number(amount), userId);
+      const txId = `wtx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      try {
+        db.prepare('INSERT INTO wallet_transactions (id, userId, type, amount, description, createdAt) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(txId, userId, 'credit', Number(amount), description || 'Manual admin top-up', new Date().toISOString());
+      } catch (_) { /* table may not exist; non-fatal */ }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Manual top-up failed' });
+    }
+  });
+
   // Detect production: NODE_ENV=production OR RENDER env var OR dist folder exists
   const distPath = path.join(__dirname, "dist");
   const isProduction = process.env.NODE_ENV === "production"
