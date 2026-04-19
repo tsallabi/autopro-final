@@ -539,7 +539,7 @@ db.exec(`
 
   -- Insert default admin if not exists (INSERT OR IGNORE so we never overwrite an already-hashed password)
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit)
-  VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.com', '01000000000', '$2b$10$DUniry6Q1H0Xfo//1rktVej.yWj0SV/9a.lwv0sOGfolOLJENZcQu', 'admin', 'active', '2024-01-01', 1000000, 100000);
+  VALUES ('admin-1', 'المدير', 'العام', 'admin@autopro.ac', '01000000000', '$2b$10$DUniry6Q1H0Xfo//1rktVej.yWj0SV/9a.lwv0sOGfolOLJENZcQu', 'admin', 'active', '2024-01-01', 1000000, 100000);
 
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
   VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', '$2b$10$eOo5.7Svq0keYdQgb7ruPOdkYh4ks9uhAXQxi.hQKRXXFiglZGyEq', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
@@ -1215,6 +1215,15 @@ try { db.exec("ALTER TABLE users ADD COLUMN googleId TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN facebookId TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN profilePic TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN isEmailVerified INTEGER DEFAULT 0"); } catch (_) { }
+
+// One-time migration: update admin email to real domain + mark as verified
+try {
+  db.prepare("UPDATE users SET email = 'admin@autopro.ac', isEmailVerified = 1 WHERE id = 'admin-1' AND email = 'admin@autopro.com'").run();
+  db.prepare("UPDATE users SET isEmailVerified = 1 WHERE role = 'admin'").run();
+  console.log('[BOOT] Admin email normalized to admin@autopro.ac + verified');
+} catch (err: any) {
+  console.log('[BOOT] Admin email migration skipped:', err?.message);
+}
 
 // Ensure cars has createdAt for new-car filtering used by saved search alerts
 try { db.exec("ALTER TABLE cars ADD COLUMN createdAt TEXT"); } catch (_) { }
