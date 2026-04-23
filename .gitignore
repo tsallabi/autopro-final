@@ -1,9 +1,68 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 build/
 dist/
 coverage/
+server.mjs
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Logs
 *.log
+logs/
+
+# Environment
 .env*
 !.env.example
-server.mjs
+
+# ═══════════════════════════════════════════════════
+# 🔐 CRITICAL: NEVER commit these to git
+# These files live on the server and must persist
+# across deployments — they are NOT part of the code
+# ═══════════════════════════════════════════════════
+
+# Database files (SQLite)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+auction.db
+auction.db-journal
+auction.db-wal
+auction.db-shm
+
+# User uploaded files — stay on server only
+uploads/
+!uploads/.gitkeep
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# Cache
+.cache/
+.vite/
+.next/
+
+# IDE
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+
+# Testing artifacts
+playwright-report/
+test-results/
+*.lcov
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Claude worktrees (local only)
+.claude/worktrees/
