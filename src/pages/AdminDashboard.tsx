@@ -4285,6 +4285,135 @@ export const AdminDashboard = () => {
             <BannersManager />
           </div>
         );
+      case 'exchange_rate': {
+        const ExchangeRatePanel = () => {
+          const [newRate, setNewRate] = React.useState(exchangeRate?.toString() || '7');
+          const [saving, setSaving] = React.useState(false);
+          const [lastUpdate, setLastUpdate] = React.useState<string>('');
+
+          React.useEffect(() => {
+            setNewRate(exchangeRate?.toString() || '7');
+          }, [exchangeRate]);
+
+          const handleSave = async () => {
+            const rate = parseFloat(newRate);
+            if (!rate || rate <= 0 || rate > 100) {
+              showAlert('سعر الصرف يجب أن يكون رقماً موجباً أقل من 100', 'error');
+              return;
+            }
+            setSaving(true);
+            const ok = await updateExchangeRate(rate);
+            setSaving(false);
+            if (ok) {
+              setLastUpdate(new Date().toLocaleString('ar-LY'));
+              showAlert(`✅ تم تحديث سعر الصرف إلى ${rate} د.ل / 1 USD`, 'success');
+            } else {
+              showAlert('فشل تحديث سعر الصرف — يرجى المحاولة مرة أخرى', 'error');
+            }
+          };
+
+          return (
+            <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
+                  <DollarSign className="w-7 h-7 text-emerald-400" />
+                  سعر الصرف USD → LYD
+                </h2>
+              </div>
+
+              <div className="bg-gradient-to-br from-emerald-900/40 via-green-900/30 to-emerald-900/40 rounded-2xl border-2 border-emerald-500/30 p-6 shadow-xl">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-emerald-300 text-sm font-bold">السعر الحالي المعتمد في كامل المنصة</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-700">
+                    <div className="text-xs text-slate-400 font-bold mb-2">السعر الحالي</div>
+                    <div className="text-3xl font-black text-emerald-400 font-mono">
+                      {exchangeRate || 7} <span className="text-sm text-slate-400">د.ل</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">لكل 1 USD</div>
+                  </div>
+                  <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-700">
+                    <div className="text-xs text-slate-400 font-bold mb-2">مثال: 10,000$</div>
+                    <div className="text-3xl font-black text-amber-400 font-mono">
+                      {((10000) * (exchangeRate || 7)).toLocaleString('en-US')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">د.ل</div>
+                  </div>
+                  <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-700">
+                    <div className="text-xs text-slate-400 font-bold mb-2">مثال: 50,000$</div>
+                    <div className="text-3xl font-black text-orange-400 font-mono">
+                      {((50000) * (exchangeRate || 7)).toLocaleString('en-US')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">د.ل</div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/80 rounded-xl p-5 border border-amber-500/40">
+                  <label className="block text-sm font-black text-amber-300 mb-2">
+                    💡 تغيير سعر الصرف الجديد
+                  </label>
+                  <div className="flex gap-3 items-stretch">
+                    <div className="flex-1 relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.1"
+                        max="100"
+                        value={newRate}
+                        onChange={(e) => setNewRate(e.target.value)}
+                        placeholder="مثال: 7.25"
+                        className="w-full px-4 py-3 rounded-xl bg-slate-950 border-2 border-slate-700 focus:border-emerald-500 text-white text-xl font-black font-mono text-left tracking-wider outline-none transition-all"
+                        dir="ltr"
+                      />
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-bold pointer-events-none">د.ل / USD</span>
+                    </div>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !newRate}
+                      className="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-black text-sm hover:from-emerald-600 hover:to-green-700 transition-all active:scale-95 shadow-xl shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {saving ? '⏳ جاري الحفظ...' : '💾 حفظ السعر الجديد'}
+                    </button>
+                  </div>
+                  {lastUpdate && (
+                    <div className="mt-3 text-xs text-emerald-300 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      آخر تحديث: {lastUpdate}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="text-blue-400 text-xl">ℹ️</div>
+                    <div className="text-slate-300 text-sm leading-relaxed">
+                      <strong className="text-blue-300 block mb-1">ملاحظة مهمة:</strong>
+                      يُستخدم هذا السعر في:
+                      <ul className="mt-2 space-y-1 text-xs text-slate-400 list-disc list-inside">
+                        <li>حاسبة التكلفة الكاملة (الشحن + الجمارك + التأمين)</li>
+                        <li>عرض الأسعار بالدينار الليبي في جميع صفحات السيارات</li>
+                        <li>فواتير الشراء والدفعات</li>
+                        <li>حسابات المحفظة والعمولات</li>
+                      </ul>
+                      <div className="mt-2 text-amber-300 font-bold">
+                        ⚠️ يُنصح بتحديث السعر يومياً لمواكبة السوق
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+        return (
+          <div className="p-6 md:p-8">
+            <ExchangeRatePanel />
+          </div>
+        );
+      }
       case 'calculator':
 
         return (
@@ -7251,6 +7380,7 @@ export const AdminDashboard = () => {
               icon: Settings,
               items: [
                 { id: 'system_global', label: 'إعدادات النظام الرئيسية ⚙️', icon: Settings },
+                { id: 'exchange_rate', label: 'سعر الصرف 💱', icon: DollarSign },
                 { id: 'marketing', label: 'مركز التسويق 📧', icon: Mail },
                 { id: 'banners', label: 'البانرات الإعلانية 🖼️', icon: Image },
                 { id: 'crm', label: 'CRM إدارة العملاء', icon: Users },
