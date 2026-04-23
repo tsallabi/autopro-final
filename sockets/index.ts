@@ -169,7 +169,7 @@ export function registerSocketHandlers(ctx: AppContext) {
         lotNumber: car.lotNumber
       };
       // Broadcast bid and timer
-      io.to(carId).emit("bid_updated", { carId, currentBid: amount, userId, timestamp, country: user.country });
+      io.to(carId).emit("bid_updated", { carId, currentBid: amount, userId, timestamp, country: user.country, city: (user as any).city || null });
       io.emit("global_bid_update", { carId, currentBid: amount });
       io.emit("new_log", logEntry);
 
@@ -201,8 +201,8 @@ export function registerSocketHandlers(ctx: AppContext) {
 
           console.log(`Proxy bid triggered for user ${proxies.userId}: $${nextAmount} `);
 
-          const proxyUser: any = db.prepare("SELECT country FROM users WHERE id = ?").get(proxies.userId);
-          io.to(carId).emit("bid_updated", { carId, currentBid: nextAmount, userId: proxies.userId, timestamp, country: proxyUser?.country });
+          const proxyUser: any = db.prepare("SELECT country, city FROM users WHERE id = ?").get(proxies.userId);
+          io.to(carId).emit("bid_updated", { carId, currentBid: nextAmount, userId: proxies.userId, timestamp, country: proxyUser?.country, city: proxyUser?.city || null });
           io.emit("global_bid_update", { carId, currentBid: nextAmount });
 
           // Recursively check if another proxy triggers

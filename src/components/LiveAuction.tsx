@@ -46,9 +46,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
   const [isProxySet, setIsProxySet] = useState(false);
   const [ultimoEndTime, setUltimoEndTime] = useState<string | null>(null);
   const [isUltimo, setIsUltimo] = useState(car.status === 'ultimo');
-  const [bidHistory, setBidHistory] = useState<{ amount: number, user: string, time: string, country?: string, city?: string }[]>([
-    { amount: car.currentBid || 0, user: 'UAE_Dealer_88', time: t('liveAuction.now'), country: 'UAE', city: 'دبي' },
-  ]);
+  const [bidHistory, setBidHistory] = useState<{ amount: number, user: string, time: string, country?: string, city?: string }[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showAllBids, setShowAllBids] = useState(false);
   const [quickViewCar, setQuickViewCar] = useState<Car | null>(null);
@@ -215,20 +213,9 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
             amount: data.currentBid,
             user: data.userId === currentUser?.id ? t('liveAuction.you') : `${t('liveAuction.bidder')}${data.userId.slice(-4)}`,
             time: t('liveAuction.now'),
-            ...(() => {
-              if (data.country && data.city) return { country: data.country, city: data.city };
-              const locations = [
-                { country: 'ليبيا', city: 'طرابلس' }, { country: 'ليبيا', city: 'بنغازي' },
-                { country: 'ليبيا', city: 'مصراتة' }, { country: 'ليبيا', city: 'الخمس' },
-                { country: 'ليبيا', city: 'سبها' }, { country: 'ليبيا', city: 'طبرق' },
-                { country: 'ليبيا', city: 'البيضاء' }, { country: 'ليبيا', city: 'زليتن' },
-                { country: 'الإمارات', city: 'دبي' }, { country: 'الإمارات', city: 'أبوظبي' },
-                { country: 'السعودية', city: 'الرياض' }, { country: 'السعودية', city: 'جدة' },
-                { country: 'مصر', city: 'القاهرة' }, { country: 'الأردن', city: 'عمّان' },
-                { country: 'الكويت', city: 'الكويت' }, { country: 'تونس', city: 'تونس' },
-              ];
-              return locations[Math.floor(Math.random() * locations.length)];
-            })()
+            // ✅ Real country/city from user profile ONLY — NEVER random
+            country: data.country || 'غير محدد',
+            city: data.city || ''
           },
           ...prev
         ]);
