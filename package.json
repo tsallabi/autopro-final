@@ -13,7 +13,12 @@
     "test:seed": "tsx tests/seed_stress_data.ts",
     "test:stress": "tsx tests/stress_bidding_sockets.ts",
     "test:e2e": "playwright test",
-    "seed:simulation": "tsx scripts/full_simulation_seeder.ts"
+    "seed:simulation": "tsx scripts/full_simulation_seeder.ts",
+    "backup:pre-deploy": "node scripts/pre-deploy-backup.mjs",
+    "backup:to-github": "node scripts/backup-to-github.mjs",
+    "restore:list": "node scripts/restore-from-backup.mjs --list",
+    "restore:latest": "node scripts/restore-from-backup.mjs --latest",
+    "restore": "node scripts/restore-from-backup.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
