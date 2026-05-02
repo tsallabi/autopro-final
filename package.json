@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:safe": "node scripts/dev-with-safety.mjs",
     "start": "node server.mjs",
-    "build": "vite build --emptyOutDir && npx esbuild server.ts --bundle --platform=node --format=esm --outfile=server.mjs --packages=external --target=node20",
+    "build": "vite build --emptyOutDir && node scripts/build-with-safety.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
