@@ -5,15 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:safe": "node scripts/dev-with-safety.mjs",
     "start": "node server.mjs",
-    "build": "vite build --emptyOutDir && npx esbuild server.ts --bundle --platform=node --format=esm --outfile=server.mjs --packages=external --target=node20",
+    "build": "vite build --emptyOutDir && node scripts/build-with-safety.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:seed": "tsx tests/seed_stress_data.ts",
     "test:stress": "tsx tests/stress_bidding_sockets.ts",
     "test:e2e": "playwright test",
-    "seed:simulation": "tsx scripts/full_simulation_seeder.ts"
+    "seed:simulation": "tsx scripts/full_simulation_seeder.ts",
+    "backup:pre-deploy": "node scripts/pre-deploy-backup.mjs",
+    "backup:to-github": "node scripts/backup-to-github.mjs",
+    "restore:list": "node scripts/restore-from-backup.mjs --list",
+    "restore:latest": "node scripts/restore-from-backup.mjs --latest",
+    "restore": "node scripts/restore-from-backup.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

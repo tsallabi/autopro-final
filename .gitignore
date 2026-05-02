@@ -19,11 +19,11 @@ logs/
 .env*
 !.env.example
 
-# ═══════════════════════════════════════════════════
+# ════════════════════════════════════════════════════
 # 🔐 CRITICAL: NEVER commit these to git
 # These files live on the server and must persist
 # across deployments — they are NOT part of the code
-# ═══════════════════════════════════════════════════
+# ════════════════════════════════════════════════════
 
 # Database files (SQLite)
 *.db
@@ -63,6 +63,10 @@ test-results/
 tmp/
 temp/
 *.tmp
+
+# Build-time generated files (from scripts/build-with-safety.mjs and dev-with-safety.mjs)
+.server.with-safety.ts
+.server.dev.ts
 
 # Claude worktrees (local only)
 .claude/worktrees/
