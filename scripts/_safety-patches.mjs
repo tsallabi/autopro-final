@@ -20,6 +20,8 @@ import {
   cleanOldBackups as __safetyCleanBackups,
   getBackupStatus as __safetyGetStatus,
   checkDbIntegrity as __safetyCheckDb,
+  uploadBackupToGitHub as __safetyUploadGh,
+  getLatestBackupPath as __safetyLatestBackup,
 } from './lib/dataSafety.ts';`,
   },
   {
@@ -106,6 +108,7 @@ app.get("/api/health", (_req, res) => {
         count: backups.count,
         lastBackup: backups.lastBackup?.mtime || null,
         totalSizeMB: backups.totalSizeMB,
+        offSite: backups.offSite,
       },
     });
   } catch (err: any) {
@@ -126,12 +129,29 @@ app.get("/api/admin/backup-status", requireAdmin, (_req, res) => {
   }
 });
 
-// [SAFETY] Admin: trigger an immediate manual backup.
+// [SAFETY] Admin: trigger an immediate manual backup (local).
 app.post("/api/admin/backup-now", requireAdmin, (_req, res) => {
   try {
     const file = __safetyRunBackup(db, BACKUP_DIR, 'manual');
     __safetyCleanBackups(BACKUP_DIR, BACKUP_KEEP_DAYS);
     res.json({ success: true, file, status: __safetyGetStatus(BACKUP_DIR) });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || String(err) });
+  }
+});
+
+// [SAFETY] Admin: upload latest backup to GitHub off-site repo (requires env vars).
+app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
+  try {
+    if (!process.env.BACKUP_GITHUB_REPO || !process.env.BACKUP_GITHUB_TOKEN) {
+      return res.status(400).json({ error: "Off-site backup not configured. Set BACKUP_GITHUB_REPO + BACKUP_GITHUB_TOKEN env vars." });
+    }
+    let file = __safetyLatestBackup(BACKUP_DIR);
+    if (!file) {
+      file = __safetyRunBackup(db, BACKUP_DIR, 'manual');
+    }
+    const url = await __safetyUploadGh(file);
+    res.json({ success: true, file, githubUrl: url });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || String(err) });
   }
