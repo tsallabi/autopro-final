@@ -7,7 +7,7 @@
  */
 export const PATCHES = [
   {
-    label: '1/3 import safety module',
+    label: '1/5 import safety module',
     find: `import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';`,
     replace: `import { initWebPush } from './lib/webpush.ts';
@@ -25,7 +25,7 @@ import {
 } from './lib/dataSafety.ts';`,
   },
   {
-    label: '2/3 replace boot section + add scheduler',
+    label: '2/5 replace boot section + add scheduler',
     find: `const DATA_DIR = process.env.DATA_DIR
   || (fs.existsSync('/data') ? '/data' : __dirname);
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'auction.db');
@@ -82,7 +82,7 @@ const BACKUP_KEEP_DAYS = Number(process.env.BACKUP_KEEP_DAYS) || 30;
 __safetyScheduleBackup(db, BACKUP_DIR, BACKUP_INTERVAL_HOURS, BACKUP_KEEP_DAYS);`,
   },
   {
-    label: '3/3 expand /api/health + add admin endpoints',
+    label: '3/5 expand /api/health + add admin endpoints',
     find: `// Health check must respond BEFORE full initialization
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
@@ -156,5 +156,19 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
     res.status(500).json({ error: err?.message || String(err) });
   }
 });`,
+  },
+  {
+    label: '4/5 import admin-extras module',
+    find: `import { registerBannerRoutes } from './routes/banners.ts';`,
+    replace: `import { registerBannerRoutes } from './routes/banners.ts';
+import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';`,
+  },
+  {
+    label: '5/5 register admin-extras routes',
+    find: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
+  registerSocketHandlers(ctx as any);`,
+    replace: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
+  try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
+  registerSocketHandlers(ctx as any);`,
   },
 ];
