@@ -4,30 +4,22 @@
  * we can iterate on it without touching the giant admin module.
  *
  * Endpoints:
- *   POST /api/admin/cars/:id/approve-with-schedule
- *      Approve a pending car AND set its auction window in one call.
- *      Body: { auctionStartTime?, auctionEndDate?, durationMinutes? }.
- *      If start + duration are given, end is computed.
- *      Sets status='upcoming'. The frontend uses auctionStartTime to flip
- *      the car to 'live' when the time arrives.
+ *   GET  /api/admin/cars/won
+ *      List closed (sold) cars with id, lot, VIN, make/model, winner email.
+ *      Frontend uses this to show admins a clickable list instead of
+ *      forcing them to remember/type a long carId.
  *
- *   POST /api/admin/cars/:id/cancel-sale
- *      Undo a closed sale (winner didn't pay, etc.).
- *      Body: { reason?, suspendWinner?, rescheduleStartTime?, rescheduleEndTime? }
- *      Cancels pending invoices, marks shipment cancelled, clears winnerId,
- *      resets currentBid to reservePrice, and either schedules a new auction
- *      window (if reschedule* given) or returns the car to pending_approval.
- *      Optionally suspends the winner so they can't bid again.
+ *   POST /api/admin/cars/:idOrLotOrVin/approve-with-schedule
+ *   POST /api/admin/cars/:idOrLotOrVin/cancel-sale
+ *   POST /api/admin/users/:idOrEmail/suspend
+ *   POST /api/admin/users/:idOrEmail/unsuspend
  *
- *   POST /api/admin/users/:id/suspend
- *      Body: { reason? }. Sets status='suspended'. Refuses to suspend admins.
+ *      All accept either the database id, OR the lot number / VIN (cars),
+ *      OR the email address (users). Resolves to the actual db row before
+ *      running the action. This avoids the "السيارة غير موجودة" error when
+ *      the operator pastes a value that doesn't exactly match the id.
  *
- *   POST /api/admin/users/:id/unsuspend
- *      Reverts status to 'active'. Only valid for currently suspended users.
- *
- * No new dependencies. No DB schema migration — relies only on existing
- * columns (cars.status / winnerId / auctionStartTime / auctionEndDate /
- * currentBid; users.status; invoices.status; shipments.status).
+ * No DB schema migration — relies only on existing columns.
  */
 import { requireAdmin } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
@@ -38,8 +30,70 @@ function isValidISODate(s: any): boolean {
   return Number.isFinite(t);
 }
 
+/**
+ * Resolve a user-supplied identifier to a car row.
+ * Tries: id (exact) → lotNumber (exact) → vin (exact, case-insensitive)
+ *      → id LIKE prefix (last resort, useful when only part of the id was pasted).
+ */
+function findCar(db: any, q: string): any {
+  if (!q) return null;
+  const trimmed = String(q).trim();
+
+  // Exact id
+  let row = db.prepare('SELECT * FROM cars WHERE id = ?').get(trimmed);
+  if (row) return row;
+
+  // Exact lotNumber
+  row = db.prepare('SELECT * FROM cars WHERE lotNumber = ?').get(trimmed);
+  if (row) return row;
+
+  // Exact VIN (case-insensitive)
+  row = db.prepare('SELECT * FROM cars WHERE UPPER(vin) = UPPER(?)').get(trimmed);
+  if (row) return row;
+
+  // Prefix match on id (handles partial paste like "car_1777982903968" missing the random suffix)
+  row = db.prepare('SELECT * FROM cars WHERE id LIKE ? LIMIT 1').get(trimmed + '%');
+  if (row) return row;
+
+  return null;
+}
+
+/**
+ * Resolve a user-supplied identifier to a user row.
+ * Tries: id → email (case-insensitive).
+ */
+function findUser(db: any, q: string): any {
+  if (!q) return null;
+  const trimmed = String(q).trim();
+  let row = db.prepare('SELECT * FROM users WHERE id = ?').get(trimmed);
+  if (row) return row;
+  row = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(trimmed);
+  if (row) return row;
+  return null;
+}
+
 export function registerAdminExtrasRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, sendInternalMessage } = ctx;
+
+  // ── GET /api/admin/cars/won — list closed/sold cars ────────────────────
+  // Lets the admin UI render a clickable list (no need to remember car IDs).
+  app.get('/api/admin/cars/won', requireAdmin, (_req, res) => {
+    try {
+      const rows: any[] = db.prepare(`
+        SELECT c.id, c.lotNumber, c.vin, c.make, c.model, c.year,
+               c.currentBid, c.winnerId, c.auctionEndDate,
+               u.email AS winnerEmail, u.firstName AS winnerFirstName, u.lastName AS winnerLastName
+          FROM cars c
+          LEFT JOIN users u ON c.winnerId = u.id
+         WHERE c.status = 'closed'
+         ORDER BY c.auctionEndDate DESC
+         LIMIT 100
+      `).all();
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: 'فشل جلب السيارات المباعة: ' + (e?.message || e) });
+    }
+  });
 
   // ── POST /api/admin/cars/:id/approve-with-schedule ──────────────────────
   app.post('/api/admin/cars/:id/approve-with-schedule', requireAdmin, (req, res) => {
@@ -51,8 +105,12 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
     };
 
     try {
-      const car: any = db.prepare('SELECT * FROM cars WHERE id = ?').get(id);
-      if (!car) return res.status(404).json({ error: 'السيارة غير موجودة' });
+      const car: any = findCar(db, id);
+      if (!car) {
+        return res.status(404).json({
+          error: 'لم يتم العثور على السيارة. جرّب رقم اللوت أو VIN، أو تأكد من الـ carId كاملاً.',
+        });
+      }
       if (car.status !== 'pending_approval' && car.status !== 'pending') {
         return res
           .status(400)
@@ -69,7 +127,6 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
         return res.status(400).json({ error: 'تاريخ انتهاء المزاد غير صالح' });
       }
 
-      // If only start + duration given, compute end.
       if (startTime && !endTime && durationMinutes && Number(durationMinutes) > 0) {
         endTime = new Date(new Date(startTime).getTime() + Number(durationMinutes) * 60 * 1000).toISOString();
       }
@@ -80,9 +137,9 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
 
       db.prepare(
         'UPDATE cars SET status = ?, auctionStartTime = ?, auctionEndDate = ? WHERE id = ?'
-      ).run('upcoming', startTime, endTime, id);
+      ).run('upcoming', startTime, endTime, car.id);
 
-      const updated: any = db.prepare('SELECT * FROM cars WHERE id = ?').get(id);
+      const updated: any = db.prepare('SELECT * FROM cars WHERE id = ?').get(car.id);
 
       if (updated.sellerId) {
         const dateStr = startTime
@@ -97,7 +154,7 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
       }
 
       io.emit('car_updated', {
-        id,
+        id: car.id,
         status: 'upcoming',
         auctionStartTime: startTime,
         auctionEndDate: endTime,
@@ -121,8 +178,12 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
     };
 
     try {
-      const car: any = db.prepare('SELECT * FROM cars WHERE id = ?').get(id);
-      if (!car) return res.status(404).json({ error: 'السيارة غير موجودة' });
+      const car: any = findCar(db, id);
+      if (!car) {
+        return res.status(404).json({
+          error: 'لم يتم العثور على السيارة. جرّب رقم اللوت أو VIN، أو تأكد من الـ carId كاملاً.',
+        });
+      }
       if (car.status !== 'closed') {
         return res
           .status(400)
@@ -144,19 +205,16 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
       const baseBid = Number(car.reservePrice) || 0;
 
       db.transaction(() => {
-        // Cancel any not-yet-finalized invoices for this car.
         db.prepare(
           "UPDATE invoices SET status = 'cancelled' WHERE carId = ? AND status NOT IN ('paid', 'refunded', 'cancelled')"
-        ).run(id);
+        ).run(car.id);
 
-        // Cancel any shipment for this car.
         try {
           db.prepare(
             "UPDATE shipments SET status = 'cancelled', updatedAt = ? WHERE carId = ?"
-          ).run(now, id);
+          ).run(now, car.id);
         } catch {}
 
-        // Reset the car.
         db.prepare(
           `UPDATE cars
              SET status = ?,
@@ -168,9 +226,8 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
                  sellerCounterPrice = NULL,
                  offerMarketEndTime = NULL
            WHERE id = ?`
-        ).run(newStatus, baseBid, rescheduleStartTime || null, rescheduleEndTime || null, id);
+        ).run(newStatus, baseBid, rescheduleStartTime || null, rescheduleEndTime || null, car.id);
 
-        // Optionally suspend the non-paying winner (never the admin).
         if (suspendWinner && winnerId) {
           const w: any = db.prepare('SELECT role FROM users WHERE id = ?').get(winnerId);
           if (w && w.role !== 'admin') {
@@ -179,7 +236,6 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
         }
       })();
 
-      // Notify winner.
       if (winnerId) {
         const suffix = suspendWinner
           ? '\n\nتم تعليق حسابك بسبب عدم سداد قيمة المزاد. للاعتراض راسل info@autopro.ac'
@@ -193,9 +249,9 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
         sendNotification(winnerId, '⚠️ تم إلغاء البيع', reasonText, 'warning');
       }
 
-      const updated: any = db.prepare('SELECT * FROM cars WHERE id = ?').get(id);
+      const updated: any = db.prepare('SELECT * FROM cars WHERE id = ?').get(car.id);
       io.emit('car_updated', {
-        id,
+        id: car.id,
         status: updated.status,
         winnerId: null,
         currentBid: updated.currentBid,
@@ -214,14 +270,18 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
     }
   });
 
-  // ── POST /api/admin/users/:id/suspend ───────────────────────────────
+  // ── POST /api/admin/users/:id/suspend ──────────────────────────────────
   app.post('/api/admin/users/:id/suspend', requireAdmin, (req, res) => {
     const { id } = req.params;
     const { reason } = (req.body || {}) as { reason?: string };
 
     try {
-      const user: any = db.prepare('SELECT id, firstName, role, status FROM users WHERE id = ?').get(id);
-      if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      const user: any = findUser(db, id);
+      if (!user) {
+        return res.status(404).json({
+          error: 'لم يتم العثور على المستخدم. جرّب البريد الإلكتروني أو userId.',
+        });
+      }
       if (user.role === 'admin') {
         return res.status(400).json({ error: 'لا يمكن تعليق حساب مدير' });
       }
@@ -229,46 +289,50 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
         return res.status(400).json({ error: 'الحساب معلّق بالفعل' });
       }
 
-      db.prepare("UPDATE users SET status = 'suspended' WHERE id = ?").run(id);
+      db.prepare("UPDATE users SET status = 'suspended' WHERE id = ?").run(user.id);
 
       const reasonText = (reason && String(reason).trim()) || 'مخالفة شروط الاستخدام';
       sendInternalMessage(
         'admin-1',
-        id,
+        user.id,
         '⚠️ تم تعليق حسابك',
         `عزيزي ${user.firstName || ''}،\n\nتم تعليق حسابك من قبل الإدارة.\n\nالسبب: ${reasonText}\n\nللاعتراض راسل info@autopro.ac`
       );
 
-      io.to(`user_${id}`).emit('account_suspended', { userId: id, reason: reasonText });
-      res.json({ success: true });
+      io.to(`user_${user.id}`).emit('account_suspended', { userId: user.id, reason: reasonText });
+      res.json({ success: true, user: { id: user.id, email: user.email, status: 'suspended' } });
     } catch (e: any) {
       console.error('[admin-extras] suspend failed:', e);
       res.status(500).json({ error: 'فشل تعليق الحساب: ' + (e?.message || e) });
     }
   });
 
-  // ── POST /api/admin/users/:id/unsuspend ─────────────────────────────
+  // ── POST /api/admin/users/:id/unsuspend ────────────────────────────────
   app.post('/api/admin/users/:id/unsuspend', requireAdmin, (req, res) => {
     const { id } = req.params;
 
     try {
-      const user: any = db.prepare('SELECT id, firstName, status FROM users WHERE id = ?').get(id);
-      if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      const user: any = findUser(db, id);
+      if (!user) {
+        return res.status(404).json({
+          error: 'لم يتم العثور على المستخدم. جرّب البريد الإلكتروني أو userId.',
+        });
+      }
       if (user.status !== 'suspended') {
         return res.status(400).json({ error: 'هذا الحساب ليس معلقاً' });
       }
 
-      db.prepare("UPDATE users SET status = 'active' WHERE id = ?").run(id);
+      db.prepare("UPDATE users SET status = 'active' WHERE id = ?").run(user.id);
 
       sendInternalMessage(
         'admin-1',
-        id,
+        user.id,
         '✅ تم استعادة حسابك',
         'تم رفع التعليق عن حسابك. يمكنك الآن استخدام المنصة بشكل طبيعي.'
       );
 
-      io.to(`user_${id}`).emit('account_unsuspended', { userId: id });
-      res.json({ success: true });
+      io.to(`user_${user.id}`).emit('account_unsuspended', { userId: user.id });
+      res.json({ success: true, user: { id: user.id, email: user.email, status: 'active' } });
     } catch (e: any) {
       console.error('[admin-extras] unsuspend failed:', e);
       res.status(500).json({ error: 'فشل استعادة الحساب: ' + (e?.message || e) });
