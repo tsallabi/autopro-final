@@ -145,7 +145,21 @@ export function registerBuyerRoutes(ctx: AppContext) {
         return res.status(400).json({ error: "السيارة غير متاحة في سوق العروض" });
       }
 
-      if (amount < car.reservePrice * 0.9) {
+      // 🔐 Reject zero/negative/invalid amounts. Without this, an offer of 0
+      // on a car with reservePrice = 0 would pass the 90%-of-reserve check
+      // (0 < 0 is false) and the user would "win" the car for nothing.
+      const numericAmount = Number(amount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        return res.status(400).json({ error: "قيمة العرض غير صحيحة. يجب أن تكون أكبر من صفر." });
+      }
+      // Sanity floor — even when reservePrice is misconfigured, never accept
+      // an offer below this minimum (50 USD by default).
+      const MIN_OFFER_USD = 50;
+      if (numericAmount < MIN_OFFER_USD) {
+        return res.status(400).json({ error: `الحد الأدنى للعرض هو $${MIN_OFFER_USD}` });
+      }
+
+      if (numericAmount < car.reservePrice * 0.9) {
         return res.status(400).json({ error: "العرض يجب أن يكون ضمن 10% من السعر الاحتياطي" });
       }
 
@@ -157,29 +171,29 @@ export function registerBuyerRoutes(ctx: AppContext) {
         return res.status(e.statusCode || 403).json({ error: e.message });
       }
 
-      if (!user || user.buyingPower < amount) {
+      if (!user || user.buyingPower < numericAmount) {
         return res.status(400).json({ error: "القوة الشرائية غير كافية لتقديم هذا العرض" });
       }
 
       // Record the offer as a bid
       const bidId = `offer - ${Date.now()} `;
-      db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp, type) VALUES (?, ?, ?, ?, ?, 'offer')").run(bidId, id, userId, amount, timestamp);
-      db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(amount, userId, id);
+      db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp, type) VALUES (?, ?, ?, ?, ?, 'offer')").run(bidId, id, userId, numericAmount, timestamp);
+      db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(numericAmount, userId, id);
 
       // If offer meets reserve, sell immediately
-      if (amount >= car.reservePrice) {
+      if (numericAmount >= car.reservePrice && car.reservePrice > 0) {
         db.prepare("UPDATE cars SET status = 'closed' WHERE id = ?").run(id);
-        createWinInvoices(userId, id, amount);
+        createWinInvoices(userId, id, numericAmount);
         io.emit("car_updated", { id, status: 'closed', winnerId: userId });
         return res.json({ success: true, status: 'sold', message: "تم قبول العرض والبيع فوراً!" });
       }
 
       // Notify seller about the new offer
       if (car.sellerId) {
-        sendNotification(car.sellerId, `عرض جديد بقيمة $${amount} على سيارتك ${car.make} ${car.model}`, 'offer', `/dashboard/seller?view=inventory`);
+        sendNotification(car.sellerId, `عرض جديد بقيمة $${numericAmount} على سيارتك ${car.make} ${car.model}`, 'offer', `/dashboard/seller?view=inventory`);
       }
 
-      io.emit("car_updated", { id, currentBid: amount, winnerId: userId });
+      io.emit("car_updated", { id, currentBid: numericAmount, winnerId: userId });
       res.json({ success: true, status: 'pending', message: "تم تقديم العرض بنجاح، بانتظار موافقة البائع" });
     } catch (err) {
       res.status(500).json({ error: "فشل تقديم العرض" });
@@ -202,6 +216,10 @@ export function registerBuyerRoutes(ctx: AppContext) {
 
       const lastBid: any = db.prepare("SELECT * FROM bids WHERE carId = ? AND type = 'offer' ORDER BY amount DESC LIMIT 1").get(carId);
       if (!lastBid) return res.status(400).json({ error: "لا توجد عروض لهذه السيارة" });
+      // Refuse to close a sale at zero — would create $0 invoice and break accounting.
+      if (!Number.isFinite(Number(lastBid.amount)) || Number(lastBid.amount) <= 0) {
+        return res.status(400).json({ error: "قيمة العرض غير صحيحة (صفر أو أقل) — لا يمكن إتمام البيع" });
+      }
 
       const saleDate = new Date().toISOString();
 
