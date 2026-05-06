@@ -29,6 +29,7 @@ import ScrollToTop from './components/ScrollToTop';
 import { useVisitorTracking } from './hooks/useVisitorTracking';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { PushNotificationPrompt } from './components/PushNotificationPrompt';
+import AdminQuickTools from './components/admin/AdminQuickTools';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -133,6 +134,7 @@ function AppContent() {
         <MobileBottomNav />
         <PWAInstallPrompt />
         <PushNotificationPrompt />
+        <AdminQuickTools />
     </>
   );
 }
