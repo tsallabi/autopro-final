@@ -1,28 +1,34 @@
 /**
  * Admin Extras — endpoints that didn't fit cleanly into the original
- * routes/admin.ts (which is already 2877 lines). Lives in its own file so
- * we can iterate on it without touching the giant admin module.
+ * routes/admin.ts (which is already 2877 lines).
  *
  * Endpoints:
  *   GET  /api/admin/cars/won
  *      List closed (sold) cars with id, lot, VIN, make/model, winner email.
- *      Frontend uses this to show admins a clickable list instead of
- *      forcing them to remember/type a long carId.
+ *
+ *   POST /api/admin/cars/:idOrLotOrVin/announce
+ *      Send a "new car" notification (inbox + bell + email) to every
+ *      active non-admin user. Returns immediately; sends run in background.
+ *      Body: { skipEmail?: boolean }.
  *
  *   POST /api/admin/cars/:idOrLotOrVin/approve-with-schedule
+ *      Approve a pending car AND set its auction window. Auto-triggers
+ *      the announcement (suppress with body: { announce: false }).
+ *
  *   POST /api/admin/cars/:idOrLotOrVin/cancel-sale
+ *      Undo a closed sale.
+ *
  *   POST /api/admin/users/:idOrEmail/suspend
  *   POST /api/admin/users/:idOrEmail/unsuspend
  *
  *      All accept either the database id, OR the lot number / VIN (cars),
- *      OR the email address (users). Resolves to the actual db row before
- *      running the action. This avoids the "السيارة غير موجودة" error when
- *      the operator pastes a value that doesn't exactly match the id.
+ *      OR the email address (users).
  *
- * No DB schema migration — relies only on existing columns.
+ * No DB schema migration.
  */
 import { requireAdmin } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
+import { announceCarToAllUsers } from '../lib/announceCar.ts';
 
 function isValidISODate(s: any): boolean {
   if (typeof s !== 'string' || !s) return false;
@@ -30,38 +36,20 @@ function isValidISODate(s: any): boolean {
   return Number.isFinite(t);
 }
 
-/**
- * Resolve a user-supplied identifier to a car row.
- * Tries: id (exact) → lotNumber (exact) → vin (exact, case-insensitive)
- *      → id LIKE prefix (last resort, useful when only part of the id was pasted).
- */
 function findCar(db: any, q: string): any {
   if (!q) return null;
   const trimmed = String(q).trim();
-
-  // Exact id
   let row = db.prepare('SELECT * FROM cars WHERE id = ?').get(trimmed);
   if (row) return row;
-
-  // Exact lotNumber
   row = db.prepare('SELECT * FROM cars WHERE lotNumber = ?').get(trimmed);
   if (row) return row;
-
-  // Exact VIN (case-insensitive)
   row = db.prepare('SELECT * FROM cars WHERE UPPER(vin) = UPPER(?)').get(trimmed);
   if (row) return row;
-
-  // Prefix match on id (handles partial paste like "car_1777982903968" missing the random suffix)
   row = db.prepare('SELECT * FROM cars WHERE id LIKE ? LIMIT 1').get(trimmed + '%');
   if (row) return row;
-
   return null;
 }
 
-/**
- * Resolve a user-supplied identifier to a user row.
- * Tries: id → email (case-insensitive).
- */
 function findUser(db: any, q: string): any {
   if (!q) return null;
   const trimmed = String(q).trim();
@@ -75,8 +63,7 @@ function findUser(db: any, q: string): any {
 export function registerAdminExtrasRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, sendInternalMessage } = ctx;
 
-  // ── GET /api/admin/cars/won — list closed/sold cars ────────────────────
-  // Lets the admin UI render a clickable list (no need to remember car IDs).
+  // ── GET /api/admin/cars/won ───────────────────────────────────────
   app.get('/api/admin/cars/won', requireAdmin, (_req, res) => {
     try {
       const rows: any[] = db.prepare(`
@@ -95,13 +82,34 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
     }
   });
 
-  // ── POST /api/admin/cars/:id/approve-with-schedule ──────────────────────
+  // ── POST /api/admin/cars/:id/announce ────────────────────────────────
+  app.post('/api/admin/cars/:id/announce', requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const { skipEmail } = (req.body || {}) as { skipEmail?: boolean };
+
+    try {
+      const car: any = findCar(db, id);
+      if (!car) {
+        return res.status(404).json({
+          error: 'لم يتم العثور على السيارة. جرّب رقم اللوت أو VIN.',
+        });
+      }
+      const result = announceCarToAllUsers(ctx, car, { skipEmail });
+      res.json(result);
+    } catch (e: any) {
+      console.error('[admin-extras] announce failed:', e);
+      res.status(500).json({ error: 'فشل إرسال الإعلان: ' + (e?.message || e) });
+    }
+  });
+
+  // ── POST /api/admin/cars/:id/approve-with-schedule ─────────────────────────
   app.post('/api/admin/cars/:id/approve-with-schedule', requireAdmin, (req, res) => {
     const { id } = req.params;
-    const { auctionStartTime, auctionEndDate, durationMinutes } = (req.body || {}) as {
+    const { auctionStartTime, auctionEndDate, durationMinutes, announce } = (req.body || {}) as {
       auctionStartTime?: string;
       auctionEndDate?: string;
       durationMinutes?: number;
+      announce?: boolean;
     };
 
     try {
@@ -160,14 +168,24 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
         auctionEndDate: endTime,
       });
 
-      res.json({ success: true, car: updated });
+      let announcement: any = null;
+      if (announce !== false) {
+        try {
+          announcement = announceCarToAllUsers(ctx, updated);
+        } catch (e: any) {
+          console.error('[admin-extras] auto-announce failed:', e);
+          announcement = { ok: false, message: e?.message || 'فشل إرسال الإعلان' };
+        }
+      }
+
+      res.json({ success: true, car: updated, announcement });
     } catch (e: any) {
       console.error('[admin-extras] approve-with-schedule failed:', e);
       res.status(500).json({ error: 'فشل اعتماد السيارة: ' + (e?.message || e) });
     }
   });
 
-  // ── POST /api/admin/cars/:id/cancel-sale ────────────────────────────────
+  // ── POST /api/admin/cars/:id/cancel-sale ──────────────────────────────────
   app.post('/api/admin/cars/:id/cancel-sale', requireAdmin, (req, res) => {
     const { id } = req.params;
     const { reason, suspendWinner, rescheduleStartTime, rescheduleEndTime } = (req.body || {}) as {
@@ -270,7 +288,7 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
     }
   });
 
-  // ── POST /api/admin/users/:id/suspend ──────────────────────────────────
+  // ── POST /api/admin/users/:id/suspend ───────────────────────────────────
   app.post('/api/admin/users/:id/suspend', requireAdmin, (req, res) => {
     const { id } = req.params;
     const { reason } = (req.body || {}) as { reason?: string };
@@ -307,7 +325,7 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
     }
   });
 
-  // ── POST /api/admin/users/:id/unsuspend ────────────────────────────────
+  // ── POST /api/admin/users/:id/unsuspend ──────────────────────────────────
   app.post('/api/admin/users/:id/unsuspend', requireAdmin, (req, res) => {
     const { id } = req.params;
 
