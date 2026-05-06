@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Calculator as CalcIcon,
     DollarSign,
@@ -16,18 +16,81 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 
+// Default settings — used when the admin hasn't customized anything yet
+// or when /api/settings is unreachable.
+const DEFAULTS = {
+    auctionFee: 500,
+    commission: 5, // %
+    transport: 300,
+    other: 100,
+};
+
+// Pick the first defined value across multiple possible keys.
+// Admin UIs in the past used different naming conventions; this future-proofs
+// against any of them by trying camelCase, snake_case, and the calculator_*
+// prefix in priority order.
+function pickNum(obj: any, keys: string[], fallback: number): number {
+    if (!obj) return fallback;
+    for (const k of keys) {
+        const v = obj[k];
+        if (v === null || v === undefined || v === '') continue;
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+    }
+    return fallback;
+}
+
 export const CostCalculator = () => {
     const navigate = useNavigate();
     const { exchangeRate } = useStore();
     const [price, setPrice] = useState<number>(5000);
+    const [settings, setSettings] = useState(DEFAULTS);
+    const [loaded, setLoaded] = useState(false);
 
-    // Default local settings
-    const settings = {
-        auctionFee: 500,
-        commission: 5, // %
-        transport: 300,
-        other: 100
-    };
+    // Fetch admin-configured settings on mount.
+    // /api/settings is a flat key→value store. The admin form writes the
+    // same keys via POST /api/settings so the calculator stays in sync.
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await fetch('/api/settings');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!alive || !data || typeof data !== 'object') return;
+
+                const next = {
+                    auctionFee: pickNum(
+                        data,
+                        ['calculator_auction_fee', 'calc_auction_fee', 'auctionFee', 'auction_fee'],
+                        DEFAULTS.auctionFee
+                    ),
+                    commission: pickNum(
+                        data,
+                        ['calculator_commission', 'commission_rate', 'commission', 'platform_commission'],
+                        DEFAULTS.commission
+                    ),
+                    transport: pickNum(
+                        data,
+                        ['calculator_transport', 'transport_cost', 'transport', 'shipping_local'],
+                        DEFAULTS.transport
+                    ),
+                    other: pickNum(
+                        data,
+                        ['calculator_other', 'other_fees', 'other', 'misc_fees'],
+                        DEFAULTS.other
+                    ),
+                };
+                setSettings(next);
+            } catch (e) {
+                // Network error — keep defaults silently.
+                console.error('[CostCalculator] failed to load settings:', e);
+            } finally {
+                if (alive) setLoaded(true);
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
 
     const total = price + settings.auctionFee + (price * (settings.commission / 100)) + settings.transport + settings.other;
 
@@ -88,6 +151,9 @@ table{width:100%;border-collapse:collapse;margin:24px 0}
                             </div>
                             حاسبة التكلفة المحلية 🇱🇾
                         </h1>
+                        {!loaded && (
+                            <p className="text-xs text-slate-500 mt-2 font-bold">جاري تحميل الإعدادات...</p>
+                        )}
                     </div>
                 </div>
 
