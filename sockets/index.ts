@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import type { AppContext } from '../lib/types.ts';
+import { assertCanBid } from '../lib/buyerGuard.ts';
 
 export function registerSocketHandlers(ctx: AppContext) {
   const { io, db, sendNotification, sendInternalMessage, createWinInvoices, JWT_SECRET } = ctx;
@@ -88,6 +89,11 @@ export function registerSocketHandlers(ctx: AppContext) {
           if (!u) {
             throw new Error("المستخدم غير موجود");
           }
+
+          // 🔐 SECURITY: Block bids from non-active or non-deposited accounts.
+          // Without this check, any registered user (incl. fresh OAuth signups
+          // before admin approval) could bid as long as buyingPower > 0.
+          assertCanBid(u);
 
           // Calculate total exposure atomically inside transaction
           const totalLeadingBids: any = (db.prepare("SELECT SUM(currentBid) as total FROM cars WHERE winnerId = ? AND status IN ('live', 'upcoming') AND id != ?").get(userId, carId) as any)?.total || 0;
@@ -190,6 +196,17 @@ export function registerSocketHandlers(ctx: AppContext) {
       const proxies: any = db.prepare("SELECT * FROM proxy_bids WHERE carId = ? AND userId != ? AND maxAmount > ? ORDER BY maxAmount DESC LIMIT 1").get(carId, lastBidderId, currentAmount);
 
       if (proxies) {
+        // 🔐 SECURITY: Re-validate the proxy bidder. Their account may have been
+        // suspended or had its deposit refunded since they set the proxy bid.
+        const proxyOwner: any = db.prepare("SELECT * FROM users WHERE id = ?").get(proxies.userId);
+        try {
+          assertCanBid(proxyOwner);
+        } catch {
+          // Skip this proxy and remove it so it doesn't keep firing.
+          db.prepare("DELETE FROM proxy_bids WHERE userId = ? AND carId = ?").run(proxies.userId, carId);
+          return;
+        }
+
         const nextAmount = currentAmount + 100; // Standard increment $100
         if (nextAmount <= proxies.maxAmount) {
           // System places bid automatically
@@ -215,7 +232,17 @@ export function registerSocketHandlers(ctx: AppContext) {
       if (!socketUser) return socket.emit("bid_error", { message: "يجب تسجيل الدخول" });
       const { carId, maxAmount } = data;
       const userId = socketUser.id; // Use authenticated user
-      const user: any = db.prepare("SELECT buyingPower FROM users WHERE id = ?").get(userId);
+      const user: any = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+
+      // 🔐 SECURITY: Same eligibility check as place_bid — reject proxies
+      // from non-active / no-deposit accounts so they can't accumulate while
+      // waiting for someone else to bid first.
+      try {
+        assertCanBid(user);
+      } catch (err: any) {
+        socket.emit("bid_error", { message: err.message });
+        return;
+      }
 
       if (!user || maxAmount > user.buyingPower) {
         socket.emit("bid_error", { message: "الحد الأقصى يتجاوز رصيدك المتاح" });

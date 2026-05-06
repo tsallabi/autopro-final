@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { requireAuth } from '../lib/middleware.ts';
+import { assertCanBid } from '../lib/buyerGuard.ts';
 import type { AppContext } from '../lib/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -146,6 +147,14 @@ export function registerBuyerRoutes(ctx: AppContext) {
 
       if (amount < car.reservePrice * 0.9) {
         return res.status(400).json({ error: "العرض يجب أن يكون ضمن 10% من السعر الاحتياطي" });
+      }
+
+      // 🔐 SECURITY: Reject offers from non-active or no-deposit accounts
+      // before checking buyingPower. Same policy as live bids.
+      try {
+        assertCanBid(user);
+      } catch (e: any) {
+        return res.status(e.statusCode || 403).json({ error: e.message });
       }
 
       if (!user || user.buyingPower < amount) {

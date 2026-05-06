@@ -327,7 +327,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         const joinDate = new Date().toISOString();
         const buyingPower = 0;
         const role = 'buyer';
-        const status = 'active';
+        // 🔐 SECURITY: Match the email/Google flow — admin must review and
+        // approve before the user can bid. Previously this was 'active',
+        // which let Facebook signups bypass the approval queue entirely.
+        const status = 'pending_approval';
         try {
           db.prepare(`
             INSERT INTO users(id, firstName, lastName, email, role, status, facebookId, profilePic,
