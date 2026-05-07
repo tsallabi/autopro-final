@@ -157,8 +157,17 @@
         "seller": "Seller / Dealer",
         "buyer": "Buyer",
         "myWallet": "My Wallet 💰",
+        "home": "Home",
+        "profile": "Profile",
         "libya": "Libya",
-        "autoPro": "AUTO PRO"
+        "autoPro": "AUTO PRO",
+        "viewAsBuyer": "View as Buyer (Test)",
+        "viewAsSeller": "View as Seller (Test)",
+        "openMenu": "Open menu",
+        "closeMenu": "Close menu",
+        "userFallback": "User",
+        "selectBrand": "Select car brand",
+        "filterResults": "Filter results"
     },
     "hero": {
         "title": "The Largest Auto Auction Platform in Libya",
@@ -409,10 +418,20 @@
         "browseCars": "Browse Cars",
         "costCalculator": "Cost Calculator",
         "shippingServices": "Shipping Services",
+        "nearestShippingCenter": "Nearest Shipping Center",
         "contact": "Contact",
         "rightsReserved": "All rights reserved",
         "termsAndConditions": "Terms and Conditions",
         "privacyPolicy": "Privacy Policy",
-        "refundPolicy": "Refund Policy"
+        "refundPolicy": "Refund Policy",
+        "facebook": "Facebook",
+        "twitter": "Twitter",
+        "instagram": "Instagram",
+        "youtube": "YouTube",
+        "platformName": "Libya AutoPro",
+        "copyrightPrefix": "Platform",
+        "designedBy": "designed by",
+        "libyaProTech": "Libya Pro Tech",
+        "libyaProTechTitle": "Libya Pro Tech — Web & Platform Design"
     }
 }
