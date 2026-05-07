@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate, useParams, Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Calendar, Gauge, MapPin, Shield, Info, FileText,
   Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle, TrendingUp, X, CheckCircle2, ArrowUp
@@ -13,20 +14,21 @@ import { useStore, authFetch } from '../context/StoreContext';
 // Inline Proxy Bid Panel for Upcoming Market cars
 // ============================================================
 const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert: any; exchangeRate: number }> = ({ car, currentUser, socket, showAlert, exchangeRate }) => {
+  const { t } = useTranslation();
   const [proxyAmount, setProxyAmount] = React.useState(car.currentBid ? car.currentBid + 100 : (car.startingBid || car.reservePrice * 0.5 || 100));
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const handleProxyBid = () => {
     if (!currentUser) {
-      showAlert('يرجى تسجيل الدخول لتقديم مزايدة آليه (بروكسي)', 'error');
+      showAlert(t('carDetails.preBid.loginRequired'), 'error');
       return;
     }
     if (proxyAmount > currentUser.buyingPower) {
-      showAlert('رصيدك غير كافٍ لهذا السقف من المزايدة الآلية', 'error');
+      showAlert(t('carDetails.preBid.insufficientFunds'), 'error');
       return;
     }
     if (proxyAmount <= (car.currentBid || 0)) {
-      showAlert('يجب أن يكون سقف المزايدة أعلى من السعر الحالي', 'error');
+      showAlert(t('carDetails.preBid.maxTooLow'), 'error');
       return;
     }
 
@@ -36,14 +38,14 @@ const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert
 
       const handleSet = (data: any) => {
         if (data.carId === car.id) {
-          showAlert('تم تفعيل مزايدتك المسبقة (البروكسي) بنجاح!', 'success');
+          showAlert(t('carDetails.preBid.activated'), 'success');
           setIsSubmitting(false);
           socket.off('proxy_bid_set', handleSet);
           socket.off('bid_error', handleError);
         }
       };
       const handleError = (data: any) => {
-        showAlert(data.message || 'حدث خطأ أثناء التفعيل', 'error');
+        showAlert(data.message || t('carDetails.preBid.errorActivating'), 'error');
         setIsSubmitting(false);
         socket.off('proxy_bid_set', handleSet);
         socket.off('bid_error', handleError);
@@ -54,30 +56,29 @@ const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert
 
       setTimeout(() => setIsSubmitting(false), 3000);
     } else {
-      showAlert('غير متصل بالخادم', 'error');
+      showAlert(t('carDetails.preBid.notConnected'), 'error');
       setIsSubmitting(false);
     }
   };
 
   const handleBuyItNow = async () => {
     if (!currentUser) {
-      showAlert('يرجى تسجيل الدخول للشراء', 'error');
+      showAlert(t('carDetails.preBid.loginToBuy'), 'error');
       return;
     }
-    // Simulate Buy It Now
-    showAlert('لقد طلبت الشراء الفوري. سيقوم فريق المبيعات بالتواصل معك فوراً!', 'success');
+    showAlert(t('carDetails.preBid.buyItNowSuccess'), 'success');
   };
 
   return (
     <div className="space-y-4">
       <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
         <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-widest flex justify-between">
-          <span>أقصى مزايدة (Proxy Bid)</span>
-          <span className="text-orange-400 font-normal">النظام سيزايد عنك أوتوماتيكياً</span>
+          <span>{t('carDetails.preBid.maxBidLabel')}</span>
+          <span className="text-orange-400 font-normal">{t('carDetails.preBid.autoBidHint')}</span>
         </div>
         <div className="flex gap-3">
           <input
-            aria-label="مبلغ المزايدة" title="مبلغ المزايدة" placeholder="أدخل المبلغ"
+            aria-label={t('carDetails.preBid.bidAmount')} title={t('carDetails.preBid.bidAmount')} placeholder={t('carDetails.preBid.enterAmount')}
             type="number"
             value={proxyAmount}
             onChange={e => setProxyAmount(Number(e.target.value))}
@@ -94,11 +95,11 @@ const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert
         className="w-full py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-orange-600/20 active:scale-95 transition-all outline-none disabled:opacity-50"
       >
         <Gavel className="w-5 h-5" />
-        {isSubmitting ? 'جاري الإرسال...' : 'تفعيل المزايدة الآلية (Pre-Bid)'}
+        {isSubmitting ? t('carDetails.preBid.submitting') : t('carDetails.preBid.activateBtn')}
       </button>
 
       {/* Buy It Now Render */}
-      {(car.buyItNow || (car.reservePrice && car.reservePrice * 1.5)) > 0 && ( /* Fallback for Demo if buyItNow not strictly specified */
+      {(car.buyItNow || (car.reservePrice && car.reservePrice * 1.5)) > 0 && (
         <button
           onClick={handleBuyItNow}
           className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all outline-none mt-2"
@@ -106,7 +107,7 @@ const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert
           <div className="flex flex-col items-center">
             <span className="flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" />
-              اشتري الآن بـ ${(car.buyItNow || car.reservePrice * 1.5).toLocaleString('en-US')}
+              {t('carDetails.preBid.buyNowBtn', { price: (car.buyItNow || car.reservePrice * 1.5).toLocaleString('en-US') })}
             </span>
             <span className="text-xs text-white/80 font-normal mt-1">≈ {Math.round((car.buyItNow || car.reservePrice * 1.5) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
           </div>
@@ -117,11 +118,12 @@ const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert
 };
 
 const CountdownLabel = ({ targetDate }: { targetDate: string | undefined }) => {
-  const [timeLeft, setTimeLeft] = React.useState('يتم الحساب...');
+  const { t } = useTranslation();
+  const [timeLeft, setTimeLeft] = React.useState(t('carDetails.countdown.calculating'));
 
   React.useEffect(() => {
     if (!targetDate) {
-      setTimeLeft('قريباً (حسب الجدولة)');
+      setTimeLeft(t('carDetails.countdown.soon'));
       return;
     }
 
@@ -130,7 +132,7 @@ const CountdownLabel = ({ targetDate }: { targetDate: string | undefined }) => {
       const diff = targetTime - Date.now();
 
       if (diff <= 0) {
-        setTimeLeft('المزاد يبدأ الآن!');
+        setTimeLeft(t('carDetails.countdown.startsNow'));
         return;
       }
 
@@ -140,7 +142,7 @@ const CountdownLabel = ({ targetDate }: { targetDate: string | undefined }) => {
       const s = Math.floor((diff % (1000 * 60)) / 1000);
 
       let formatted = '';
-      if (d > 0) formatted += `${d} يوم و `;
+      if (d > 0) formatted += `${d} ${t('carDetails.countdown.daysSep')} `;
       formatted += `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 
       setTimeLeft(formatted);
@@ -149,12 +151,13 @@ const CountdownLabel = ({ targetDate }: { targetDate: string | undefined }) => {
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [targetDate]);
+  }, [targetDate, t]);
 
   return <span dir="ltr" className="inline-block font-mono tracking-widest">{timeLeft}</span>;
 };
 
 export const CarDetails = () => {
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const { id } = useParams();
@@ -173,7 +176,6 @@ export const CarDetails = () => {
     return calculateTotalCost(calcBid, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
   }, [car]);
 
-  // Calculate estimate based on global marketEstimates using same matching logic as CarCard and LiveAuction
   const estimate = React.useMemo(() => {
     if (!car || !marketEstimates?.length) return null;
     return marketEstimates.find(est => {
@@ -184,10 +186,10 @@ export const CarDetails = () => {
       const eMakeEn = cleanString(est.makeEn);
       const eModel = cleanString(est.model);
       const eModelEn = cleanString(est.modelEn);
-      
+
       const makeMatch = cMake.includes(eMake) || cMake.includes(eMakeEn) || eMakeEn.includes(cMake);
       const modelMatch = cModel.includes(eModel) || cModel.includes(eModelEn) || eModelEn.includes(cModel);
-      
+
       if (!makeMatch) return false;
       if (!modelMatch) return false;
       return Math.abs((car.year || 0) - (est.year || 0)) <= 2;
@@ -197,13 +199,12 @@ export const CarDetails = () => {
   const parseEstPrice = (p: any) => {
     const parts = String(p).split('-');
     if (parts.length > 1) {
-        return Math.floor((Number(parts[0].replace(/[^0-9]/g, '')) + Number(parts[1].replace(/[^0-9]/g, ''))) / 2);
+      return Math.floor((Number(parts[0].replace(/[^0-9]/g, '')) + Number(parts[1].replace(/[^0-9]/g, ''))) / 2);
     }
     return Number(String(p).replace(/[^0-9]/g, ''));
   };
   const estPriceValue = estimate ? parseEstPrice(estimate.price) : 0;
 
-  // Extract images from car data (handles arrays from server or strings from CSV)
   const allImages = React.useMemo(() => {
     if (!car) return [];
     if (Array.isArray(car.images)) return car.images.slice(0, 20);
@@ -252,9 +253,9 @@ export const CarDetails = () => {
   if (!car) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-500 pt-24">
-        <h2 className="text-2xl font-bold mb-4">البيانات غير متوفرة</h2>
+        <h2 className="text-2xl font-bold mb-4">{t('carDetails.notFound')}</h2>
         <button onClick={() => navigate(-1)} className="bg-orange-500 text-white px-6 py-2 rounded-xl font-bold">
-          العودة للخلف
+          {t('carDetails.backToHome')}
         </button>
       </div>
     );
@@ -263,49 +264,47 @@ export const CarDetails = () => {
   const isLive = car.status === 'live' || car.status === 'ultimo';
   const isOfferMarket = car.status === 'offer_market';
 
+  const importCountry = (() => {
+    const loc = (car.location || car['Location state'] || '').toLowerCase();
+    if (['tx','ca','fl','nj','ga','il','md','co','wa','ny','oh','pa','mi','nc','az','nv','or','va','ma','ct','mn','wi','in','tn','mo','la','al','sc','ky','ok','ar','ms','ia','ks','ut','ne','nm','wv','id','hi','me','nh','ri','mt','de','sd','nd','ak','vt','wy','dc',
+      'texas','california','florida','georgia','illinois','new york','ohio','michigan','houston','los angeles','miami','atlanta','chicago','denver','seattle','newark','baltimore'].some(s => loc.includes(s)))
+      return t('carDetails.countries.us');
+    if (['dubai','sharjah','abu dhabi','ajman','uae','emirates'].some(s => loc.includes(s))) return t('carDetails.countries.uae');
+    if (['germany','berlin','munich','bremen','hamburg'].some(s => loc.includes(s))) return t('carDetails.countries.germany');
+    if (['canada','toronto','montreal','vancouver'].some(s => loc.includes(s))) return t('carDetails.countries.canada');
+    if (['uk','london','england','birmingham'].some(s => loc.includes(s))) return t('carDetails.countries.uk');
+    if (['korea','seoul','busan'].some(s => loc.includes(s))) return t('carDetails.countries.korea');
+    if (['japan','tokyo','osaka'].some(s => loc.includes(s))) return t('carDetails.countries.japan');
+    return car.location || t('carDetails.notSpecified');
+  })();
+
+  const dateLocale = i18n.language === 'ar' ? 'ar-LY' : 'en-GB';
+
   const specs = [
-    { label: 'السنة', value: car.year || car.Year, icon: Calendar },
-    { label: 'الماركة', value: car.make || car.Make, icon: Shield },
-    { label: 'الموديل', value: car.model || car['Model Group'], icon: Info },
-    { label: 'العداد', value: `${(car.odometer || car.Odometer || 0).toLocaleString('en-US')} ${car.mileageUnit || 'mi'}`, icon: Gauge },
-    { label: 'الموقع', value: car.location || `${car['Location city']}, ${car['Location state']}`, icon: MapPin },
-    { label: 'VIN', value: car.vin || car.VIN, icon: Hash },
-    { label: 'نوع الضرر', value: car.primaryDamage && car.primaryDamage !== 'None' ? car.primaryDamage : 'بدون ضرر', icon: AlertTriangle },
-    { label: 'تاريخ الاستيراد', value: car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleDateString('ar-LY', { year: 'numeric', month: 'long' }) : new Date().toLocaleDateString('ar-LY', { year: 'numeric', month: 'long' }), icon: Calendar },
-    { label: 'بلد الاستيراد', value: (() => {
-      const loc = (car.location || car['Location state'] || '').toLowerCase();
-      if (['tx','ca','fl','nj','ga','il','md','co','wa','ny','oh','pa','mi','nc','az','nv','or','va','ma','ct','mn','wi','in','tn','mo','la','al','sc','ky','ok','ar','ms','ia','ks','ut','ne','nm','wv','id','hi','me','nh','ri','mt','de','sd','nd','ak','vt','wy','dc',
-        'texas','california','florida','georgia','illinois','new york','ohio','michigan','houston','los angeles','miami','atlanta','chicago','denver','seattle','newark','baltimore'].some(s => loc.includes(s)))
-        return 'الولايات المتحدة 🇺🇸';
-      if (['dubai','sharjah','abu dhabi','ajman','uae','emirates'].some(s => loc.includes(s))) return 'الإمارات 🇦🇪';
-      if (['germany','berlin','munich','bremen','hamburg'].some(s => loc.includes(s))) return 'ألمانيا 🇩🇪';
-      if (['canada','toronto','montreal','vancouver'].some(s => loc.includes(s))) return 'كندا 🇨🇦';
-      if (['uk','london','england','birmingham'].some(s => loc.includes(s))) return 'بريطانيا 🇬🇧';
-      if (['korea','seoul','busan'].some(s => loc.includes(s))) return 'كوريا 🇰🇷';
-      if (['japan','tokyo','osaka'].some(s => loc.includes(s))) return 'اليابان 🇯🇵';
-      return car.location || 'غير محدد';
-    })(), icon: Tag },
+    { label: t('carDetails.specs.year'), value: car.year || car.Year, icon: Calendar },
+    { label: t('carDetails.specs.make'), value: car.make || car.Make, icon: Shield },
+    { label: t('carDetails.specs.model'), value: car.model || car['Model Group'], icon: Info },
+    { label: t('carDetails.specs.odometer'), value: `${(car.odometer || car.Odometer || 0).toLocaleString('en-US')} ${car.mileageUnit || 'mi'}`, icon: Gauge },
+    { label: t('carDetails.specs.location'), value: car.location || `${car['Location city']}, ${car['Location state']}`, icon: MapPin },
+    { label: t('carDetails.specs.vin'), value: car.vin || car.VIN, icon: Hash },
+    { label: t('carDetails.specs.damageType'), value: car.primaryDamage && car.primaryDamage !== 'None' ? car.primaryDamage : t('carDetails.noDamage'), icon: AlertTriangle },
+    { label: t('carDetails.specs.importDate'), value: car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long' }) : new Date().toLocaleDateString(dateLocale, { year: 'numeric', month: 'long' }), icon: Calendar },
+    { label: t('carDetails.specs.importCountry'), value: importCountry, icon: Tag },
   ];
 
-  // ============================================================
-  // 🔴 IF LIVE / ULTIMO → Redirect to Global Live Auction Room
-  // ============================================================
   if (isLive) {
     return <Navigate to="/live-auction" replace />;
   }
 
-  // ============================================================
-  // 📋 STATIC VIEW: upcoming / offer_market / closed
-  // ============================================================
   return (
-    <div className="max-w-7xl mx-auto px-4 pt-24 pb-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir="rtl">
+    <div className="max-w-7xl mx-auto px-4 pt-24 pb-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir={i18n.dir()}>
       {/* Back Button */}
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-2 text-slate-500 hover:text-orange-500 transition-colors font-bold"
       >
         <ChevronLeft className="w-5 h-5" />
-        العودة للقائمة
+        {t('carDetails.back')}
       </button>
 
       {/* Status Banner */}
@@ -313,9 +312,9 @@ export const CarDetails = () => {
         <div className="bg-blue-50 border border-blue-100 rounded-2xl px-6 py-4 flex items-center gap-3">
           <Clock className="w-6 h-6 text-blue-500 flex-shrink-0" />
           <div>
-            <div className="font-black text-blue-800">المزاد قادم قريباً</div>
+            <div className="font-black text-blue-800">{t('carDetails.upcomingAuction')}</div>
             <div className="text-blue-600 text-sm font-black mt-1">
-              يتبقى لبداية المزاد: <CountdownLabel targetDate={car.auctionStartTime} />
+              {t('carDetails.timeUntilStart')} <CountdownLabel targetDate={car.auctionStartTime} />
             </div>
           </div>
         </div>
@@ -325,9 +324,9 @@ export const CarDetails = () => {
         <div className="bg-orange-50 border border-orange-100 rounded-2xl px-6 py-4 flex items-center gap-3">
           <Tag className="w-6 h-6 text-orange-500 flex-shrink-0" />
           <div>
-            <div className="font-black text-orange-800">سوق العروض - قدّم عرضك!</div>
+            <div className="font-black text-orange-800">{t('carDetails.offerMarketTitle')}</div>
             <div className="text-orange-600 text-sm font-black mt-1">
-              يتبقى لنهاية العروض: <CountdownLabel targetDate={car.offerMarketEndTime} />
+              {t('carDetails.timeUntilEnd')} <CountdownLabel targetDate={car.offerMarketEndTime} />
             </div>
           </div>
         </div>
@@ -341,10 +340,10 @@ export const CarDetails = () => {
           <Shield className={`w-6 h-6 flex-shrink-0 ${car.winnerId === currentUser?.id ? 'text-green-500' : 'text-slate-400'}`} />
           <div>
             <div className={`font-black ${car.winnerId === currentUser?.id ? 'text-green-800' : 'text-slate-700'}`}>
-              {car.winnerId === currentUser?.id ? '🏆 لقد فزت بهذا المزاد!' : 'المزاد منتهٍ'}
+              {car.winnerId === currentUser?.id ? t('carDetails.youWon') : t('carDetails.auctionEnded')}
             </div>
             <div className="text-sm font-medium text-slate-500">
-              سعر البيع النهائي: ${(car.currentBid || 0).toLocaleString('en-US')}
+              {t('carDetails.finalSalePrice')} ${(car.currentBid || 0).toLocaleString('en-US')}
             </div>
           </div>
         </div>
@@ -380,7 +379,7 @@ export const CarDetails = () => {
               >
                 <img
                   src={img}
-                  alt="صورة"
+                  alt=""
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
@@ -391,17 +390,17 @@ export const CarDetails = () => {
             ))}
           </div>
 
-          {/* New Media Section */}
+          {/* Media Section */}
           {(car.youtubeVideoUrl || car.videoUrl || car.engineVideoUrl || car.engineSoundUrl || car.engineAudioUrl || car.inspectionReportUrl || car.inspectionPdf) && (
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mt-8 space-y-6">
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
-                <FileText className="w-6 h-6 text-orange-500" /> تفاصيل الفحص والوسائط
+                <FileText className="w-6 h-6 text-orange-500" /> {t('carDetails.inspectionMedia')}
               </h3>
 
               {(car.youtubeVideoUrl || car.videoUrl || car.engineVideoUrl) && (
                 <div className="aspect-video rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-100 flex flex-col">
                   <iframe
-                    title="فيديو السيارة"
+                    title={t('carDetails.carVideo')}
                     src={getYoutubeEmbedUrl(car.youtubeVideoUrl || car.videoUrl || car.engineVideoUrl)}
                     className="w-full flex-1"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -416,9 +415,9 @@ export const CarDetails = () => {
                     <Gauge className="w-6 h-6" />
                   </div>
                   <div className="flex-1 w-full min-w-0">
-                    <div className="text-sm font-black text-slate-800 mb-2">صوت المحرك</div>
+                    <div className="text-sm font-black text-slate-800 mb-2">{t('carDetails.engineSound')}</div>
                     <audio controls className="w-full h-10 outline-none" src={car.engineSoundUrl || car.engineAudioUrl}>
-                      متصفحك لا يدعم تشغيل الصوت.
+                      {t('carDetails.audioNotSupported')}
                     </audio>
                   </div>
                 </div>
@@ -426,7 +425,7 @@ export const CarDetails = () => {
 
               {(car.inspectionReportUrl || car.inspectionPdf) && (
                 <button onClick={() => setShowPdfModal(car.inspectionReportUrl || car.inspectionPdf)} className="w-full bg-slate-900 hover:bg-orange-500 text-white p-4 rounded-2xl font-black transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 group">
-                  <FileText className="w-5 h-5 group-hover:scale-110 transition-transform" /> عرض تقرير الفحص (PDF)
+                  <FileText className="w-5 h-5 group-hover:scale-110 transition-transform" /> {t('carDetails.viewInspectionPdf')}
                 </button>
               )}
             </div>
@@ -435,7 +434,6 @@ export const CarDetails = () => {
 
         {/* Right: Info */}
         <div className="space-y-8">
-          {/* Recommended Badge */}
           {car.isRecommended && (
             <div className="relative bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 p-4 rounded-2xl shadow-xl shadow-amber-400/30 border-2 border-amber-300 animate-pulse-slow">
               <div className="flex items-center gap-3">
@@ -443,8 +441,8 @@ export const CarDetails = () => {
                   <Shield className="w-6 h-6 text-slate-900 fill-current" />
                 </div>
                 <div>
-                  <div className="text-xs font-black text-slate-900 opacity-80 mb-0.5">⭐ تمييز المنصة</div>
-                  <div className="text-lg font-black text-slate-900">سيارة مميزة موصى بها</div>
+                  <div className="text-xs font-black text-slate-900 opacity-80 mb-0.5">{t('carDetails.premiumBadge')}</div>
+                  <div className="text-lg font-black text-slate-900">{t('carDetails.premiumDesc')}</div>
                 </div>
               </div>
               <div className="absolute top-2 left-2 bg-slate-900 text-amber-400 text-[10px] font-black px-2 py-0.5 rounded-full">PREMIUM</div>
@@ -492,10 +490,10 @@ export const CarDetails = () => {
             <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
               <div>
-                <div className="font-bold text-amber-800 text-sm">تقرير الضرر</div>
+                <div className="font-bold text-amber-800 text-sm">{t('carDetails.damageReport')}</div>
                 <div className="text-amber-700 text-sm">
-                  الضرر الأساسي: <strong>{car.primaryDamage}</strong>
-                  {car.secondaryDamage && <span> | ثانوي: <strong>{car.secondaryDamage}</strong></span>}
+                  {t('carDetails.primaryDamage')} <strong>{car.primaryDamage}</strong>
+                  {car.secondaryDamage && <span> | {t('carDetails.secondaryDamage')} <strong>{car.secondaryDamage}</strong></span>}
                 </div>
               </div>
             </div>
@@ -506,7 +504,7 @@ export const CarDetails = () => {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">
-                  {isOfferMarket ? 'أعلى عرض حالي' : 'آخر سعر مزايدة'}
+                  {isOfferMarket ? t('carDetails.currentHighestOffer') : t('carDetails.lastBidPrice')}
                 </div>
                 <div className="text-5xl font-black font-mono text-green-400">
                   ${(car.currentBid || car.reservePrice || 0).toLocaleString('en-US')}
@@ -515,7 +513,7 @@ export const CarDetails = () => {
               </div>
               <div className="text-right flex flex-col gap-4">
                 <div>
-                  <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">السعر الاحتياطي</div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">{t('carDetails.reservePrice')}</div>
                   <div className="text-2xl font-black font-mono text-slate-400 line-through decoration-red-500/50">
                     ${(car.reservePrice || 0).toLocaleString('en-US')}
                   </div>
@@ -525,7 +523,7 @@ export const CarDetails = () => {
                 </div>
                 {car.buyItNow > 0 && (
                   <div>
-                    <div className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-1">شراء فوري</div>
+                    <div className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-1">{t('carDetails.buyItNowLabel')}</div>
                     <div className="text-3xl font-black font-mono text-amber-500">
                       ${car.buyItNow.toLocaleString('en-US')}
                     </div>
@@ -537,7 +535,6 @@ export const CarDetails = () => {
               </div>
             </div>
 
-            {/* CTA Button */}
             {car.status === 'upcoming' && (
               <PreBidPanel car={car} currentUser={currentUser} socket={socket} showAlert={showAlert} exchangeRate={exchangeRate} />
             )}
@@ -550,20 +547,20 @@ export const CarDetails = () => {
               <button
                 onClick={() => {
                   if (!currentUser) {
-                    showAlert('يرجى تسجيل الدخول أولاً', 'error');
+                    showAlert(t('carDetails.loginFirst'), 'error');
                     return;
                   }
-                  showAlert('تم تسجيل رغبتك بالشراء الفوري. سيتم التواصل معك لإتمام إرسال الفاتورة.', 'success');
+                  showAlert(t('carDetails.buyItNowFlow'), 'success');
                 }}
                 className="w-full mt-4 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-amber-500/20 active:scale-95 transition-all text-lg"
               >
-                شراء السيارة الآن بـ ${car.buyItNow.toLocaleString('en-US')}
+                {t('carDetails.buyItNowBtn', { price: car.buyItNow.toLocaleString('en-US') })}
               </button>
             )}
 
             {car.status === 'closed' && (
               <div className="w-full py-4 bg-slate-800 text-slate-500 rounded-2xl font-black text-center">
-                المزاد منتهٍ
+                {t('carDetails.auctionEnded')}
               </div>
             )}
 
@@ -572,19 +569,19 @@ export const CarDetails = () => {
               <div className="mt-6 pt-6 border-t border-white/10">
                 <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
                   <CalcIcon className="w-4 h-4 text-orange-500" />
-                  تقدير التكلفة الكاملة (حتى ليبيا)
+                  {t('carDetails.fullCostEstimate')}
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">رسوم المزاد</span>
+                    <span className="text-slate-500">{t('carDetails.auctionFee')}</span>
                     <span className="font-mono">${calculationResult.auctionFee.toLocaleString('en-US')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">الشحن واللوجستيات</span>
+                    <span className="text-slate-500">{t('carDetails.shippingLogistics')}</span>
                     <span className="font-mono">${(calculationResult.inlandFreight + calculationResult.oceanFreight).toLocaleString('en-US')}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-white/10 font-black">
-                    <span className="text-orange-400">الإجمالي الواصل (الخمس)</span>
+                    <span className="text-orange-400">{t('carDetails.totalLanded')}</span>
                     <div className="flex flex-col items-end">
                       <span className="font-mono text-orange-400">${calculationResult.total.toLocaleString('en-US')}</span>
                       <span className="font-mono text-xs text-orange-400/70">{Math.round(calculationResult.total * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
@@ -593,10 +590,9 @@ export const CarDetails = () => {
                 </div>
               </div>
             )}
-
           </div>
-          
-          {/* Estimated Market Price Widget (Moved outside dark box) */}
+
+          {/* Estimated Market Price Widget */}
           <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100/50 rounded-[2rem] p-8 shadow-md relative overflow-hidden group mt-6">
             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-150 duration-700"></div>
             <div className="relative flex flex-col gap-6">
@@ -607,7 +603,7 @@ export const CarDetails = () => {
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-bold text-indigo-500 mb-1 flex items-center gap-1.5 uppercase tracking-wider">
-                    السعر المتوقع بالسوق (ليبيا)
+                    {t('carDetails.expectedMarketPrice')}
                   </div>
                   {estimate ? (
                     <div className="flex items-end gap-3">
@@ -617,12 +613,11 @@ export const CarDetails = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xl font-bold text-slate-400 mt-2">لا تتوفر بيانات كافية عن سعر هذا الموديل حالياً في ليبيا</div>
+                    <div className="text-xl font-bold text-slate-400 mt-2">{t('carDetails.noMarketData')}</div>
                   )}
                 </div>
               </div>
-              
-              {/* Profit Margin Box */}
+
               {calculationResult && (
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
@@ -630,14 +625,13 @@ export const CarDetails = () => {
                       <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     </div>
                     <div>
-                      <div className="font-bold text-emerald-800 text-lg">توفير الزبون (الربح المتوقع)</div>
-                      <div className="text-emerald-600/80 text-xs mt-1">يُحسب بناءً على التكلفة الإجمالية الواصلة لميناء الخمس</div>
+                      <div className="font-bold text-emerald-800 text-lg">{t('carDetails.estimatedSavings')}</div>
+                      <div className="text-emerald-600/80 text-xs mt-1">{t('carDetails.savingsHint')}</div>
                     </div>
                   </div>
                   <div className="text-left font-black text-emerald-600 font-mono text-3xl" dir="ltr">
                     {(() => {
-                      if (!estimate) return <span className="text-sm text-emerald-600/50 font-sans tracking-normal font-bold">غير متاح</span>;
-                      
+                      if (!estimate) return <span className="text-sm text-emerald-600/50 font-sans tracking-normal font-bold">{t('carDetails.notAvailable')}</span>;
                       const totalCostLYD = Math.floor(calculationResult.total * (exchangeRate || 7));
                       const profit = estPriceValue - totalCostLYD;
                       return profit > 0 ? `+${profit.toLocaleString('en-US')} د.ل` : `${profit.toLocaleString('en-US')} د.ل`;
@@ -652,18 +646,18 @@ export const CarDetails = () => {
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="bg-slate-50 p-4 border-b border-slate-200 flex items-center gap-2">
               <FileText className="w-5 h-5 text-slate-400" />
-              <h3 className="font-bold text-slate-800">تفاصيل إضافية</h3>
+              <h3 className="font-bold text-slate-800">{t('carDetails.additionalDetails')}</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2">
               {[
-                ['الموديل الكامل', car.model || car['Model Group']],
-                ['ناقل الحركة', car.transmission || 'غير محدد'],
-                ['الوقود', car.fuelType || 'غير محدد'],
-                ['الدفع', car.drivetrain || car.drive || 'غير محدد'],
-                ['اللون الخارجي', car.exteriorColor || 'غير محدد'],
-                ['المحرك', car.engine || car.engineSize || 'غير محدد'],
-                ['نوع الوثيقة', car.titleType || 'Clean'],
-                ['يعمل؟', car.runsDrives === 'yes' ? 'نعم ✅' : car.runsDrives || 'غير محدد'],
+                [t('carDetails.fullModel'), car.model || car['Model Group']],
+                [t('carDetails.transmission'), car.transmission || t('carDetails.notSpecified')],
+                [t('carDetails.fuel'), car.fuelType || t('carDetails.notSpecified')],
+                [t('carDetails.drive'), car.drivetrain || car.drive || t('carDetails.notSpecified')],
+                [t('carDetails.exteriorColor'), car.exteriorColor || t('carDetails.notSpecified')],
+                [t('carDetails.engine'), car.engine || car.engineSize || t('carDetails.notSpecified')],
+                [t('carDetails.titleType'), car.titleType || 'Clean'],
+                [t('carDetails.runs'), car.runsDrives === 'yes' ? t('carDetails.yes') : car.runsDrives || t('carDetails.notSpecified')],
               ].filter(([, v]) => v).map(([key, value], i) => (
                 <div key={i} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors border-b border-slate-50">
                   <span className="text-sm text-slate-500 font-medium">{key}</span>
@@ -681,7 +675,7 @@ export const CarDetails = () => {
           <div className="bg-white rounded-3xl w-full h-full max-w-5xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                <FileText className="w-6 h-6 text-orange-500" /> تقرير فحص السيارة
+                <FileText className="w-6 h-6 text-orange-500" /> {t('carDetails.inspectionPdfTitle')}
               </h3>
               <div className="flex items-center gap-2">
                 <a
@@ -691,10 +685,10 @@ export const CarDetails = () => {
                   className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors text-sm"
                   download
                 >
-                  <FileText className="w-4 h-4 inline-block mr-1" /> تحميل الملف
+                  <FileText className="w-4 h-4 inline-block mr-1" /> {t('carDetails.downloadFile')}
                 </a>
                 <button
-                  title="إغلاق"
+                  title={t('carDetails.close')}
                   onClick={() => setShowPdfModal(null)}
                   className="p-2 bg-slate-200 hover:bg-rose-500 hover:text-white rounded-full transition-all text-slate-500"
                 >
@@ -714,8 +708,8 @@ export const CarDetails = () => {
         <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center animate-in fade-in duration-300">
           <button
             onClick={() => setShowLightbox(false)}
-            aria-label="إغلاق"
-            title="إغلاق"
+            aria-label={t('carDetails.close')}
+            title={t('carDetails.close')}
             className="absolute top-6 left-6 p-4 bg-white/10 hover:bg-rose-500 hover:text-white rounded-full transition-all text-white/70"
           >
             <X className="w-8 h-8" />
@@ -724,8 +718,8 @@ export const CarDetails = () => {
           {allImages.length > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === allImages.length - 1 ? 0 : prev + 1)); }}
-              aria-label="التالي"
-              title="التالي"
+              aria-label={t('carDetails.next')}
+              title={t('carDetails.next')}
               className="absolute left-6 p-4 bg-white/10 hover:bg-orange-500 hover:text-white rounded-full transition-all text-white/70 z-10"
             >
               <ChevronLeft className="w-10 h-10 -rotate-180" />
@@ -742,8 +736,8 @@ export const CarDetails = () => {
           {allImages.length > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === 0 ? allImages.length - 1 : prev - 1)); }}
-              aria-label="السابق"
-              title="السابق"
+              aria-label={t('carDetails.previous')}
+              title={t('carDetails.previous')}
               className="absolute right-6 p-4 bg-white/10 hover:bg-orange-500 hover:text-white rounded-full transition-all text-white/70 z-10"
             >
               <ChevronLeft className="w-10 h-10" />
@@ -763,6 +757,7 @@ export const CarDetails = () => {
 // Inline Offer Panel for Offer Market cars
 // ============================================================
 const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, currentUser }) => {
+  const { t } = useTranslation();
   const [offerAmount, setOfferAmount] = React.useState(car.currentBid || car.reservePrice * 0.9 || 0);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { showAlert } = useStore();
@@ -771,11 +766,11 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
 
   const handleSubmitOffer = async () => {
     if (offerAmount < minOffer) {
-      showAlert(`الحد الأدنى للعرض هو $${minOffer.toLocaleString('en-US')} (90% من السعر الاحتياطي)`, 'error');
+      showAlert(t('carDetails.offerPanel.minOfferError', { amount: minOffer.toLocaleString('en-US') }), 'error');
       return;
     }
     if (offerAmount > currentUser.buyingPower) {
-      showAlert('القوة الشرائية غير كافية لهذا العرض', 'error');
+      showAlert(t('carDetails.offerPanel.insufficientPower'), 'error');
       return;
     }
     setIsSubmitting(true);
@@ -787,12 +782,12 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
       });
       const data = await res.json();
       if (res.ok) {
-        showAlert(data.message || 'تم تقديم العرض بنجاح!', 'success');
+        showAlert(data.message || t('carDetails.offerPanel.submitSuccess'), 'success');
       } else {
-        showAlert(data.error || 'فشل تقديم العرض', 'error');
+        showAlert(data.error || t('carDetails.offerPanel.submitFail'), 'error');
       }
     } catch {
-      showAlert('خطأ في الاتصال بالخادم', 'error');
+      showAlert(t('carDetails.offerPanel.networkError'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -802,10 +797,10 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
     <div className="space-y-4">
       <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
         <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-widest">
-          مبلغ عرضك (الحد الأدنى: ${minOffer.toLocaleString('en-US')})
+          {t('carDetails.offerPanel.yourOfferLabel', { amount: minOffer.toLocaleString('en-US') })}
         </div>
         <div className="flex gap-3">
-          <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+          <input aria-label={t('carDetails.offerPanel.input')} title={t('carDetails.offerPanel.input')} placeholder={t('carDetails.offerPanel.specify')}
             type="number"
             value={offerAmount}
             onChange={e => setOfferAmount(Number(e.target.value))}
@@ -822,10 +817,10 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
         className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-xl shadow-orange-500/20 disabled:opacity-50"
       >
         <Gavel className="w-5 h-5" />
-        {isSubmitting ? 'جاري الإرسال...' : 'تقديم العرض الآن'}
+        {isSubmitting ? t('carDetails.offerPanel.submitting') : t('carDetails.offerPanel.submitBtn')}
       </button>
       <div className="text-[10px] text-slate-500 text-center">
-        سيبلغ البائع بعرضك ويمكنه القبول أو الرفض خلال 48 ساعة
+        {t('carDetails.offerPanel.infoNote')}
       </div>
     </div>
   );
