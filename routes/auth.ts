@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { requireAuth } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
+import * as agentcollab from '../lib/agentcollab.ts';
 
 export function registerAuthRoutes(ctx: AppContext) {
   const { app, db, sendEmail, sendNotification, sendInternalMessage, JWT_SECRET, SITE_URL, SALT_ROUNDS } = ctx;
@@ -68,6 +69,18 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       const newUser: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       const authToken = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role, yardRole: newUser.yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
       const { password: _p, ...userWithoutPassword } = newUser;
+
+      // [agentcollab] Track new signup
+      agentcollab.track('user.signup', {
+        plan: 'free',
+        country: country || 'LY',
+        source: 'web',
+        role: role || 'buyer',
+      }, {
+        external_user_id: newUser.id,
+        external_user_email: newUser.email,
+      });
+
       res.json({ ...userWithoutPassword, token: authToken });
 
       // Send email & notifications in background (non-blocking)
@@ -221,6 +234,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       // Check if user exists by googleId or email
       let user: any = db.prepare("SELECT * FROM users WHERE googleId = ? OR email = ?").get(googleId, email);
+      let isNewUser = false;
 
       if (user) {
         // Link googleId if not already linked
@@ -231,6 +245,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         user = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate, googleId, profilePic, isEmailVerified FROM users WHERE id = ?").get(user.id);
       } else {
         // Register new user via Google
+        isNewUser = true;
         const id = `user-g-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         const joinDate = new Date().toISOString();
         const buyingPower = 0;
@@ -268,6 +283,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           } catch (_) {}
         });
       }
+
+      // [agentcollab] Track Google signup (new) or login (existing)
+      agentcollab.track(isNewUser ? 'user.signup' : 'user.login', {
+        method: 'google',
+        country: user.country || 'LY',
+      }, {
+        external_user_id: user.id,
+        external_user_email: user.email,
+      });
 
       // Generate JWT for authenticated session
       const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role, yardRole: (user as any).yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
@@ -310,6 +334,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
       // 3) Find or create user
       let user: any = db.prepare("SELECT * FROM users WHERE facebookId = ? OR email = ?").get(fbId, email);
+      let isNewUser = false;
 
       if (user) {
         if (!user.facebookId) {
@@ -323,6 +348,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         }
         user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
       } else {
+        isNewUser = true;
         const id = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         const joinDate = new Date().toISOString();
         const buyingPower = 0;
@@ -347,6 +373,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         }
         user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       }
+
+      // [agentcollab] Track Facebook signup (new) or login (existing)
+      agentcollab.track(isNewUser ? 'user.signup' : 'user.login', {
+        method: 'facebook',
+        country: user.country || 'LY',
+      }, {
+        external_user_id: user.id,
+        external_user_email: user.email,
+      });
 
       const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role, yardRole: (user as any).yardRole || null }, JWT_SECRET, { expiresIn: '24h' });
       res.json({ ...user, token: authToken });
@@ -420,6 +455,13 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Update last login
       db.prepare("UPDATE users SET lastLogin = ?, loginCount = COALESCE(loginCount, 0) + 1 WHERE id = ?")
         .run(new Date().toISOString(), user.id);
+
+      // [agentcollab] Track login
+      agentcollab.track('user.login', { method: 'password' }, {
+        external_user_id: user.id,
+        external_user_email: user.email,
+      });
+
       // Return user data + token (exclude password from response)
       const { password: _pass, ...userWithoutPassword } = user;
       res.json({ ...userWithoutPassword, token });
