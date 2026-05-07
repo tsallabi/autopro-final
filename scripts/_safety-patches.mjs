@@ -7,7 +7,7 @@
  */
 export const PATCHES = [
   {
-    label: '1/7 import safety module',
+    label: '1/9 import safety module',
     find: `import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';`,
     replace: `import { initWebPush } from './lib/webpush.ts';
@@ -25,7 +25,7 @@ import {
 } from './lib/dataSafety.ts';`,
   },
   {
-    label: '2/7 replace boot section + add scheduler',
+    label: '2/9 replace boot section + add scheduler',
     find: `const DATA_DIR = process.env.DATA_DIR
   || (fs.existsSync('/data') ? '/data' : __dirname);
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'auction.db');
@@ -82,7 +82,7 @@ const BACKUP_KEEP_DAYS = Number(process.env.BACKUP_KEEP_DAYS) || 30;
 __safetyScheduleBackup(db, BACKUP_DIR, BACKUP_INTERVAL_HOURS, BACKUP_KEEP_DAYS);`,
   },
   {
-    label: '3/7 expand /api/health + add admin endpoints',
+    label: '3/9 expand /api/health + add admin endpoints',
     find: `// Health check must respond BEFORE full initialization
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
@@ -158,7 +158,7 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
 });`,
   },
   {
-    label: '4/7 import admin-extras + referrals + mypay + whatsapp + seo + deal-of-day modules',
+    label: '4/9 import admin-extras + referrals + mypay + whatsapp + seo + deal-of-day modules',
     find: `import { registerBannerRoutes } from './routes/banners.ts';`,
     replace: `import { registerBannerRoutes } from './routes/banners.ts';
 import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
@@ -169,7 +169,7 @@ import { registerSeoRoutes } from './routes/seo.ts';
 import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
   },
   {
-    label: '5/7 register admin-extras + referrals + mypay + whatsapp + seo + deal-of-day routes',
+    label: '5/9 register admin-extras + referrals + mypay + whatsapp + seo + deal-of-day routes',
     find: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
     replace: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
@@ -182,10 +182,7 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
   registerSocketHandlers(ctx as any);`,
   },
   {
-    // Critical fix: the original checkUpcomingAuctions ignores auctionStartTime
-    // and overwrites the admin-set auctionEndDate with a hardcoded 5-minute
-    // window. This patch makes the queue honor admin scheduling.
-    label: '6/7 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
+    label: '6/9 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
     find: `  function checkUpcomingAuctions() {
     if (isTransitioning) return;
     const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
@@ -235,11 +232,7 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
   }`,
   },
   {
-    // The same 5-minute hardcode also lives in tickAuctions's auto-repair block.
-    // It overwrites a missing auctionEndDate with now+5min, which will silently
-    // override an admin-scheduled end date if the row is queried before the row
-    // gets the admin's update. Switch to AUCTION_DURATION_MIN env var.
-    label: '7/7 fix tickAuctions auto-repair to use AUCTION_DURATION_MIN',
+    label: '7/9 fix tickAuctions auto-repair to use AUCTION_DURATION_MIN',
     find: `    // AUTO REPAIR: Any live car missing an end date gets exactly 5 minutes from NOW.
     const nullEndDateCars: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND (auctionEndDate IS NULL OR auctionEndDate = '')").all();
     if (nullEndDateCars.length > 0) {
@@ -261,5 +254,23 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
         console.log(\`[AUTO-REPAIR] Fixed null end date for live car \${car.id}. Ends at \${newEndDate}\`);
       });
     }`,
+  },
+  {
+    // The unified car-add form sends `startingBid` — the server destructures
+    // a different name (`startPrice`) and stores no value at all, so the
+    // admin's "auction start price" silently disappears. Fix accepts both
+    // names, and seeds them into currentBid (which every UI surface reads
+    // as the live price). The cars table has no separate startingBid column.
+    label: '8/9 accept startingBid in POST /api/cars',
+    find: `      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,`,
+    replace: `      buyItNow, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,`,
+  },
+  {
+    // Seed currentBid INSERT slot from startingBid (form field) or startPrice
+    // (legacy). The line being replaced is unique because of the trailing
+    // `currency || 'USD', JSON.stringify(images || [])` context.
+    label: '9/9 seed currentBid from startingBid on POST /api/cars INSERT',
+    find: `        currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
+    replace: `        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
   },
 ];
