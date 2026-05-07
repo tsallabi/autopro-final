@@ -1,14 +1,96 @@
 import React, { useState } from 'react';
-import { Mail, Send, History, ChevronLeft, User, Shield, Wallet, ShoppingCart, Truck, Ship, FileText, CheckCircle2 } from 'lucide-react';
+import { Mail, Send, History, ChevronLeft, User, Shield, Wallet, ShoppingCart, Truck, Ship, FileText, CheckCircle2, ExternalLink } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Message } from '../types';
+import { useNavigate } from 'react-router-dom';
+
+const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+const IMG_EXT_RE = /\.(jpg|jpeg|png|gif|webp|avif)(\?|$)/i;
+const INTERNAL_HOSTS = ['autopro.ac', 'www.autopro.ac', 'autopro-final.onrender.com'];
+
+interface UrlPart { kind: 'text' | 'image' | 'link'; value: string; href?: string }
+
+function tokenize(text: string): UrlPart[] {
+    if (!text) return [];
+    const parts: UrlPart[] = [];
+    let lastIndex = 0;
+    let m: RegExpExecArray | null;
+    URL_RE.lastIndex = 0;
+    while ((m = URL_RE.exec(text)) !== null) {
+        if (m.index > lastIndex) {
+            parts.push({ kind: 'text', value: text.slice(lastIndex, m.index) });
+        }
+        const url = m[1];
+        if (IMG_EXT_RE.test(url)) {
+            parts.push({ kind: 'image', value: url, href: url });
+        } else {
+            parts.push({ kind: 'link', value: url, href: url });
+        }
+        lastIndex = m.index + url.length;
+    }
+    if (lastIndex < text.length) {
+        parts.push({ kind: 'text', value: text.slice(lastIndex) });
+    }
+    return parts;
+}
+
+function isInternalHref(href: string): boolean {
+    try {
+        const u = new URL(href);
+        return INTERNAL_HOSTS.some(h => u.host === h);
+    } catch { return false; }
+}
+
+const RichContent: React.FC<{ text: string; navigate: (path: string) => void; onLinkClick?: () => void }> = ({ text, navigate, onLinkClick }) => {
+    const parts = tokenize(text);
+    return (
+        <>
+            {parts.map((p, i) => {
+                if (p.kind === 'text') return <span key={i} className="whitespace-pre-wrap">{p.value}</span>;
+                if (p.kind === 'image') return (
+                    <a key={i} href={p.href} onClick={(e) => { e.stopPropagation(); }} target="_blank" rel="noopener noreferrer" className="block my-2">
+                        <img src={p.value} alt="صورة" className="w-full max-w-xs rounded-xl border border-slate-200" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    </a>
+                );
+                const internal = p.href && isInternalHref(p.href);
+                return (
+                    <a
+                        key={i}
+                        href={p.href}
+                        onClick={(e) => {
+                            if (internal && p.href) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                try {
+                                    const path = new URL(p.href).pathname + new URL(p.href).search;
+                                    navigate(path);
+                                    onLinkClick?.();
+                                } catch {}
+                            } else {
+                                e.stopPropagation();
+                            }
+                        }}
+                        target={internal ? '_self' : '_blank'}
+                        rel="noopener noreferrer"
+                        className="text-orange-600 hover:text-orange-700 underline decoration-orange-200 underline-offset-2 break-all inline-flex items-center gap-1"
+                    >
+                        {p.value}
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                    </a>
+                );
+            })}
+        </>
+    );
+};
 
 export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { messages, markMessageAsRead, unreadCounts, sendMessage, currentUser } = useStore();
-    const [view, setView] = useState<'list' | 'new' | 'chat'>('list');
+    const navigate = useNavigate();
+    const [view, setView] = useState<'list' | 'new' | 'chat' | 'detail'>('list');
     const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
     const [messageDraft, setMessageDraft] = useState('');
     const [sending, setSending] = useState(false);
+    const [openMessage, setOpenMessage] = useState<Message | null>(null);
 
     const teams = [
         { id: 'registration', label: 'فريق التسجيل', icon: Shield, color: 'text-blue-500' },
@@ -24,7 +106,7 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
         setSending(true);
         try {
             await sendMessage({
-                receiverId: 'admin-1', // Sent to general management
+                receiverId: 'admin-1',
                 subject: `رسالة من مستخدم بخصوص ${teams.find(t => t.id === selectedTeam)?.label}`,
                 content: messageDraft,
                 category: selectedTeam
@@ -35,6 +117,12 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
         } finally {
             setSending(false);
         }
+    };
+
+    const openMessageDetail = (msg: Message) => {
+        if (!msg.isRead) markMessageAsRead(msg.id);
+        setOpenMessage(msg);
+        setView('detail');
     };
 
     const getTeamLabel = (category?: string) => {
@@ -60,7 +148,7 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
                     <button
                         title="الرجوع"
                         aria-label="الرجوع للقائمة"
-                        onClick={() => { setView('list'); setSelectedTeam(null); }}
+                        onClick={() => { setView('list'); setSelectedTeam(null); setOpenMessage(null); }}
                         className="text-xs font-black text-slate-400 hover:text-slate-600 flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-full transition-all"
                     >
                         رجوع
@@ -94,10 +182,10 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
                             </div>
                         ) : (
                             <div className="flex flex-col gap-2">
-                                {messages.slice(0, 5).map(msg => (
+                                {messages.slice(0, 8).map(msg => (
                                     <div
                                         key={msg.id}
-                                        onClick={() => !msg.isRead && markMessageAsRead(msg.id)}
+                                        onClick={() => openMessageDetail(msg)}
                                         className={`p-4 rounded-2xl border transition-all cursor-pointer relative group ${msg.isRead ? 'border-slate-50 hover:bg-slate-50' : 'border-blue-100 bg-blue-50/30'}`}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
@@ -108,10 +196,32 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
                                         </div>
                                         <h5 className={`text-sm mb-1 line-clamp-1 ${msg.isRead ? 'font-bold text-slate-700' : 'font-black text-slate-900'}`}>{msg.subject}</h5>
                                         <p className="text-xs text-slate-600 font-bold line-clamp-2 leading-relaxed">{msg.content}</p>
+                                        <span className="text-[10px] font-black text-orange-600 mt-1 block">اضغط للقراءة ←</span>
                                     </div>
                                 ))}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {view === 'detail' && openMessage && (
+                    <div className="p-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="mb-4">
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${getCategoryStyle(openMessage.category)}`}>
+                                {getTeamLabel(openMessage.category)}
+                            </span>
+                        </div>
+                        <h3 className="text-base font-black text-slate-900 mb-3 leading-relaxed">{openMessage.subject}</h3>
+                        <div className="text-sm text-slate-700 font-medium leading-relaxed">
+                            <RichContent
+                                text={openMessage.content}
+                                navigate={navigate}
+                                onLinkClick={onClose}
+                            />
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-4 font-black">
+                            {new Date(openMessage.timestamp).toLocaleString('ar-LY')}
+                        </div>
                     </div>
                 )}
 
