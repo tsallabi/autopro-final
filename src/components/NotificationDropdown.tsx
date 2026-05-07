@@ -4,6 +4,14 @@ import { useStore } from '../context/StoreContext';
 import { Notification } from '../types';
 import { useNavigate } from 'react-router-dom';
 
+// notif.data may arrive as a JSON string (from SQLite) or as a parsed object
+// (depending on how the backend serialized it). Normalise to an object.
+function readNotifData(raw: any): any {
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try { return JSON.parse(String(raw)); } catch { return {}; }
+}
+
 export const NotificationDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { notifications, markNotificationAsRead, markAllNotificationsAsRead, unreadCounts } = useStore();
     const navigate = useNavigate();
@@ -64,36 +72,54 @@ export const NotificationDropdown: React.FC<{ onClose: () => void }> = ({ onClos
                     </div>
                 ) : (
                     <div className="divide-y divide-slate-50">
-                        {notifications.map((notif) => (
-                            <div
-                                key={notif.id}
-                                onClick={() => handleNotifClick(notif)}
-                                className={`p-4 hover:bg-slate-50 transition-colors cursor-pointer group ${!notif.isRead ? 'bg-orange-50/30' : ''} ${notif.link ? 'hover:bg-orange-50/50' : ''}`}
-                            >
-                                <div className="flex gap-3">
-                                    <div className="mt-1 flex-shrink-0">
-                                        {getTypeIcon(notif.type)}
-                                    </div>
-                                    <div className="flex-grow min-w-0">
-                                        <div className="flex items-start justify-between gap-1">
-                                            <h4 className={`text-sm mb-0.5 ${!notif.isRead ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
-                                                {notif.title}
-                                            </h4>
+                        {notifications.map((notif) => {
+                            const data = readNotifData((notif as any).data);
+                            const imageUrl: string | undefined = data?.imageUrl;
+                            return (
+                                <div
+                                    key={notif.id}
+                                    onClick={() => handleNotifClick(notif)}
+                                    className={`p-4 hover:bg-slate-50 transition-colors cursor-pointer group ${!notif.isRead ? 'bg-orange-50/30' : ''} ${notif.link ? 'hover:bg-orange-50/50' : ''}`}
+                                >
+                                    <div className="flex gap-3">
+                                        {imageUrl ? (
+                                            <img
+                                                src={imageUrl}
+                                                alt={data?.title || 'صورة'}
+                                                className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-slate-100"
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                        ) : (
+                                            <div className="mt-1 flex-shrink-0">
+                                                {getTypeIcon(notif.type)}
+                                            </div>
+                                        )}
+                                        <div className="flex-grow min-w-0">
+                                            <div className="flex items-start justify-between gap-1">
+                                                <h4 className={`text-sm mb-0.5 ${!notif.isRead ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
+                                                    {notif.title}
+                                                </h4>
+                                                {notif.link && (
+                                                    <ExternalLink className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-600 font-bold leading-relaxed line-clamp-2">{notif.message}</p>
                                             {notif.link && (
-                                                <ExternalLink className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                                <span className="inline-block mt-1 text-[10px] font-black text-orange-600 group-hover:text-orange-700 transition-colors">
+                                                    اضغط للمشاهدة ←
+                                                </span>
                                             )}
+                                            <span className="text-[10px] text-slate-500 mt-1 block font-black">
+                                                {formatTimeAgo(notif.timestamp)}
+                                            </span>
                                         </div>
-                                        <p className="text-xs text-slate-600 font-bold leading-relaxed">{notif.message}</p>
-                                        <span className="text-[10px] text-slate-500 mt-2 block font-black">
-                                            {formatTimeAgo(notif.timestamp)}
-                                        </span>
+                                        {!notif.isRead && (
+                                            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2 ring-4 ring-orange-500/20 flex-shrink-0"></div>
+                                        )}
                                     </div>
-                                    {!notif.isRead && (
-                                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2 ring-4 ring-orange-500/20 flex-shrink-0"></div>
-                                    )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
