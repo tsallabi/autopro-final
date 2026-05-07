@@ -12,6 +12,10 @@
  *   GET /api/seo/json-ld/:lot — JSON-LD Product + Vehicle schema for one car
  *
  * Cached in-memory for 5 minutes so a Googlebot burst doesn't hammer the DB.
+ *
+ * NOTE on column names — actual cars schema uses:
+ *   auctionEndDate, auctionStartTime, currentBid, reservePrice, status
+ * (NOT endTime / startingPrice / auctionEnd).
  */
 import type { AppContext } from '../lib/types.ts';
 
@@ -68,10 +72,10 @@ function buildCarsSitemap(db: any, siteUrl: string): string {
   let rows: any[] = [];
   try {
     rows = db.prepare(`
-      SELECT id, lotNumber, make, model, year, currentBid, startingPrice,
+      SELECT id, lotNumber, make, model, year, currentBid, reservePrice,
              images, imageUrl, status, updatedAt
         FROM cars
-       WHERE COALESCE(status, 'active') NOT IN ('deleted', 'archived', 'hidden')
+       WHERE COALESCE(status, 'upcoming') NOT IN ('deleted', 'archived', 'hidden', 'closed')
        ORDER BY COALESCE(updatedAt, '') DESC
        LIMIT 5000
     `).all();
@@ -115,7 +119,6 @@ function buildRootSitemap(siteUrl: string): string {
     <priority>${r.priority}</priority>
   </url>`).join('\n');
 
-  // Also include sitemap-cars.xml as a sub-sitemap reference inline.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${staticUrls}
@@ -168,7 +171,7 @@ function buildJsonLd(car: any, siteUrl: string): object {
   const url = `${base}/car/${encodeURIComponent(lot)}`;
   const title = [car.year, car.make, car.model].filter(Boolean).join(' ') || 'Car';
   const img = pickHeroImage(car);
-  const price = Number(car.currentBid || car.startingPrice || 0);
+  const price = Number(car.currentBid || car.reservePrice || 0);
 
   return {
     '@context': 'https://schema.org',
