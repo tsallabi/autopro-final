@@ -6,6 +6,10 @@
  *   GET  /api/admin/cars/won
  *      List closed (sold) cars with id, lot, VIN, make/model, winner email.
  *
+ *   GET  /api/admin/dashboard-stats
+ *      Real live counts (users / cars / bids / invoices / transactions /
+ *      messages / notifications) for the admin dashboard cards.
+ *
  *   POST /api/admin/cars/:idOrLotOrVin/announce
  *      Send a "new car" notification (inbox + bell + email) to every
  *      active non-admin user. Returns immediately; sends run in background.
@@ -79,6 +83,71 @@ export function registerAdminExtrasRoutes(ctx: AppContext) {
       res.json(rows);
     } catch (e: any) {
       res.status(500).json({ error: 'فشل جلب السيارات المباعة: ' + (e?.message || e) });
+    }
+  });
+
+  // ── GET /api/admin/dashboard-stats ─────────────────────────────────────
+  // Accurate live counts for the admin dashboard cards. Replaces the
+  // hardcoded mock numbers (المزادات النشطة = 0, المستخدمون = 0) that
+  // appeared even when the DB had real data.
+  app.get('/api/admin/dashboard-stats', requireAdmin, (_req, res) => {
+    const c = (sql: string): number => {
+      try { return Number((db.prepare(sql).get() as any)?.c) || 0; } catch { return 0; }
+    };
+    const v = (sql: string): number => {
+      try { return Number((db.prepare(sql).get() as any)?.v) || 0; } catch { return 0; }
+    };
+    try {
+      res.json({
+        users: {
+          total: c("SELECT COUNT(*) as c FROM users"),
+          active: c("SELECT COUNT(*) as c FROM users WHERE status = 'active'"),
+          pending: c("SELECT COUNT(*) as c FROM users WHERE status = 'pending_approval'"),
+          suspended: c("SELECT COUNT(*) as c FROM users WHERE status = 'suspended'"),
+          buyers: c("SELECT COUNT(*) as c FROM users WHERE role = 'buyer'"),
+          sellers: c("SELECT COUNT(*) as c FROM users WHERE role = 'seller'"),
+          newToday: c("SELECT COUNT(*) as c FROM users WHERE date(joinDate) = date('now')"),
+          newThisWeek: c("SELECT COUNT(*) as c FROM users WHERE joinDate > datetime('now', '-7 days')"),
+        },
+        cars: {
+          total: c("SELECT COUNT(*) as c FROM cars"),
+          live: c("SELECT COUNT(*) as c FROM cars WHERE status = 'live'"),
+          upcoming: c("SELECT COUNT(*) as c FROM cars WHERE status = 'upcoming'"),
+          pending_approval: c("SELECT COUNT(*) as c FROM cars WHERE status IN ('pending_approval', 'pending')"),
+          closed: c("SELECT COUNT(*) as c FROM cars WHERE status = 'closed'"),
+          offer_market: c("SELECT COUNT(*) as c FROM cars WHERE status = 'offer_market'"),
+          ultimo: c("SELECT COUNT(*) as c FROM cars WHERE status = 'ultimo'"),
+        },
+        bids: {
+          total: c("SELECT COUNT(*) as c FROM bids"),
+          last24h: c("SELECT COUNT(*) as c FROM bids WHERE timestamp > datetime('now', '-1 day')"),
+          last7days: c("SELECT COUNT(*) as c FROM bids WHERE timestamp > datetime('now', '-7 days')"),
+        },
+        invoices: {
+          total: c("SELECT COUNT(*) as c FROM invoices"),
+          unpaid: c("SELECT COUNT(*) as c FROM invoices WHERE status = 'unpaid'"),
+          paid: c("SELECT COUNT(*) as c FROM invoices WHERE status = 'paid'"),
+          pending_confirmation: c("SELECT COUNT(*) as c FROM invoices WHERE status = 'pending_confirmation'"),
+          totalRevenue: v("SELECT SUM(amount) as v FROM invoices WHERE status = 'paid'"),
+          pendingValue: v("SELECT SUM(amount) as v FROM invoices WHERE status = 'unpaid'"),
+        },
+        transactions: {
+          totalDeposits: v("SELECT SUM(amount) as v FROM transactions WHERE type = 'deposit' AND status = 'completed'"),
+          pendingDeposits: c("SELECT COUNT(*) as c FROM transactions WHERE type = 'deposit' AND status = 'pending'"),
+          totalWithdrawals: v("SELECT SUM(amount) as v FROM transactions WHERE type = 'withdrawal' AND status = 'completed'"),
+        },
+        messages: {
+          unread: c("SELECT COUNT(*) as c FROM messages WHERE isRead = 0"),
+          total: c("SELECT COUNT(*) as c FROM messages"),
+        },
+        notifications: {
+          unread: c("SELECT COUNT(*) as c FROM notifications WHERE isRead = 0"),
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      console.error('[admin-extras] dashboard-stats failed:', e);
+      res.status(500).json({ error: 'فشل جلب الإحصائيات: ' + (e?.message || e) });
     }
   });
 
