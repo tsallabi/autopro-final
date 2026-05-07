@@ -160,7 +160,14 @@
         "home": "الرئيسية",
         "profile": "الملف الشخصي",
         "libya": "ليبيا",
-        "autoPro": "AUTO PRO"
+        "autoPro": "AUTO PRO",
+        "viewAsBuyer": "عرض كـ مشتري (اختبار)",
+        "viewAsSeller": "عرض كـ بائع (اختبار)",
+        "openMenu": "فتح القائمة",
+        "closeMenu": "إغلاق القائمة",
+        "userFallback": "مستخدم",
+        "selectBrand": "اختر ماركة السيارة",
+        "filterResults": "تصفية النتائج"
     },
     "hero": {
         "title": "أكبر منصة لمزادات السيارات في ليبيا",
@@ -411,10 +418,20 @@
         "browseCars": "تصفح السيارات",
         "costCalculator": "حاسبة التكلفة",
         "shippingServices": "خدمات الشحن",
+        "nearestShippingCenter": "أقرب مركز شحن",
         "contact": "تواصل معنا",
         "rightsReserved": "جميع الحقوق محفوظة",
         "termsAndConditions": "الشروط والأحكام",
         "privacyPolicy": "سياسة الخصوصية",
-        "refundPolicy": "سياسة الإلغاء"
+        "refundPolicy": "سياسة الإلغاء",
+        "facebook": "فيسبوك",
+        "twitter": "تويتر",
+        "instagram": "إنستجرام",
+        "youtube": "يوتيوب",
+        "platformName": "ليبيا أوتو برو",
+        "copyrightPrefix": "منصة",
+        "designedBy": "من تصميم",
+        "libyaProTech": "ليبيا برو للتقنية",
+        "libyaProTechTitle": "ليبيا برو للتقنية — تصميم وبناء المواقع والمنصات"
     }
 }
