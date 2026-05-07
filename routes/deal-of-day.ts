@@ -9,6 +9,9 @@
  * cars table so the homepage can render a hero card.
  *
  * Public, cached for 60 seconds. Returns 200 even when nothing is pinned.
+ *
+ * Schema note: real cars columns are auctionEndDate + auctionStartTime
+ * + currentBid + reservePrice (NOT endTime/auctionEnd/startingPrice).
  */
 import type { AppContext } from '../lib/types.ts';
 
@@ -37,11 +40,10 @@ export function registerDealOfDayRoutes(ctx: AppContext) {
       }
 
       const car: any = db.prepare(
-        'SELECT id, lotNumber, vin, make, model, year, mileage, currentBid, startingPrice, endTime, auctionEnd, images, imageUrl, description, status FROM cars WHERE id = ? OR lotNumber = ?'
+        'SELECT id, lotNumber, vin, make, model, year, mileage, currentBid, reservePrice, auctionEndDate, auctionStartTime, images, imageUrl, description, status FROM cars WHERE id = ? OR lotNumber = ?'
       ).get(carId, carId);
 
-      // If the pinned car is gone (deleted/sold), return null instead of stale.
-      if (!car || ['deleted', 'archived', 'hidden'].includes(String(car.status || '').toLowerCase())) {
+      if (!car || ['deleted', 'archived', 'hidden', 'closed'].includes(String(car.status || '').toLowerCase())) {
         const empty = { car: null, setAt: null };
         cache = { value: empty, expiresAt: Date.now() + TTL_MS };
         return res.json(empty);
