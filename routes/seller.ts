@@ -152,10 +152,21 @@ export function registerSellerRoutes(ctx: AppContext) {
   });
 
   // POST /api/cars/seller — seller uploads a new car for auction
+  //
+  // Maps the form's loose names onto the real cars schema:
+  //   mileage      → odometer
+  //   description  → notes
+  //   auctionStart → auctionStartTime
+  //   auctionEnd   → auctionEndDate
+  //   city         → location
+  //   startingBid  → currentBid (the auction opens at this price)
+  //   condition    → dropped (no schema column for it)
   app.post("/api/cars/seller", requireAuth, (req, res) => {
     try {
-      const { sellerId, make, model, year, vin, mileage, condition, description,
-              startingBid, reservePrice, auctionStart, auctionEnd, images, city } = req.body;
+      const {
+        sellerId, make, model, year, vin, mileage, description,
+        startingBid, reservePrice, auctionStart, auctionEnd, images, city,
+      } = req.body;
       if (!sellerId || !make || !model) return res.status(400).json({ error: "بيانات السيارة غير مكتملة" });
 
       const seller: any = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'seller'").get(sellerId);
@@ -165,15 +176,19 @@ export function registerSellerRoutes(ctx: AppContext) {
       const lotNumber = `LY-${Date.now().toString(36).toUpperCase()}`;
       const carId = `car-${Date.now()}`;
       const imagesJson = JSON.stringify(images || []);
+      const startBidNum = Number(startingBid) || 0;
+      const reserveNum = Number(reservePrice) || 0;
+      const odoNum = Number(mileage) || 0;
 
-      db.prepare(`INSERT INTO cars (id, sellerId, lotNumber, make, model, year, vin, mileage, condition,
-        description, startingBid, reservePrice, currentBid, auctionStart, auctionEnd, status, images, city, createdAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_approval',?,?,?)`
-      ).run(carId, sellerId, lotNumber, make, model, year, vin||null, mileage||0, condition||'used',
-        description||null, startingBid||0, reservePrice||0, startingBid||0,
-        auctionStart||null, auctionEnd||null, imagesJson, city||null, new Date().toISOString());
-
-      // Notify seller when car is approved (handled in approve-car endpoint)
+      db.prepare(`INSERT INTO cars (
+        id, sellerId, lotNumber, make, model, year, vin, odometer,
+        notes, reservePrice, currentBid, auctionStartTime, auctionEndDate,
+        status, images, location, createdAt
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        carId, sellerId, lotNumber, make, model, year, vin || null, odoNum,
+        description || null, reserveNum, startBidNum, auctionStart || null, auctionEnd || null,
+        'pending_approval', imagesJson, city || null, new Date().toISOString()
+      );
 
       sendNotification('admin-1', '🚗 سيارة جديدة بانتظار الموافقة',
         `${seller.firstName} أضاف ${make} ${model} ${year} للمزاد. لوت: ${lotNumber}`, 'info');
