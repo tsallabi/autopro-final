@@ -20,6 +20,11 @@
  * Schema (idempotent):
  *   site_settings rows: 'deal_of_day_car_id', 'deal_of_day_set_at'
  *   whatsapp_post_log table for analytics
+ *
+ * Real cars columns used: auctionEndDate, auctionStartTime, currentBid,
+ * reservePrice, status (one of: upcoming, live, ultimo, pending_seller,
+ * offer_market, closed). Do NOT use endTime / startingPrice — those
+ * columns don't exist.
  */
 import { requireAdmin } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
@@ -94,8 +99,8 @@ function buildPostText(car: any, style: Style, siteUrl: string): string {
   const header = ARABIC_HEADERS[style] || ARABIC_HEADERS.default;
   const title = [car.year, car.make, car.model].filter(Boolean).join(' ') || 'سيارة';
   const lot = car.lotNumber || car.id || '—';
-  const currentBid = fmtMoney(car.currentBid || car.startingPrice);
-  const deadline = fmtDeadline(car.endTime || car.auctionEnd);
+  const currentBid = fmtMoney(car.currentBid || car.reservePrice);
+  const deadline = fmtDeadline(car.auctionEndDate);
   const link = `${siteUrl.replace(/\/$/, '')}/car/${encodeURIComponent(lot)}`;
 
   const lines: string[] = [];
@@ -145,11 +150,11 @@ export function registerWhatsAppPosterRoutes(ctx: AppContext) {
     try {
       const rows: any[] = db.prepare(`
         SELECT id, lotNumber, vin, make, model, year, mileage,
-               currentBid, startingPrice, endTime, auctionEnd,
+               currentBid, reservePrice, auctionEndDate, auctionStartTime,
                images, imageUrl, status
           FROM cars
-         WHERE COALESCE(status, 'active') IN ('active', 'live', 'auction', 'open')
-         ORDER BY COALESCE(endTime, auctionEnd) ASC
+         WHERE COALESCE(status, 'upcoming') IN ('upcoming', 'live', 'ultimo', 'pending_seller', 'offer_market')
+         ORDER BY COALESCE(auctionStartTime, auctionEndDate) ASC
          LIMIT 100
       `).all();
       res.json(rows);
