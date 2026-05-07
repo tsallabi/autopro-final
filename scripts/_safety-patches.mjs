@@ -7,7 +7,7 @@
  */
 export const PATCHES = [
   {
-    label: '1/5 import safety module',
+    label: '1/7 import safety module',
     find: `import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';`,
     replace: `import { initWebPush } from './lib/webpush.ts';
@@ -25,7 +25,7 @@ import {
 } from './lib/dataSafety.ts';`,
   },
   {
-    label: '2/5 replace boot section + add scheduler',
+    label: '2/7 replace boot section + add scheduler',
     find: `const DATA_DIR = process.env.DATA_DIR
   || (fs.existsSync('/data') ? '/data' : __dirname);
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'auction.db');
@@ -82,7 +82,7 @@ const BACKUP_KEEP_DAYS = Number(process.env.BACKUP_KEEP_DAYS) || 30;
 __safetyScheduleBackup(db, BACKUP_DIR, BACKUP_INTERVAL_HOURS, BACKUP_KEEP_DAYS);`,
   },
   {
-    label: '3/5 expand /api/health + add admin endpoints',
+    label: '3/7 expand /api/health + add admin endpoints',
     find: `// Health check must respond BEFORE full initialization
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
@@ -158,16 +158,18 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
 });`,
   },
   {
-    label: '4/5 import admin-extras + referrals + mypay + whatsapp modules',
+    label: '4/7 import admin-extras + referrals + mypay + whatsapp + seo + deal-of-day modules',
     find: `import { registerBannerRoutes } from './routes/banners.ts';`,
     replace: `import { registerBannerRoutes } from './routes/banners.ts';
 import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
 import { registerReferralRoutes } from './routes/referrals.ts';
 import { registerMyPayRoutes } from './routes/mypay.ts';
-import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';`,
+import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
+import { registerSeoRoutes } from './routes/seo.ts';
+import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
   },
   {
-    label: '5/5 register admin-extras + referrals + mypay + whatsapp routes',
+    label: '5/7 register admin-extras + referrals + mypay + whatsapp + seo + deal-of-day routes',
     find: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
     replace: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
@@ -175,6 +177,89 @@ import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';`,
   try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
   try { registerMyPayRoutes(ctx as any); console.log('[BOOT] ✓ mypay routes'); } catch (e: any) { console.error('[BOOT] mypay routes failed:', e?.message); }
   try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
+  try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
+  try { registerDealOfDayRoutes(ctx as any); console.log('[BOOT] ✓ deal-of-day routes'); } catch (e: any) { console.error('[BOOT] deal-of-day routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
+  },
+  {
+    // Critical fix: the original checkUpcomingAuctions ignores auctionStartTime
+    // and overwrites the admin-set auctionEndDate with a hardcoded 5-minute
+    // window. This patch makes the queue honor admin scheduling.
+    label: '6/7 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
+    find: `  function checkUpcomingAuctions() {
+    if (isTransitioning) return;
+    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
+    if (liveRow && liveRow.count === 0) {
+      const next: any = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' ORDER BY auctionEndDate ASC, id ASC LIMIT 1").get();
+      if (next) {
+        // Auction duration: 5 minutes
+        const newEndDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
+        io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
+        io.emit("auction_started", { carId: next.id });
+        console.log(\`[AUCTION QUEUE] Car \${next.id} is now LIVE. Ends at \${newEndDate}\`);
+      }
+    }
+  }`,
+    replace: `  // [SCHED] Honor admin-set auctionStartTime: only activate cars whose start time has arrived (or is unset).
+  // Honor admin-set auctionEndDate when it's in the future; fall back to start+duration, then now+duration.
+  function checkUpcomingAuctions() {
+    if (isTransitioning) return;
+    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
+    if (!liveRow || liveRow.count > 0) return;
+    const nowIso = new Date().toISOString();
+    const defaultDurationMin = Number(process.env.AUCTION_DURATION_MIN) || 5;
+    const next: any = db.prepare(\`
+      SELECT * FROM cars
+       WHERE status = 'upcoming'
+         AND (auctionStartTime IS NULL OR auctionStartTime = '' OR auctionStartTime <= ?)
+       ORDER BY
+         CASE WHEN auctionStartTime IS NULL OR auctionStartTime = '' THEN 1 ELSE 0 END,
+         auctionStartTime ASC,
+         id ASC
+       LIMIT 1
+    \`).get(nowIso);
+    if (!next) return;
+    let newEndDate: string;
+    if (next.auctionEndDate && next.auctionEndDate > nowIso) {
+      newEndDate = next.auctionEndDate;
+    } else if (next.auctionStartTime) {
+      newEndDate = new Date(new Date(next.auctionStartTime).getTime() + defaultDurationMin * 60 * 1000).toISOString();
+    } else {
+      newEndDate = new Date(Date.now() + defaultDurationMin * 60 * 1000).toISOString();
+    }
+    db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
+    io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
+    io.emit("auction_started", { carId: next.id });
+    console.log(\`[AUCTION QUEUE] Car \${next.id} is now LIVE (start=\${next.auctionStartTime || 'n/a'}, end=\${newEndDate})\`);
+  }`,
+  },
+  {
+    // The same 5-minute hardcode also lives in tickAuctions's auto-repair block.
+    // It overwrites a missing auctionEndDate with now+5min, which will silently
+    // override an admin-scheduled end date if the row is queried before the row
+    // gets the admin's update. Switch to AUCTION_DURATION_MIN env var.
+    label: '7/7 fix tickAuctions auto-repair to use AUCTION_DURATION_MIN',
+    find: `    // AUTO REPAIR: Any live car missing an end date gets exactly 5 minutes from NOW.
+    const nullEndDateCars: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND (auctionEndDate IS NULL OR auctionEndDate = '')").all();
+    if (nullEndDateCars.length > 0) {
+      const newEndDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      nullEndDateCars.forEach((car: any) => {
+        db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, car.id);
+        io.emit("car_updated", { id: car.id, auctionEndDate: newEndDate });
+        console.log(\`[AUTO-REPAIR] Fixed null end date for live car \${car.id}. Ends at \${newEndDate}\`);
+      });
+    }`,
+    replace: `    // [SCHED] AUTO REPAIR: live cars without an end date get AUCTION_DURATION_MIN (default 5).
+    const nullEndDateCars: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND (auctionEndDate IS NULL OR auctionEndDate = '')").all();
+    if (nullEndDateCars.length > 0) {
+      const repairDurationMin = Number(process.env.AUCTION_DURATION_MIN) || 5;
+      const newEndDate = new Date(Date.now() + repairDurationMin * 60 * 1000).toISOString();
+      nullEndDateCars.forEach((car: any) => {
+        db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, car.id);
+        io.emit("car_updated", { id: car.id, auctionEndDate: newEndDate });
+        console.log(\`[AUTO-REPAIR] Fixed null end date for live car \${car.id}. Ends at \${newEndDate}\`);
+      });
+    }`,
   },
 ];
