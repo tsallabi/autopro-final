@@ -158,17 +158,19 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
 });`,
   },
   {
-    label: '4/5 import admin-extras module',
+    label: '4/5 import admin-extras + SEO modules',
     find: `import { registerBannerRoutes } from './routes/banners.ts';`,
     replace: `import { registerBannerRoutes } from './routes/banners.ts';
-import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';`,
+import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
+import { registerSeoRoutes } from './routes/seo.ts';`,
   },
   {
-    label: '5/5 register admin-extras routes',
+    label: '5/5 register admin-extras + SEO routes',
     find: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
     replace: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
+  try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ SEO routes'); } catch (e: any) { console.error('[BOOT] SEO routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
   },
 ];
