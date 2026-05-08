@@ -30,6 +30,9 @@ import { useVisitorTracking } from './hooks/useVisitorTracking';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { PushNotificationPrompt } from './components/PushNotificationPrompt';
 import AdminQuickTools from './components/admin/AdminQuickTools';
+// [WIRING] Admin floating panels — only render for admin role.
+import MarketingPanel from './components/admin/MarketingPanel';
+import WhatsAppPoster from './components/admin/WhatsAppPoster';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -72,6 +75,8 @@ const DashboardRedirect = () => {
 
 function AppContent() {
   useVisitorTracking();
+  const { currentUser } = useStore();
+  const isAdmin = currentUser?.role === 'admin';
   return (
     <>
       <ScrollToTop />
@@ -135,6 +140,9 @@ function AppContent() {
         <PWAInstallPrompt />
         <PushNotificationPrompt />
         <AdminQuickTools />
+        {/* [WIRING] Admin-only floating panels */}
+        {isAdmin && <MarketingPanel />}
+        {isAdmin && <WhatsAppPoster />}
     </>
   );
 }
