@@ -14,6 +14,7 @@ import {
   verifyWebhookSignature,
 } from '../lib/mypayBank.ts';
 import { activateReferralBonus, LYD_TO_USD } from '../lib/referrals.ts';
+import * as agentcollab from '../lib/agentcollab.ts';
 
 export function registerMyPayRoutes(ctx: AppContext) {
   const { app, db, sendNotification } = ctx as any;
@@ -130,6 +131,19 @@ export function registerMyPayRoutes(ctx: AppContext) {
       } catch (e: any) {
         console.error('[mypay] referral activation failed:', e?.message);
       }
+
+      // [agentcollab] Track payment received via mypay.ly
+      agentcollab.track('payment.received', {
+        amount: amountLYD,
+        currency: 'LYD',
+        usd_equivalent: usdEquivalent,
+        method: 'mypay_card',
+        gateway: 'mypay.ly',
+        gateway_ref: gatewayRef || null,
+      }, {
+        external_user_id: tx.userId,
+        dedupe_key: `payment-${txId}`,
+      });
 
       try {
         sendNotification(
