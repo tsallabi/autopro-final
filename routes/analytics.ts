@@ -13,7 +13,9 @@
  *   GET  /api/admin/analytics/realtime                — visitors in last 5 min
  *   GET  /api/admin/analytics/geo-breakdown           — country / city / region table
  *   GET  /api/admin/analytics/registered-users-stats  — every user + their device + location
+ *   GET  /api/admin/analytics/registered-users-stats/csv — same data as CSV
  *   GET  /api/admin/analytics/marketing-segments      — CRM-ready segments
+ *   GET  /api/admin/analytics/marketing-segments/csv?segment=<name> — segment as CSV
  *
  * Schema additions (idempotent ALTER):
  *   visitor_log.country / city / region / lat / lon
@@ -23,6 +25,20 @@ import jwt from 'jsonwebtoken';
 import geoip from 'geoip-lite';
 import { requireAuth } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
+
+// CSV helpers — escape commas, quotes, newlines per RFC 4180.
+function csvCell(v: any): string {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function rowsToCsv(headers: string[], rows: any[]): string {
+  const out = [headers.join(',')];
+  for (const r of rows) out.push(headers.map((h) => csvCell(r[h])).join(','));
+  // Prepend BOM so Excel opens UTF-8 (Arabic) correctly.
+  return '﻿' + out.join('\r\n');
+}
 
 export function registerAnalyticsRoutes(ctx: AppContext) {
   const { app, db, JWT_SECRET } = ctx as any;
@@ -60,13 +76,11 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
   app.post('/api/analytics/track', (req: any, res: any) => {
     try {
       const { sessionId, path, referrer, userAgent, duration } = req.body || {};
-      if (!sessionId || !path) return res.json({ success: true }); // fail silently
+      if (!sessionId || !path) return res.json({ success: true });
 
       const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
       const ipHash = crypto.createHash('sha256').update(ip + 'autopro-salt').digest('hex').slice(0, 16);
 
-      // [analytics] Decode JWT from Authorization header if present.
-      // We don't gate the endpoint on auth — we just enrich when we can.
       let userId: string | null = null;
       const authHeader = req.headers.authorization;
       if (authHeader?.startsWith('Bearer ')) {
@@ -78,14 +92,12 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
         }
       }
 
-      // [analytics] Geolocate the IP using geoip-lite (offline, no rate limits).
       let country: string | null = null;
       let city: string | null = null;
       let region: string | null = null;
       let lat: number | null = null;
       let lon: number | null = null;
       try {
-        // Strip IPv4-mapped IPv6 prefix that some proxies add.
         const cleanIp = ip.replace(/^::ffff:/, '');
         const geo = geoip.lookup(cleanIp);
         if (geo) {
@@ -95,9 +107,7 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
           lat = geo.ll?.[0] ?? null;
           lon = geo.ll?.[1] ?? null;
         }
-      } catch {
-        // ignore — geoip lookup is best-effort
-      }
+      } catch {}
 
       const ua = (userAgent || '').toLowerCase();
       let device = 'desktop';
@@ -134,7 +144,6 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
       res.json({ success: true });
     } catch (e: any) {
       console.error('[ANALYTICS]', e.message);
-      // Fail silently — analytics should never break the UX
       res.json({ success: false });
     }
   });
@@ -156,7 +165,6 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
       const totalVisits = (db.prepare("SELECT COUNT(*) as c FROM visitor_log WHERE timestamp > ?").get(dateFrom) as any).c;
       const uniqueVisitors = (db.prepare("SELECT COUNT(DISTINCT sessionId) as c FROM visitor_log WHERE timestamp > ?").get(dateFrom) as any).c;
       const loggedInVisitors = (db.prepare("SELECT COUNT(DISTINCT userId) as c FROM visitor_log WHERE timestamp > ? AND userId IS NOT NULL AND userId != ''").get(dateFrom) as any).c;
-      // [analytics] All-time registered users (so the dashboard can show "112" even if none have visited in the range).
       const totalRegisteredUsers = (db.prepare("SELECT COUNT(*) as c FROM users").get() as any).c;
 
       const topPages = db.prepare("SELECT path, COUNT(*) as views FROM visitor_log WHERE timestamp > ? GROUP BY path ORDER BY views DESC LIMIT 10").all(dateFrom);
@@ -164,7 +172,6 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
       const deviceBreakdown = db.prepare("SELECT device, COUNT(*) as count FROM visitor_log WHERE timestamp > ? GROUP BY device").all(dateFrom);
       const browserBreakdown = db.prepare("SELECT browser, COUNT(*) as count FROM visitor_log WHERE timestamp > ? GROUP BY browser").all(dateFrom);
 
-      // [analytics] Geo breakdowns
       const countryBreakdown = db.prepare(`
         SELECT country, COUNT(*) as visits, COUNT(DISTINCT sessionId) as visitors
           FROM visitor_log WHERE timestamp > ? AND country IS NOT NULL
@@ -201,7 +208,6 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
     }
   });
 
-  // ── GET /api/admin/analytics/realtime ───────────────────────────────
   app.get('/api/admin/analytics/realtime', requireAuth, (req: any, res: any) => {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -210,8 +216,6 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
     res.json({ activeNow, recentPages });
   });
 
-  // ── GET /api/admin/analytics/geo-breakdown ──────────────────────────
-  // Visits + visitors per country / city / region for marketing planning.
   app.get('/api/admin/analytics/geo-breakdown', requireAuth, (req: any, res: any) => {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
     const range = (req.query.range as string) || 'month';
@@ -244,117 +248,172 @@ export function registerAnalyticsRoutes(ctx: AppContext) {
     }
   });
 
-  // ── GET /api/admin/analytics/registered-users-stats ─────────────────
-  // Every registered user + their primary device, primary city/country,
-  // total visits, last visit. Powers a "Users" table the marketing team
-  // can sort/filter/export.
+  // [analytics] Reusable query — returns the same row shape as JSON / CSV.
+  function queryRegisteredUsersStats(): any[] {
+    return db.prepare(`
+      SELECT
+        u.id, u.firstName, u.lastName, u.email, u.phone, u.role,
+        u.country as profileCountry, u.deposit, u.buyingPower,
+        u.joinDate, u.lastLogin, u.kycStatus, u.status,
+        (SELECT MAX(timestamp) FROM visitor_log WHERE userId = u.id) as lastVisit,
+        (SELECT COUNT(*) FROM visitor_log WHERE userId = u.id) as totalVisits,
+        (SELECT COUNT(DISTINCT sessionId) FROM visitor_log WHERE userId = u.id) as totalSessions,
+        (SELECT device FROM visitor_log WHERE userId = u.id GROUP BY device ORDER BY COUNT(*) DESC LIMIT 1) as primaryDevice,
+        (SELECT browser FROM visitor_log WHERE userId = u.id GROUP BY browser ORDER BY COUNT(*) DESC LIMIT 1) as primaryBrowser,
+        (SELECT country FROM visitor_log WHERE userId = u.id AND country IS NOT NULL GROUP BY country ORDER BY COUNT(*) DESC LIMIT 1) as primaryCountry,
+        (SELECT city FROM visitor_log WHERE userId = u.id AND city IS NOT NULL GROUP BY city ORDER BY COUNT(*) DESC LIMIT 1) as primaryCity,
+        (SELECT region FROM visitor_log WHERE userId = u.id AND region IS NOT NULL GROUP BY region ORDER BY COUNT(*) DESC LIMIT 1) as primaryRegion
+      FROM users u
+      ORDER BY u.joinDate DESC
+    `).all() as any[];
+  }
+
   app.get('/api/admin/analytics/registered-users-stats', requireAuth, (req: any, res: any) => {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-
     try {
-      const users = db.prepare(`
-        SELECT
-          u.id, u.firstName, u.lastName, u.email, u.phone, u.role,
-          u.country as profileCountry, u.deposit, u.buyingPower,
-          u.joinDate, u.lastLogin, u.kycStatus, u.status,
-          (SELECT MAX(timestamp) FROM visitor_log WHERE userId = u.id) as lastVisit,
-          (SELECT COUNT(*) FROM visitor_log WHERE userId = u.id) as totalVisits,
-          (SELECT COUNT(DISTINCT sessionId) FROM visitor_log WHERE userId = u.id) as totalSessions,
-          (SELECT device FROM visitor_log WHERE userId = u.id GROUP BY device ORDER BY COUNT(*) DESC LIMIT 1) as primaryDevice,
-          (SELECT browser FROM visitor_log WHERE userId = u.id GROUP BY browser ORDER BY COUNT(*) DESC LIMIT 1) as primaryBrowser,
-          (SELECT country FROM visitor_log WHERE userId = u.id AND country IS NOT NULL GROUP BY country ORDER BY COUNT(*) DESC LIMIT 1) as primaryCountry,
-          (SELECT city FROM visitor_log WHERE userId = u.id AND city IS NOT NULL GROUP BY city ORDER BY COUNT(*) DESC LIMIT 1) as primaryCity,
-          (SELECT region FROM visitor_log WHERE userId = u.id AND region IS NOT NULL GROUP BY region ORDER BY COUNT(*) DESC LIMIT 1) as primaryRegion
-        FROM users u
-        ORDER BY u.joinDate DESC
-      `).all();
-
+      const users = queryRegisteredUsersStats();
       res.json({ count: users.length, users });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  // ── GET /api/admin/analytics/marketing-segments ─────────────────────
-  // Pre-computed audience segments ready to push to a CRM.
-  // Each segment lists user IDs + contact info — feed it into your
-  // email / SMS / WhatsApp campaign tool.
+  // ── GET /api/admin/analytics/registered-users-stats/csv ─────────────
+  // Same data as the JSON endpoint, formatted for Excel/Mailchimp/Sheets.
+  app.get('/api/admin/analytics/registered-users-stats/csv', requireAuth, (req: any, res: any) => {
+    if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    try {
+      const users = queryRegisteredUsersStats();
+      const headers = [
+        'id', 'firstName', 'lastName', 'email', 'phone', 'role',
+        'profileCountry', 'primaryCountry', 'primaryCity', 'primaryRegion',
+        'primaryDevice', 'primaryBrowser',
+        'deposit', 'buyingPower', 'kycStatus', 'status',
+        'joinDate', 'lastLogin', 'lastVisit', 'totalVisits', 'totalSessions',
+      ];
+      const csv = rowsToCsv(headers, users);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="autopro-users-${Date.now()}.csv"`);
+      res.send(csv);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // [analytics] Build all segments once — reused by JSON + CSV endpoints.
+  function buildSegments() {
+    const dayAgo = new Date(Date.now() - 1 * 86400000).toISOString();
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+    const activeToday = db.prepare(`
+      SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role
+        FROM users u
+       WHERE EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
+    `).all(dayAgo) as any[];
+
+    const activeThisWeek = db.prepare(`
+      SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role
+        FROM users u
+       WHERE EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
+         AND NOT EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
+    `).all(weekAgo, dayAgo) as any[];
+
+    const dormant30Days = db.prepare(`
+      SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role, u.lastLogin
+        FROM users u
+       WHERE NOT EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
+    `).all(monthAgo) as any[];
+
+    const neverVisited = db.prepare(`
+      SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role, u.joinDate
+        FROM users u
+       WHERE NOT EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id)
+    `).all() as any[];
+
+    const withDeposits = db.prepare(`
+      SELECT id, firstName, lastName, email, phone, deposit, buyingPower, country
+        FROM users WHERE deposit > 0 ORDER BY deposit DESC
+    `).all() as any[];
+
+    const pendingKyc = db.prepare(`
+      SELECT id, firstName, lastName, email, phone, kycStatus, joinDate
+        FROM users WHERE kycStatus = 'pending'
+    `).all() as any[];
+
+    const byCountry = db.prepare(`
+      SELECT country, COUNT(DISTINCT userId) as users
+        FROM visitor_log
+       WHERE userId IS NOT NULL AND userId != '' AND country IS NOT NULL
+       GROUP BY country ORDER BY users DESC
+    `).all();
+
+    const byDevice = db.prepare(`
+      SELECT device, COUNT(DISTINCT userId) as users
+        FROM visitor_log
+       WHERE userId IS NOT NULL AND userId != ''
+       GROUP BY device ORDER BY users DESC
+    `).all();
+
+    return {
+      activeToday, activeThisWeek, dormant30Days, neverVisited, withDeposits, pendingKyc,
+      byCountry, byDevice,
+    };
+  }
+
   app.get('/api/admin/analytics/marketing-segments', requireAuth, (req: any, res: any) => {
     if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-
     try {
-      const dayAgo = new Date(Date.now() - 1 * 86400000).toISOString();
-      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-      const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-
-      // Active in the last 24h
-      const activeToday = db.prepare(`
-        SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role
-          FROM users u
-         WHERE EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
-      `).all(dayAgo);
-
-      // Active this week but not today
-      const activeThisWeek = db.prepare(`
-        SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role
-          FROM users u
-         WHERE EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
-           AND NOT EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
-      `).all(weekAgo, dayAgo);
-
-      // Dormant 30+ days — re-engagement campaign target
-      const dormant30Days = db.prepare(`
-        SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role, u.lastLogin
-          FROM users u
-         WHERE NOT EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id AND v.timestamp > ?)
-      `).all(monthAgo);
-
-      // Signed up but never browsed — onboarding campaign target
-      const neverVisited = db.prepare(`
-        SELECT u.id, u.email, u.firstName, u.lastName, u.phone, u.role, u.joinDate
-          FROM users u
-         WHERE NOT EXISTS (SELECT 1 FROM visitor_log v WHERE v.userId = u.id)
-      `).all();
-
-      // High-value: users with deposits — VIP segment
-      const withDeposits = db.prepare(`
-        SELECT id, firstName, lastName, email, phone, deposit, buyingPower, country
-          FROM users WHERE deposit > 0 ORDER BY deposit DESC
-      `).all();
-
-      // Pending KYC approval — admin reminder + user nudge
-      const pendingKyc = db.prepare(`
-        SELECT id, firstName, lastName, email, phone, kycStatus, joinDate
-          FROM users WHERE kycStatus = 'pending'
-      `).all();
-
-      // Geographic distribution of registered users
-      const byCountry = db.prepare(`
-        SELECT country, COUNT(DISTINCT userId) as users
-          FROM visitor_log
-         WHERE userId IS NOT NULL AND userId != '' AND country IS NOT NULL
-         GROUP BY country ORDER BY users DESC
-      `).all();
-
-      // Device split of registered users — guides ad targeting
-      const byDevice = db.prepare(`
-        SELECT device, COUNT(DISTINCT userId) as users
-          FROM visitor_log
-         WHERE userId IS NOT NULL AND userId != ''
-         GROUP BY device ORDER BY users DESC
-      `).all();
-
+      const s = buildSegments();
       res.json({
         segments: {
-          activeToday:    { count: activeToday.length,    users: activeToday },
-          activeThisWeek: { count: activeThisWeek.length, users: activeThisWeek },
-          dormant30Days:  { count: dormant30Days.length,  users: dormant30Days },
-          neverVisited:   { count: neverVisited.length,   users: neverVisited },
-          withDeposits:   { count: withDeposits.length,   users: withDeposits },
-          pendingKyc:     { count: pendingKyc.length,     users: pendingKyc },
+          activeToday:    { count: s.activeToday.length,    users: s.activeToday },
+          activeThisWeek: { count: s.activeThisWeek.length, users: s.activeThisWeek },
+          dormant30Days:  { count: s.dormant30Days.length,  users: s.dormant30Days },
+          neverVisited:   { count: s.neverVisited.length,   users: s.neverVisited },
+          withDeposits:   { count: s.withDeposits.length,   users: s.withDeposits },
+          pendingKyc:     { count: s.pendingKyc.length,     users: s.pendingKyc },
         },
-        breakdowns: { byCountry, byDevice },
+        breakdowns: { byCountry: s.byCountry, byDevice: s.byDevice },
       });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /api/admin/analytics/marketing-segments/csv?segment=<name> ─
+  // Export one segment as CSV. UTF-8 BOM so Excel handles Arabic.
+  // Valid segment names match the keys in marketing-segments JSON.
+  app.get('/api/admin/analytics/marketing-segments/csv', requireAuth, (req: any, res: any) => {
+    if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const segment = String(req.query.segment || '').trim();
+    const valid = ['activeToday', 'activeThisWeek', 'dormant30Days', 'neverVisited', 'withDeposits', 'pendingKyc'];
+    if (!valid.includes(segment)) {
+      return res.status(400).json({ error: `segment يجب أن يكون أحد: ${valid.join(', ')}` });
+    }
+    try {
+      const s = buildSegments();
+      const rows: any[] = (s as any)[segment];
+
+      // Pick relevant columns per segment — every segment includes the
+      // contact basics so the CSV imports cleanly into any campaign tool.
+      let headers: string[];
+      if (segment === 'withDeposits') {
+        headers = ['id', 'firstName', 'lastName', 'email', 'phone', 'deposit', 'buyingPower', 'country'];
+      } else if (segment === 'dormant30Days') {
+        headers = ['id', 'firstName', 'lastName', 'email', 'phone', 'role', 'lastLogin'];
+      } else if (segment === 'neverVisited') {
+        headers = ['id', 'firstName', 'lastName', 'email', 'phone', 'role', 'joinDate'];
+      } else if (segment === 'pendingKyc') {
+        headers = ['id', 'firstName', 'lastName', 'email', 'phone', 'kycStatus', 'joinDate'];
+      } else {
+        headers = ['id', 'firstName', 'lastName', 'email', 'phone', 'role'];
+      }
+
+      const csv = rowsToCsv(headers, rows);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="autopro-segment-${segment}-${Date.now()}.csv"`);
+      res.send(csv);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
