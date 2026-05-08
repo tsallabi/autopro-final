@@ -334,12 +334,12 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
         <div className="relative z-10 flex items-center justify-between px-12 pt-8">
           <div className="flex items-center gap-4">
             <span className="bg-red-500 w-5 h-5 rounded-full animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.9)]" />
-            <span className="text-3xl font-black text-orange-400 uppercase tracking-widest">مزاد مباشر</span>
+            <span className="text-3xl font-black text-orange-400 uppercase tracking-widest">{t('liveAuction.liveAuctionBadge', 'مزاد مباشر')}</span>
           </div>
           <div className="flex items-center gap-8 text-2xl font-black">
             <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10">
               <Users className="w-7 h-7 text-blue-400" />
-              <span>{bidders} مزايد</span>
+              <span>{bidders} {t('liveAuction.biddersCount', 'مزايد')}</span>
             </div>
             <div className={`flex items-center gap-3 bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 ${timeLeft <= 10 ? 'border-red-500 bg-red-500/20 animate-pulse' : ''}`}>
               <Clock className="w-7 h-7 text-orange-400" />
@@ -364,7 +364,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
         {/* Bottom price bar */}
         <div className="relative z-10 flex items-center justify-between px-12 pb-10 pt-4 bg-gradient-to-t from-black/90 to-transparent">
           <div>
-            <div className="text-slate-400 text-2xl font-bold uppercase tracking-widest mb-1">أعلى مزايدة</div>
+            <div className="text-slate-400 text-2xl font-bold uppercase tracking-widest mb-1">{t('liveAuction.highestBid', 'أعلى مزايدة')}</div>
             <div className="text-8xl lg:text-9xl font-black text-green-400 font-mono tracking-tighter drop-shadow-[0_0_30px_rgba(74,222,128,0.6)]">
               ${(currentBid || 0).toLocaleString()}
             </div>
@@ -380,9 +380,9 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
 
           {/* Lot number */}
           <div className="text-right">
-            <div className="text-slate-400 text-xl font-bold mb-1">رقم القطعة</div>
+            <div className="text-slate-400 text-xl font-bold mb-1">{t('liveAuction.lotNumberLabel', 'رقم القطعة')}</div>
             <div className="text-5xl font-black text-white font-mono">#{car.lotNumber || car.id}</div>
-            <div className="mt-4 text-slate-400 text-xl font-bold">آخر مزايد</div>
+            <div className="mt-4 text-slate-400 text-xl font-bold">{t('liveAuction.lastBidder', 'آخر مزايد')}</div>
             <div className="text-3xl font-black text-orange-300">{bidHistory[0]?.user || '---'}</div>
           </div>
         </div>
@@ -453,7 +453,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
           >
             <MonitorPlay className={`w-8 h-8 transition-colors ${isTvMode ? 'text-orange-500' : 'text-slate-400 group-hover:text-white'}`} />
             <span className="text-xs font-black uppercase tracking-widest text-slate-300 group-hover:text-white transition-colors">
-              {isTvMode ? 'إنهاء العرض' : 'عرض تلفزيوني'}
+              {isTvMode ? t('liveAuction.exitTvMode', 'إنهاء العرض') : t('liveAuction.tvMode', 'عرض تلفزيوني')}
             </span>
           </button>
         </div>
@@ -552,10 +552,10 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                         : 'bg-slate-800/50 text-slate-400 border border-white/5'
                   }`}>
                     {leadingUserId === currentUser.id
-                      ? '✅ أنت المتصدر حالياً — استمر!'
+                      ? t('liveAuction.youLeading', '✅ أنت المتصدر حالياً — استمر!')
                       : leadingUserId
-                        ? '🔴 تم تجاوزك! زايد الآن قبل فوات الأوان'
-                        : '⏳ في انتظار المزايدات...'}
+                        ? t('liveAuction.youOutbid', '🔴 تم تجاوزك! زايد الآن قبل فوات الأوان')
+                        : t('liveAuction.waitingBids', '⏳ في انتظار المزايدات...')}
                   </div>
                 )}
 
@@ -618,14 +618,14 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                         <CalcIcon className="w-6 h-6" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="text-sm font-bold text-slate-300">السعر التقريبي في السوق الليبي</h4>
+                        <h4 className="text-sm font-bold text-slate-300">{t('liveAuction.libyanMarketPrice', 'السعر التقريبي في السوق الليبي')}</h4>
                         <div className="flex items-baseline gap-2 mt-1">
                           <span className="text-xl font-black text-white">{estPriceValue.toLocaleString()} د.ل</span>
                           <span className="text-xs text-slate-400 border border-slate-600 px-2 py-0.5 rounded-full capitalize">{estimate.condition}</span>
                         </div>
                       </div>
                       <div className={`text-left pl-4 border-l ${isProfitable ? 'border-emerald-500/30' : 'border-slate-700'}`}>
-                        <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mb-1">الربح/التوفير المتوقع</div>
+                        <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mb-1">{t('liveAuction.expectedProfit', 'الربح/التوفير المتوقع')}</div>
                         <div className={`text-xl font-black font-mono tracking-tight ${isProfitable ? 'text-emerald-400' : 'text-slate-400'}`} dir="ltr">
                           {isProfitable ? '+' : ''}{savingOrProfit.toLocaleString()}
                         </div>
@@ -750,7 +750,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                         </div>
                       </div>
                     ) : (
-                       <div className="text-[12px] font-bold text-slate-400 mt-1">لا تتوفر بيانات كافية</div>
+                       <div className="text-[12px] font-bold text-slate-400 mt-1">{t('liveAuction.notEnoughData', 'لا تتوفر بيانات كافية')}</div>
                     )}
                   </div>
                 </div>
@@ -765,7 +765,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                   </div>
                   <div className="text-left font-black text-emerald-400 font-mono text-xl" dir="ltr">
                     {(() => {
-                      if (!estimate) return <span className="text-xs text-emerald-400/50 font-sans tracking-normal font-bold">غير متاح</span>;
+                      if (!estimate) return <span className="text-xs text-emerald-400/50 font-sans tracking-normal font-bold">{t('liveAuction.notAvailable', 'غير متاح')}</span>;
                       
                       const loc = MOCK_LOCATIONS.find(l => (car.location || '').includes(l.state)) || MOCK_LOCATIONS[0];
                       const landingResult = calculateTotalCost(currentBid || nextBidAmount, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
@@ -868,7 +868,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                 {car.youtubeVideoUrl && (
                   <div className="aspect-video rounded-xl overflow-hidden border border-white/10">
                     <iframe
-                      title="فيديو السيارة"
+                      title={t('liveAuction.carVideo', 'فيديو السيارة')}
                       src={getYoutubeEmbedUrl(car.youtubeVideoUrl)}
                       className="w-full h-full"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -879,7 +879,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                 {car.engineSoundUrl && (
                   <div className="bg-slate-900/50 p-3 rounded-xl border border-white/5 flex flex-col gap-2">
                     <div className="text-xs font-bold text-slate-400 flex items-center gap-2">
-                      <Gauge className="w-4 h-4 text-orange-500" /> صوت المحرك
+                      <Gauge className="w-4 h-4 text-orange-500" /> {t('liveAuction.engineSoundLabel', 'صوت المحرك')}
                     </div>
                     <audio controls className="w-full h-8 outline-none" src={car.engineSoundUrl} />
                   </div>
@@ -891,7 +891,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
                     rel="noopener noreferrer"
                     className="block w-full text-center py-3 bg-slate-700/50 hover:bg-orange-500/20 text-orange-400 rounded-xl text-sm font-bold border border-white/5 hover:border-orange-500/30 transition-all"
                   >
-                    عرض تقرير الفحص (PDF)
+                    {t('liveAuction.viewInspectionPdf', 'عرض تقرير الفحص (PDF)')}
                   </a>
                 )}
               </div>
@@ -916,7 +916,7 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car: rawCar, upcomingC
           <div className="fixed inset-y-0 right-0 w-full md:w-[400px] bg-slate-900 border-l border-white/10 shadow-2xl z-[202] transform transition-transform animate-in slide-in-from-right duration-300 flex flex-col">
             <div className="p-5 border-b border-white/10 flex justify-between items-center bg-slate-950/80 backdrop-blur-xl">
               <h3 className="font-bold text-lg text-white">{t('liveAuction.specsDetails')}</h3>
-              <button title="إغلاق" onClick={() => setQuickViewCar(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
+              <button title={t('liveAuction.close', 'إغلاق')} onClick={() => setQuickViewCar(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
