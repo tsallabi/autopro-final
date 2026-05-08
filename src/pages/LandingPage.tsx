@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { AgencyRecruitment } from '../components/AgencyRecruitment';
+import DealOfDayBanner from '../components/DealOfDayBanner';
 
 export const LandingPage = () => {
     const navigate = useNavigate();
@@ -152,6 +153,11 @@ export const LandingPage = () => {
                     </div>
                 </div>
             </section >
+
+            {/* [WIRING] Deal of the Day banner — only renders when admin pinned a car */}
+            <div className="container mx-auto px-6 -mt-8 relative z-10">
+                <DealOfDayBanner />
+            </div>
 
             {/* 2. SERVICES SECTION */}
             < section id="services" className="py-32 relative bg-white" >
