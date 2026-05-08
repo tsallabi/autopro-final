@@ -15,15 +15,22 @@ export function useVisitorTracking() {
 
   useEffect(() => {
     const sessionId = getOrCreateSessionId();
+    // [analytics] Send the auth token so the backend can attach userId
+    // to the visitor_log row. Without this, every visit is anonymous —
+    // which is why the "Registered Visitors" KPI was stuck at 0.
+    const token = localStorage.getItem('authToken');
     fetch('/api/analytics/track', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         sessionId,
         path: location.pathname,
         referrer: document.referrer || '',
         userAgent: navigator.userAgent,
       }),
-    }).catch(() => {}); // silent fail
+    }).catch(() => {}); // silent fail — analytics must never break the UX
   }, [location.pathname]);
 }
