@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { requireAdmin, requireAuth } from '../lib/middleware.ts';
+import * as agentcollab from '../lib/agentcollab.ts';
 import type { AppContext } from '../lib/types.ts';
 
 export function registerAdminRoutes(ctx: AppContext) {
@@ -2436,6 +2437,24 @@ export function registerAdminRoutes(ctx: AppContext) {
   //  ADMIN: DASHBOARD OVERVIEW  (comprehensive KPIs + alerts + top lists)
   // ══════════════════════════════════════════════════════════════
 
+  // ── AgentCollab integration status + manual ping ──────────────────────
+  // GET → reports whether env vars are set; POST → fires a test event.
+  app.get("/api/admin/agentcollab/status", requireAdmin, (_req, res) => {
+    res.json({
+      enabled: String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() === 'true',
+      hasWebhookUrl: !!process.env.AGENTCOLLAB_WEBHOOK_URL,
+      hasApiKey: !!process.env.AGENTCOLLAB_API_KEY,
+      hasHmacSecret: !!process.env.AGENTCOLLAB_HMAC_SECRET,
+      webhookHost: process.env.AGENTCOLLAB_WEBHOOK_URL
+        ? new URL(process.env.AGENTCOLLAB_WEBHOOK_URL).host
+        : null,
+    });
+  });
+  app.post("/api/admin/agentcollab/ping", requireAdmin, (req: any, res) => {
+    agentcollab.track('custom', { source: 'admin_test_ping', triggeredBy: req.user?.email || 'unknown' });
+    res.json({ success: true, sent: 'custom event ("admin_test_ping") fired' });
+  });
+
   app.get("/api/admin/dashboard-overview", requireAdmin, (_req, res) => {
     try {
       // ── Helper: safely get .val from a single-column aggregate ──
@@ -2512,21 +2531,21 @@ export function registerAdminRoutes(ctx: AppContext) {
          WHERE type = 'sale'`
       );
 
-      // Users
+      // Users — count everyone (admins are real users too).
       const newUsersToday = scalar(
         `SELECT COUNT(*) AS val FROM users
-         WHERE date(joinDate) = date('now') AND role != 'admin'`
+         WHERE date(joinDate) = date('now')`
       );
       const newUsersWeek = scalar(
         `SELECT COUNT(*) AS val FROM users
-         WHERE joinDate > datetime('now', '-7 days') AND role != 'admin'`
+         WHERE joinDate > datetime('now', '-7 days')`
       );
       const totalRegisteredUsers = scalar(
-        `SELECT COUNT(*) AS val FROM users WHERE role != 'admin'`
+        `SELECT COUNT(*) AS val FROM users`
       );
       const activeUsersToday = scalar(
         `SELECT COUNT(*) AS val FROM users
-         WHERE date(lastLogin) = date('now') AND role != 'admin'`
+         WHERE date(lastLogin) = date('now')`
       );
 
       // Cars
