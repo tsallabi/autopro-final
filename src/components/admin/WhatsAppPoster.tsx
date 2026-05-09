@@ -149,7 +149,7 @@ export default function WhatsAppPoster() {
         title="WhatsApp Channel Poster"
         style={{
           position: 'fixed',
-          bottom: 88,
+          bottom: 152,
           left: 20,
           zIndex: 9998,
           background: '#25D366',

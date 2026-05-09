@@ -177,7 +177,7 @@ export default function MarketingPanel() {
         title="لوحة التسويق والتحليلات"
         style={{
           position: 'fixed',
-          bottom: 156,
+          bottom: 220,
           left: 20,
           zIndex: 9997,
           background: '#a855f7',
