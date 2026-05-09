@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useStore, authFetch } from '../context/StoreContext';
 import { Link } from 'react-router-dom';
+import OfficePaymentModal from '../components/OfficePaymentModal';
 
 /* ─── types ─── */
 interface WalletData {
@@ -42,6 +43,10 @@ export const WalletPage = () => {
     const [topupMethod, setTopupMethod] = useState('bank_transfer');
     const [topupRef, setTopupRef] = useState('');
     const [topupLoading, setTopupLoading] = useState(false);
+
+    /* office payment modal */
+    const [officeModalOpen, setOfficeModalOpen] = useState(false);
+    const [lastRequestRef, setLastRequestRef] = useState<string | null>(null);
 
     /* withdraw form */
     const [wdAmount, setWdAmount] = useState('');
@@ -79,8 +84,18 @@ export const WalletPage = () => {
         const data = await res.json();
         if (res.ok) {
             showAlert(data.message, 'success');
+            // [office-info] If non-electronic method, show the office modal so the user
+            // knows exactly HOW to pay and which reference number to mention.
+            if (topupMethod === 'bank_transfer' || topupMethod === 'cash') {
+                setLastRequestRef(data.requestId || data.id || topupRef || '');
+                setOfficeModalOpen(true);
+            }
             setTopupAmount(''); setTopupRef('');
-            setActiveTab('overview'); load();
+            // Don't navigate to overview if modal is open — let user read the bank info first.
+            if (topupMethod !== 'bank_transfer' && topupMethod !== 'cash') {
+                setActiveTab('overview');
+            }
+            load();
         } else showAlert(data.error, 'error');
         setTopupLoading(false);
     };
@@ -300,6 +315,14 @@ export const WalletPage = () => {
                                         </div>
                                     </div>
                                 ))}
+                                {/* [office-info] Show full office details (multiple banks + branches) */}
+                                <button
+                                    type="button"
+                                    onClick={() => { setLastRequestRef(null); setOfficeModalOpen(true); }}
+                                    className="w-full bg-orange-500 hover:bg-orange-400 text-white py-3 rounded-2xl font-black text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    📋 عرض كل الحسابات وفروع الشركة
+                                </button>
                             </div>
 
                             {/* Form */}
@@ -464,6 +487,15 @@ export const WalletPage = () => {
 
                 </div>
             </div>
+
+            {/* [office-info] Modal: shown after submitting bank-transfer/cash topup, OR via the "show all banks" button */}
+            <OfficePaymentModal
+                open={officeModalOpen}
+                onClose={() => setOfficeModalOpen(false)}
+                method={topupMethod}
+                amount={Number(topupAmount) || undefined}
+                referenceNo={lastRequestRef || undefined}
+            />
         </div>
     );
 };
