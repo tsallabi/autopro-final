@@ -7,7 +7,7 @@
  */
 export const PATCHES = [
   {
-    label: '1/10 import safety module',
+    label: '1/11 import safety module',
     find: `import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';`,
     replace: `import { initWebPush } from './lib/webpush.ts';
@@ -25,7 +25,7 @@ import {
 } from './lib/dataSafety.ts';`,
   },
   {
-    label: '2/10 replace boot section + add scheduler',
+    label: '2/11 replace boot section + add scheduler',
     find: `const DATA_DIR = process.env.DATA_DIR
   || (fs.existsSync('/data') ? '/data' : __dirname);
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'auction.db');
@@ -82,7 +82,7 @@ const BACKUP_KEEP_DAYS = Number(process.env.BACKUP_KEEP_DAYS) || 30;
 __safetyScheduleBackup(db, BACKUP_DIR, BACKUP_INTERVAL_HOURS, BACKUP_KEEP_DAYS);`,
   },
   {
-    label: '3/10 expand /api/health + add admin endpoints',
+    label: '3/11 expand /api/health + add admin endpoints',
     find: `// Health check must respond BEFORE full initialization
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
@@ -158,7 +158,7 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
 });`,
   },
   {
-    label: '4/10 import admin-extras + referrals + mypay + whatsapp + seo + deal-of-day modules',
+    label: '4/11 import admin-extras + referrals + mypay + whatsapp + seo + deal-of-day + office-info modules',
     find: `import { registerBannerRoutes } from './routes/banners.ts';`,
     replace: `import { registerBannerRoutes } from './routes/banners.ts';
 import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
@@ -166,10 +166,11 @@ import { registerReferralRoutes } from './routes/referrals.ts';
 import { registerMyPayRoutes } from './routes/mypay.ts';
 import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
 import { registerSeoRoutes } from './routes/seo.ts';
-import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
+import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';
+import { registerOfficeInfoRoutes } from './routes/office-info.ts';`,
   },
   {
-    label: '5/10 register admin-extras + referrals + mypay + whatsapp + seo + deal-of-day routes',
+    label: '5/11 register admin-extras + referrals + mypay + whatsapp + seo + deal-of-day + office-info routes',
     find: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
     replace: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
@@ -179,10 +180,11 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
   try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
   try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
   try { registerDealOfDayRoutes(ctx as any); console.log('[BOOT] ✓ deal-of-day routes'); } catch (e: any) { console.error('[BOOT] deal-of-day routes failed:', e?.message); }
+  try { registerOfficeInfoRoutes(ctx as any); console.log('[BOOT] ✓ office-info routes'); } catch (e: any) { console.error('[BOOT] office-info routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
   },
   {
-    label: '6/10 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
+    label: '6/11 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
     find: `  function checkUpcomingAuctions() {
     if (isTransitioning) return;
     const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
@@ -232,7 +234,7 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
   }`,
   },
   {
-    label: '7/10 fix tickAuctions auto-repair to use AUCTION_DURATION_MIN',
+    label: '7/11 fix tickAuctions auto-repair to use AUCTION_DURATION_MIN',
     find: `    // AUTO REPAIR: Any live car missing an end date gets exactly 5 minutes from NOW.
     const nullEndDateCars: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND (auctionEndDate IS NULL OR auctionEndDate = '')").all();
     if (nullEndDateCars.length > 0) {
@@ -256,31 +258,17 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';`,
     }`,
   },
   {
-    label: '8/10 accept startingBid in POST /api/cars',
+    label: '8/11 accept startingBid in POST /api/cars',
     find: `      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,`,
     replace: `      buyItNow, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,`,
   },
   {
-    label: '9/10 seed currentBid from startingBid on POST /api/cars INSERT',
+    label: '9/11 seed currentBid from startingBid on POST /api/cars INSERT',
     find: `        currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
     replace: `        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
   },
   {
-    // CRITICAL FIX — camera/microphone/geolocation broken on autopro.ac.
-    //
-    // The Permissions-Policy header was set to forbid these features for ALL
-    // origins (including same-origin). Browsers reject getUserMedia() with
-    // NotAllowedError before the JavaScript can even prompt for permission —
-    // there's no popup, no way for the user to accept. This breaks:
-    //   • VINScanner (yard gate barcode scanner)
-    //   • CameraCapture (KYC photo upload + vehicle photos)
-    //   • NearestShippingCenterPage geolocation
-    //
-    // The empty allowlist '()' means "no origin can use this". To allow the
-    // site itself to use these features, the value must be '(self)'. This
-    // does NOT weaken cross-origin protection — third-party iframes are
-    // still denied.
-    label: '10/10 fix Permissions-Policy to allow camera/mic/geolocation on same-origin',
+    label: '10/11 fix Permissions-Policy to allow camera/mic/geolocation on same-origin',
     find: `res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');`,
     replace: `res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');`,
   },
