@@ -158,7 +158,7 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
 });`,
   },
   {
-    label: '4/12 import all custom routes (admin-extras + referrals + mypay + whatsapp + seo + deal-of-day + office-info + payment-verification)',
+    label: '4/12 import all custom routes (admin-extras + referrals + mypay + whatsapp + seo + deal-of-day + office-info + payment-verification + payment-phase3)',
     find: `import { registerBannerRoutes } from './routes/banners.ts';`,
     replace: `import { registerBannerRoutes } from './routes/banners.ts';
 import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
@@ -168,7 +168,8 @@ import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
 import { registerSeoRoutes } from './routes/seo.ts';
 import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';
 import { registerOfficeInfoRoutes } from './routes/office-info.ts';
-import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';`,
+import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
+import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';`,
   },
   {
     label: '5/12 register all custom routes',
@@ -183,6 +184,7 @@ import { registerPaymentVerificationRoutes } from './routes/payment-verification
   try { registerDealOfDayRoutes(ctx as any); console.log('[BOOT] ✓ deal-of-day routes'); } catch (e: any) { console.error('[BOOT] deal-of-day routes failed:', e?.message); }
   try { registerOfficeInfoRoutes(ctx as any); console.log('[BOOT] ✓ office-info routes'); } catch (e: any) { console.error('[BOOT] office-info routes failed:', e?.message); }
   try { registerPaymentVerificationRoutes(ctx as any); console.log('[BOOT] ✓ payment-verification routes'); } catch (e: any) { console.error('[BOOT] payment-verification routes failed:', e?.message); }
+  try { registerPaymentPhase3Routes(ctx as any); console.log('[BOOT] ✓ payment-phase3 routes'); } catch (e: any) { console.error('[BOOT] payment-phase3 routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);`,
   },
   {
