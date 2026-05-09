@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Bell, BellOff, X, Check, AlertCircle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { usePushNotifications } from '../hooks/usePushNotifications';
@@ -7,18 +8,41 @@ const STORAGE_KEY = 'autopro_push_prompt_dismissed';
 const DISMISS_DAYS = 7;
 const SHOW_AFTER_MS = 30_000;
 
+// Pages that need camera/mic permission — never show the push prompt here, or
+// the browser refuses to display the camera prompt on top with
+// "This site can't ask for your permission".
+const PERMISSION_HEAVY_PATH_PATTERNS = [
+  /\/dashboard\/admin/,        // yard_gate_in/out, yard_quick_scan
+  /\/dashboard\/seller/,       // UnifiedCarForm camera capture
+  /\/seller-dashboard/,        // legacy alias
+  /\bview=yard_/,              // any yard-* admin view
+  /\bview=add_car/,            // car upload form
+];
+
 export const PushNotificationPrompt: React.FC = () => {
   const { currentUser } = useStore();
   const { isSupported, permission, subscribed, loading, subscribe } = usePushNotifications();
+  const location = useLocation();
 
   const [showBanner, setShowBanner] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'denied' | 'error'>('idle');
+
+  // Bail when the current route uses camera/mic — re-checks on every navigation
+  // so the prompt reappears on the next non-permission-heavy page.
+  const onPermissionHeavyPage = (() => {
+    const fullPath = location.pathname + location.search;
+    return PERMISSION_HEAVY_PATH_PATTERNS.some((re) => re.test(fullPath));
+  })();
 
   useEffect(() => {
     if (!currentUser) return;
     if (!isSupported) return;
     if (subscribed) return;
     if (permission === 'denied') return;
+    if (onPermissionHeavyPage) {
+      setShowBanner(false);
+      return;
+    }
 
     // Respect prior dismissal
     try {
@@ -31,7 +55,7 @@ export const PushNotificationPrompt: React.FC = () => {
 
     const t = setTimeout(() => setShowBanner(true), SHOW_AFTER_MS);
     return () => clearTimeout(t);
-  }, [currentUser, isSupported, subscribed, permission]);
+  }, [currentUser, isSupported, subscribed, permission, onPermissionHeavyPage]);
 
   // Hide once subscribed
   useEffect(() => {
