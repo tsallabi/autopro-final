@@ -282,7 +282,7 @@ export default function PaymentVerificationPanel() {
         title="مراجعة طلبات شحن المحفظة"
         style={{
           position: 'fixed',
-          bottom: 224,
+          bottom: 288,
           left: 20,
           zIndex: 9996,
           background: pendingCount > 0 ? '#dc2626' : '#16a34a',

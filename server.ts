@@ -13,6 +13,15 @@ import { registerYardRoutes, registerYardBackgroundJobs } from './routes/yard.ts
 import { registerPushRoutes } from './routes/push.ts';
 import { registerLibyaProRoutes } from './routes/libyapro.ts';
 import { registerBannerRoutes } from './routes/banners.ts';
+import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
+import { registerReferralRoutes } from './routes/referrals.ts';
+import { registerMyPayRoutes } from './routes/mypay.ts';
+import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
+import { registerSeoRoutes } from './routes/seo.ts';
+import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';
+import { registerOfficeInfoRoutes } from './routes/office-info.ts';
+import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
+import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
@@ -1746,7 +1755,7 @@ async function startServer() {
       res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
       res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://connect.facebook.net https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' wss: https: https://accounts.google.com https://graph.facebook.com; frame-src 'self' https://www.youtube.com https://youtube.com https://accounts.google.com https://www.facebook.com; media-src 'self' blob:; frame-ancestors 'self';");
     }
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');
     next();
   });
 
@@ -4497,6 +4506,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerPushRoutes(ctx as any); console.log('[BOOT] ✓ push routes'); } catch (e: any) { console.error('[BOOT] push routes failed:', e?.message); }
   try { registerLibyaProRoutes(ctx as any); console.log('[BOOT] ✓ libyapro routes'); } catch (e: any) { console.error('[BOOT] libyapro routes failed:', e?.message); }
   try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
+  try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
+  try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
+  try { registerMyPayRoutes(ctx as any); console.log('[BOOT] ✓ mypay routes'); } catch (e: any) { console.error('[BOOT] mypay routes failed:', e?.message); }
+  try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
+  try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
+  try { registerDealOfDayRoutes(ctx as any); console.log('[BOOT] ✓ deal-of-day routes'); } catch (e: any) { console.error('[BOOT] deal-of-day routes failed:', e?.message); }
+  try { registerOfficeInfoRoutes(ctx as any); console.log('[BOOT] ✓ office-info routes'); } catch (e: any) { console.error('[BOOT] office-info routes failed:', e?.message); }
+  try { registerPaymentVerificationRoutes(ctx as any); console.log('[BOOT] ✓ payment-verification routes'); } catch (e: any) { console.error('[BOOT] payment-verification routes failed:', e?.message); }
+  try { registerPaymentPhase3Routes(ctx as any); console.log('[BOOT] ✓ payment-phase3 routes'); } catch (e: any) { console.error('[BOOT] payment-phase3 routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 

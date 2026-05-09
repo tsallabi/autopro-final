@@ -157,36 +157,11 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
   }
 });`,
   },
-  {
-    label: '4/12 import all custom routes (admin-extras + referrals + mypay + whatsapp + seo + deal-of-day + office-info + payment-verification + payment-phase3)',
-    find: `import { registerBannerRoutes } from './routes/banners.ts';`,
-    replace: `import { registerBannerRoutes } from './routes/banners.ts';
-import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
-import { registerReferralRoutes } from './routes/referrals.ts';
-import { registerMyPayRoutes } from './routes/mypay.ts';
-import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
-import { registerSeoRoutes } from './routes/seo.ts';
-import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';
-import { registerOfficeInfoRoutes } from './routes/office-info.ts';
-import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
-import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';`,
-  },
-  {
-    label: '5/12 register all custom routes',
-    find: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
-  registerSocketHandlers(ctx as any);`,
-    replace: `try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
-  try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
-  try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
-  try { registerMyPayRoutes(ctx as any); console.log('[BOOT] ✓ mypay routes'); } catch (e: any) { console.error('[BOOT] mypay routes failed:', e?.message); }
-  try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
-  try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
-  try { registerDealOfDayRoutes(ctx as any); console.log('[BOOT] ✓ deal-of-day routes'); } catch (e: any) { console.error('[BOOT] deal-of-day routes failed:', e?.message); }
-  try { registerOfficeInfoRoutes(ctx as any); console.log('[BOOT] ✓ office-info routes'); } catch (e: any) { console.error('[BOOT] office-info routes failed:', e?.message); }
-  try { registerPaymentVerificationRoutes(ctx as any); console.log('[BOOT] ✓ payment-verification routes'); } catch (e: any) { console.error('[BOOT] payment-verification routes failed:', e?.message); }
-  try { registerPaymentPhase3Routes(ctx as any); console.log('[BOOT] ✓ payment-phase3 routes'); } catch (e: any) { console.error('[BOOT] payment-phase3 routes failed:', e?.message); }
-  registerSocketHandlers(ctx as any);`,
-  },
+  // Patches 4/12 + 5/12 (custom-route imports + registrations) and 10/12
+  // (Permissions-Policy header) were promoted directly into server.ts on
+  // 2026-05-09 because deployments often run `tsx server.ts` directly,
+  // which bypasses this patcher. Keeping them only here meant the routes
+  // and the camera fix were missing in production.
   {
     label: '6/12 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
     find: `  function checkUpcomingAuctions() {
@@ -271,9 +246,6 @@ import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';`,
     find: `        currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
     replace: `        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
   },
-  {
-    label: '10/12 fix Permissions-Policy to allow camera/mic/geolocation on same-origin',
-    find: `res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');`,
-    replace: `res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');`,
-  },
+  // Old patch 10/12 (Permissions-Policy fix) was promoted directly into
+  // server.ts so it works under `tsx server.ts` too — see comment above.
 ];
