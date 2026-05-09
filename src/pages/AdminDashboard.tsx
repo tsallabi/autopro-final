@@ -21,6 +21,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { ReportsPanel } from '../components/admin/ReportsPanel';
 import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
+import IntegrationsPanel from '../components/admin/IntegrationsPanel';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
 import { ShippingCentersManager } from '../components/admin/ShippingCentersManager';
 import { BannersManager } from '../components/admin/BannersManager';
@@ -7208,6 +7209,14 @@ export const AdminDashboard = () => {
                       <p className="text-xs text-slate-600 font-bold leading-relaxed">توليد "فاتورة شراء" فورية وإرسال رابط دفع Stripe مباشر للمشتري.</p>
                    </div>
                 </div>
+            </div>
+
+            {/* MyPay (Libyan banks) + AgentCollab status panels */}
+            <div className="mt-10">
+              <h3 className="font-black text-xl text-slate-800 mb-6 flex items-center gap-2">
+                🔌 تكاملات إضافية (Status فقط — تُهيَّأ من متغيرات بيئة Render)
+              </h3>
+              <IntegrationsPanel />
             </div>
           </div>
         );

@@ -147,18 +147,52 @@ export function registerWhatsAppPosterRoutes(ctx: AppContext) {
 
   // ── GET /api/admin/whatsapp/cars ──────────────────────────────────────
   app.get('/api/admin/whatsapp/cars', requireAdmin, (_req: any, res: any) => {
+    // Defensive query: only request columns that definitely exist in the
+    // base CREATE TABLE, then read optional columns off the row dynamically.
+    // This survives schema drift on production DBs that pre-date some
+    // ALTER TABLE additions (auctionStartTime, imageUrl, mileage, etc.).
     try {
-      const rows: any[] = db.prepare(`
-        SELECT id, lotNumber, vin, make, model, year, mileage,
-               currentBid, reservePrice, auctionEndDate, auctionStartTime,
-               images, imageUrl, status
-          FROM cars
-         WHERE COALESCE(status, 'upcoming') IN ('upcoming', 'live', 'ultimo', 'pending_seller', 'offer_market')
-         ORDER BY COALESCE(auctionStartTime, auctionEndDate) ASC
-         LIMIT 100
-      `).all();
-      res.json(rows);
+      let rows: any[] = [];
+      try {
+        rows = db.prepare(`
+          SELECT *
+            FROM cars
+           WHERE COALESCE(status, 'upcoming') IN ('upcoming', 'live', 'pending_seller', 'offer_market', 'pending_approval')
+           ORDER BY id DESC
+           LIMIT 100
+        `).all();
+      } catch (sqlErr: any) {
+        // Last-resort fallback if even the basic query fails.
+        console.error('[whatsapp/cars] primary query failed:', sqlErr?.message);
+        try {
+          rows = db.prepare('SELECT * FROM cars ORDER BY id DESC LIMIT 100').all();
+        } catch (fallbackErr: any) {
+          console.error('[whatsapp/cars] fallback also failed:', fallbackErr?.message);
+          rows = [];
+        }
+      }
+
+      // Normalize what the frontend expects, tolerating missing columns.
+      const normalized = rows.map((c: any) => ({
+        id: c.id,
+        lotNumber: c.lotNumber || null,
+        vin: c.vin || null,
+        make: c.make || '',
+        model: c.model || '',
+        year: c.year || null,
+        mileage: c.mileage || null,
+        currentBid: c.currentBid || 0,
+        reservePrice: c.reservePrice || 0,
+        auctionEndDate: c.auctionEndDate || null,
+        auctionStartTime: c.auctionStartTime || null,
+        images: c.images || null,
+        imageUrl: c.imageUrl || null,
+        status: c.status || 'upcoming',
+      }));
+
+      res.json(normalized);
     } catch (e: any) {
+      console.error('[whatsapp/cars] handler crashed:', e?.message);
       res.status(500).json({ error: 'فشل جلب قائمة السيارات: ' + (e?.message || e) });
     }
   });
