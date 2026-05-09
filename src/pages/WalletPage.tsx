@@ -57,6 +57,12 @@ export const WalletPage = () => {
     /* invoice payment */
     const [payingInvId, setPayingInvId] = useState<string | null>(null);
 
+    /* receipt attach (Phase 3) */
+    const [receiptOpenId, setReceiptOpenId] = useState<string | null>(null);
+    const [receiptUrl, setReceiptUrl] = useState('');
+    const [receiptRefBank, setReceiptRefBank] = useState('');
+    const [receiptLoading, setReceiptLoading] = useState(false);
+
     const load = async () => {
         if (!currentUser) return;
         setLoading(true);
@@ -125,6 +131,48 @@ export const WalletPage = () => {
         if (res.ok) { showAlert('تم الدفع بنجاح ✅', 'success'); load(); }
         else showAlert(data.error, 'error');
         setPayingInvId(null);
+    };
+
+    /* [phase3] User attaches a receipt URL to one of their pending topup
+       requests so the admin can verify without digging through WhatsApp. */
+    const openReceiptForm = (prId: string, existingUrl?: string, existingRef?: string) => {
+        setReceiptOpenId(prId);
+        setReceiptUrl(existingUrl || '');
+        setReceiptRefBank(existingRef || '');
+    };
+    const closeReceiptForm = () => {
+        setReceiptOpenId(null);
+        setReceiptUrl('');
+        setReceiptRefBank('');
+    };
+    const handleUploadReceipt = async (prId: string) => {
+        if (!receiptUrl.trim()) {
+            showAlert('الرجاء إدخال رابط الإيصال', 'error');
+            return;
+        }
+        setReceiptLoading(true);
+        try {
+            const res = await authFetch(`/api/wallet/payment-requests/${prId}/upload-receipt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bankReceiptUrl: receiptUrl.trim(),
+                    referenceFromBank: receiptRefBank.trim() || undefined,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showAlert('✅ تم إرفاق الإيصال — سيراجعه الفريق قريباً', 'success');
+                closeReceiptForm();
+                load();
+            } else {
+                showAlert(data.error || 'فشل الرفع', 'error');
+            }
+        } catch {
+            showAlert('خطأ في الاتصال', 'error');
+        } finally {
+            setReceiptLoading(false);
+        }
     };
 
     const copyText = (t: string) => { navigator.clipboard.writeText(t); showAlert('تم النسخ!', 'success'); };
@@ -245,19 +293,76 @@ export const WalletPage = () => {
                                             <Clock className="w-4 h-4 text-orange-500" /> طلبات قيد المراجعة
                                         </h3>
                                     </div>
-                                    {wallet!.pendingRequests.map((pr: any) => (
-                                        <div key={pr.id} className="flex items-center gap-4 px-4 py-3 border-b border-slate-50 last:border-0">
-                                            <div className="w-9 h-9 bg-yellow-50 rounded-xl flex items-center justify-center">
-                                                <Clock className="w-4 h-4 text-yellow-500" />
+                                    {wallet!.pendingRequests.map((pr: any) => {
+                                        const isTopup = pr.type === 'topup';
+                                        const isOfflineMethod = pr.method === 'bank_transfer' || pr.method === 'cash';
+                                        const canAttachReceipt = isTopup && isOfflineMethod;
+                                        const hasReceipt = !!pr.bankReceiptUrl;
+                                        const isOpen = receiptOpenId === pr.id;
+                                        return (
+                                            <div key={pr.id} className="border-b border-slate-50 last:border-0">
+                                                <div className="flex items-center gap-4 px-4 py-3">
+                                                    <div className="w-9 h-9 bg-yellow-50 rounded-xl flex items-center justify-center">
+                                                        <Clock className="w-4 h-4 text-yellow-500" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <p className="font-bold text-slate-800 text-sm">{TYPE_LABELS[pr.type] || pr.type}</p>
+                                                        <p className="text-xs text-slate-400">{new Date(pr.requestedAt).toLocaleDateString('ar-LY')}</p>
+                                                    </div>
+                                                    <span className="font-black text-slate-900">${Number(pr.amount).toLocaleString('en-US')}</span>
+                                                    <span className="text-xs bg-yellow-100 text-yellow-700 font-black px-2.5 py-1 rounded-lg">جاري المراجعة</span>
+                                                </div>
+                                                {/* [phase3] Attach-receipt UI for offline topups */}
+                                                {canAttachReceipt && (
+                                                    <div className="px-4 pb-3">
+                                                        {hasReceipt && !isOpen ? (
+                                                            <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-xl px-3 py-2">
+                                                                <div className="flex items-center gap-2 text-green-700 text-xs font-bold">
+                                                                    <CheckCircle2 className="w-4 h-4" />
+                                                                    <span>تم إرفاق الإيصال</span>
+                                                                    <a href={pr.bankReceiptUrl} target="_blank" rel="noopener noreferrer"
+                                                                        className="underline truncate max-w-[200px]">عرض الإيصال</a>
+                                                                </div>
+                                                                <button onClick={() => openReceiptForm(pr.id, pr.bankReceiptUrl, pr.referenceFromBank)}
+                                                                    className="text-xs font-black text-blue-600 hover:underline">تعديل</button>
+                                                            </div>
+                                                        ) : !isOpen ? (
+                                                            <button onClick={() => openReceiptForm(pr.id)}
+                                                                className="w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-xl py-2 text-xs font-black transition-colors flex items-center justify-center gap-2">
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                                📎 إرفاق رابط صورة وصل التحويل
+                                                            </button>
+                                                        ) : (
+                                                            <div className="bg-blue-50/40 border border-blue-200 rounded-xl p-3 space-y-2">
+                                                                <input type="url" placeholder="رابط الصورة (مثل: drive.google.com/...)"
+                                                                    value={receiptUrl} onChange={(e) => setReceiptUrl(e.target.value)}
+                                                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
+                                                                />
+                                                                <input type="text" placeholder="رقم المرجع من البنك (اختياري)"
+                                                                    value={receiptRefBank} onChange={(e) => setReceiptRefBank(e.target.value)}
+                                                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
+                                                                />
+                                                                <p className="text-[10px] text-slate-500 leading-relaxed">
+                                                                    الصق رابط صورة الإيصال (من Google Drive، WhatsApp Web، أو أي خدمة استضافة).
+                                                                    يتم تسريع المراجعة كثيراً عند إرفاق الإيصال.
+                                                                </p>
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={closeReceiptForm} disabled={receiptLoading}
+                                                                        className="flex-1 bg-slate-200 text-slate-700 rounded-lg py-2 text-xs font-black hover:bg-slate-300 transition-colors">
+                                                                        إلغاء
+                                                                    </button>
+                                                                    <button onClick={() => handleUploadReceipt(pr.id)} disabled={receiptLoading}
+                                                                        className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-xs font-black hover:bg-blue-500 transition-colors disabled:opacity-60">
+                                                                        {receiptLoading ? '...جاري' : 'حفظ الإيصال'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="flex-1">
-                                                <p className="font-bold text-slate-800 text-sm">{TYPE_LABELS[pr.type] || pr.type}</p>
-                                                <p className="text-xs text-slate-400">{new Date(pr.requestedAt).toLocaleDateString('ar-LY')}</p>
-                                            </div>
-                                            <span className="font-black text-slate-900">${Number(pr.amount).toLocaleString('en-US')}</span>
-                                            <span className="text-xs bg-yellow-100 text-yellow-700 font-black px-2.5 py-1 rounded-lg">جاري المراجعة</span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
 
@@ -362,6 +467,8 @@ export const WalletPage = () => {
                                         <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                                         <p className="text-xs font-bold text-blue-700">
                                             بعد الإرسال، سيُراجَع الطلب خلال 24 ساعة. عند الموافقة، يُضاف الرصيد تلقائياً وتصلك إشعار.
+                                            <br />
+                                            💡 يمكنك إرفاق رابط صورة وصل التحويل من تبويب "نظرة عامة" بعد الإرسال لتسريع المراجعة.
                                         </p>
                                     </div>
                                     <button type="submit" disabled={topupLoading}
