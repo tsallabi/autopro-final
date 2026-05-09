@@ -236,16 +236,11 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
       });
     }`,
   },
-  {
-    label: '8/12 accept startingBid in POST /api/cars',
-    find: `      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,`,
-    replace: `      buyItNow, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,`,
-  },
-  {
-    label: '9/12 seed currentBid from startingBid on POST /api/cars INSERT',
-    find: `        currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
-    replace: `        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),`,
-  },
+  // Old patches 8/12 + 9/12 (startingBid acceptance + currentBid seeding)
+  // promoted directly into server.ts on 2026-05-09. They had to move because
+  // the same destructuring pattern exists in both POST /api/cars and PUT
+  // /api/cars/:id, so the patcher's "must match exactly once" check failed
+  // and broke the Render build.
   // Old patch 10/12 (Permissions-Policy fix) was promoted directly into
   // server.ts so it works under `tsx server.ts` too — see comment above.
 ];
