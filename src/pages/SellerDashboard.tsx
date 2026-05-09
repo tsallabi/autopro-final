@@ -561,7 +561,7 @@ export const SellerDashboard = () => {
                               <img src={car.images?.[0] || ''} alt="صورة" className="w-20 h-16 md:w-16 md:h-12 rounded-xl object-cover border border-slate-200 shrink-0" />
                               <div>
                                 <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
-                                <div className="text-xs text-slate-400 font-bold mt-1 shadow-inner bg-slate-100 px-2 py-0.5 rounded-md inline-block">Lot: {car.lotNumber}</div>
+                                <div className="text-xs text-slate-400 font-bold mt-1 shadow-inner bg-slate-100 px-2 py-0.5 rounded-md inline-block">🏷️ اللوت: {car.lotNumber}</div>
                               </div>
                             </div>
                           </td>
@@ -680,7 +680,7 @@ export const SellerDashboard = () => {
                                   <div>
                                     <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
                                     <div className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-1 shadow-inner bg-slate-100 px-2 py-0.5 rounded-md w-fit">
-                                      <Target className="w-3 h-3" /> Lot: {car.lotNumber || `LT-${1000 + idx}`}
+                                      <Target className="w-3 h-3" /> 🏷️ اللوت: {car.lotNumber || `LT-${1000 + idx}`}
                                     </div>
                                   </div>
                                 </div>
@@ -1178,7 +1178,7 @@ export const SellerDashboard = () => {
                           <div className="font-bold text-slate-800 text-sm">{tx.description}</div>
                           <div className="text-[10px] text-slate-400 mt-0.5">
                             {new Date(tx.timestamp).toLocaleDateString('ar-EG')}
-                            {tx.lotNumber && ` • Lot: ${tx.lotNumber}`}
+                            {tx.lotNumber && ` • اللوت: ${tx.lotNumber}`}
                           </div>
                         </td>
                         <td className="p-4 font-mono font-bold">
@@ -1623,7 +1623,7 @@ export const SellerDashboard = () => {
                         <div>
                           <div className="flex items-center gap-3 mb-2">
                             <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold font-mono">
-                              Lot: {inv.lotNumber}
+                              🏷️ اللوت: {inv.lotNumber}
                             </span>
                             <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold font-mono">
                               VIN: {inv.vin}

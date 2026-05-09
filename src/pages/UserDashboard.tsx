@@ -977,7 +977,7 @@ export const UserDashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {winningCars.map(car => (
                     <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border border-emerald-100 p-6 cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all group">
-                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full mb-4">🏷️ اللوت: {car.lotNumber}</div>
                       <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 group-hover:scale-105 transition-transform" />
                       <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
                       <div className="flex justify-between items-center mt-4">
@@ -1005,7 +1005,7 @@ export const UserDashboard = () => {
                     <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border-2 border-orange-100 p-6 cursor-pointer hover:border-orange-300 hover:shadow-lg transition-all group relative overflow-hidden">
                       <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full blur-2xl -mr-10 -mt-10"></div>
                       <div className="relative z-10">
-                        <div className="text-[10px] font-black w-fit px-3 py-1 bg-orange-100 text-orange-700 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                        <div className="text-[10px] font-black w-fit px-3 py-1 bg-orange-100 text-orange-700 rounded-full mb-4">🏷️ اللوت: {car.lotNumber}</div>
                         <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 group-hover:scale-105 transition-transform" />
                         <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
                         <div className="font-mono font-black text-2xl text-slate-900 mb-4">${(car.currentBid || 0).toLocaleString()} <span className="text-xs font-bold text-slate-400 inline-block">{t('userDashboard.bids.highestOffer')}</span></div>
@@ -1037,7 +1037,7 @@ export const UserDashboard = () => {
                       </div>
                       <div className="w-full md:w-2/3 flex flex-col justify-between">
                         <div>
-                          <div className="text-[10px] font-black w-fit px-3 py-1 bg-purple-100 text-purple-700 rounded-full mb-2">Lot: {car.lotNumber}</div>
+                          <div className="text-[10px] font-black w-fit px-3 py-1 bg-purple-100 text-purple-700 rounded-full mb-2">🏷️ اللوت: {car.lotNumber}</div>
                           <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
                           <div className="flex gap-4 mt-2">
                             <div>
@@ -1104,7 +1104,7 @@ export const UserDashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {activeBidsList.map(car => (
                     <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border border-blue-100 p-6 cursor-pointer hover:border-blue-300 hover:shadow-lg transition-all group relative">
-                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-blue-100 text-blue-700 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-blue-100 text-blue-700 rounded-full mb-4">🏷️ اللوت: {car.lotNumber}</div>
                       <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 group-hover:scale-105 transition-transform" />
                       <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
                       <div className="flex justify-between items-center mt-4 border-t border-slate-50 pt-4">
@@ -1133,7 +1133,7 @@ export const UserDashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {lostList.map(car => (
                     <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 cursor-pointer hover:border-red-100 hover:shadow-lg transition-all group opacity-80 hover:opacity-100">
-                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-slate-100 text-slate-500 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-slate-100 text-slate-500 rounded-full mb-4">🏷️ اللوت: {car.lotNumber}</div>
                       <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 grayscale group-hover:grayscale-0 transition-all" />
                       <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
                       <div className="flex justify-between items-center mt-4">
@@ -1466,7 +1466,7 @@ export const UserDashboard = () => {
 
         <div className="mt-auto p-6 bg-slate-950 rounded-[2rem] text-white relative overflow-hidden group">
           <div className="relative z-10 text-center">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Status</div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">الحالة</div>
             <div className="text-xs font-black mb-4">عمولة مخفضة 3% تفعيل</div>
             <button
               onClick={() => navigateTo('bids')}
