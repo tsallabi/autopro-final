@@ -33,6 +33,7 @@ import AdminQuickTools from './components/admin/AdminQuickTools';
 // [WIRING] Admin floating panels — only render for admin role.
 import MarketingPanel from './components/admin/MarketingPanel';
 import WhatsAppPoster from './components/admin/WhatsAppPoster';
+import PaymentVerificationPanel from './components/admin/PaymentVerificationPanel';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -143,6 +144,7 @@ function AppContent() {
         {/* [WIRING] Admin-only floating panels */}
         {isAdmin && <MarketingPanel />}
         {isAdmin && <WhatsAppPoster />}
+        {isAdmin && <PaymentVerificationPanel />}
     </>
   );
 }
