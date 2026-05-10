@@ -191,7 +191,7 @@ const ApproveScheduleSection: React.FC = () => {
           : '';
         setResult({
           ok: true,
-          message: `✅ اعتُمدت السيارة. تبدأ في: ${new Date(data.car.auctionStartTime).toLocaleString('ar-LY')}${announceMsg}`,
+          message: `✅ اعتُمدت السيارة. تبدأ في: ${new Date(data.car.auctionStartTime).toLocaleString('en-US')}${announceMsg}`,
         });
       } else {
         setResult({ ok: false, message: '❌ ' + (data?.error || 'فشل') });

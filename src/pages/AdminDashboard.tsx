@@ -432,8 +432,8 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
                   ) : (
                     <>
                       <td className="p-4 text-xs text-slate-600 font-bold" dir="ltr">
-                        <div className="text-emerald-600 mb-1">{car.auctionStartTime ? new Date(car.auctionStartTime).toLocaleString('ar-EG') : 'غير محدد'}</div>
-                        <div className="text-rose-600">{car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleString('ar-EG') : 'غير محدد'}</div>
+                        <div className="text-emerald-600 mb-1">{car.auctionStartTime ? new Date(car.auctionStartTime).toLocaleString('en-US') : 'غير محدد'}</div>
+                        <div className="text-rose-600">{car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleString('en-US') : 'غير محدد'}</div>
                       </td>
                       <td className="p-4">
                         <span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{car.auctionSessionCount || 0} من {car.maxAuctionRetries || 1} مرة</span>
@@ -616,7 +616,7 @@ const ExternalLogsViewer: React.FC = () => {
               <tr><td colSpan={5} className="p-12 text-center text-slate-400 font-bold">لا توجد إشعارات سابقة في السجل حالياً</td></tr>
             ) : logs.map((log: any) => (
               <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
-                <td className="p-5 text-slate-500 font-mono text-xs">{log.timestamp ? new Date(log.timestamp).toLocaleString('ar-LY') : '-'}</td>
+                <td className="p-5 text-slate-500 font-mono text-xs">{log.timestamp ? new Date(log.timestamp).toLocaleString('en-US') : '-'}</td>
                 <td className="p-5">
                   {log.type === 'email'
                     ? <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase border border-blue-100"><Mail className="w-3.5 h-3.5" /> EMails</span>
@@ -1352,6 +1352,13 @@ const PaymentRequestsPanel: React.FC = () => {
   const [note, setNote] = React.useState<Record<string, string>>({});
   const [showTopupModal, setShowTopupModal] = React.useState(false);
   const [topupForm, setTopupForm] = React.useState({ email: '', amount: 0, note: '' });
+  // [inline-message] State for the per-row "send message" inline form so the
+  // admin can request the receipt / send confirmation / etc. without leaving
+  // this view. Replaces the separate floating panel that proved confusing.
+  const [messageOpenId, setMessageOpenId] = React.useState<string | null>(null);
+  const [messageTemplate, setMessageTemplate] = React.useState<string>('request-receipt');
+  const [messageCustom, setMessageCustom] = React.useState<string>('');
+  const [messageSending, setMessageSending] = React.useState(false);
   const { showAlert, currentUser } = useStore();
 
   const load = async () => {
@@ -1378,6 +1385,53 @@ const PaymentRequestsPanel: React.FC = () => {
     } catch { }
     setActionLoading(null);
   };
+
+  // [inline-message] Send a templated or custom message to the user who
+  // opened the topup request. Uses the existing
+  // /api/admin/payment-verifications/:id/contact-user endpoint that powers
+  // the floating panel — same backend, different surface.
+  const handleSendMessage = async (prId: string) => {
+    if (messageTemplate === 'custom' && !messageCustom.trim()) {
+      showAlert('الرجاء إدخال نص الرسالة', 'error');
+      return;
+    }
+    setMessageSending(true);
+    try {
+      const body: any = messageTemplate === 'custom'
+        ? { message: messageCustom.trim() }
+        : { template: messageTemplate };
+      if (messageCustom.trim() && messageTemplate !== 'custom') {
+        body.message = messageCustom.trim();
+      }
+      const res = await authFetch(`/api/admin/payment-verifications/${prId}/contact-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showAlert('✅ تم إرسال الرسالة', 'success');
+        setMessageOpenId(null);
+        setMessageCustom('');
+        setMessageTemplate('request-receipt');
+      } else {
+        showAlert(data.error || 'فشل إرسال الرسالة', 'error');
+      }
+    } catch {
+      showAlert('خطأ في الاتصال', 'error');
+    } finally {
+      setMessageSending(false);
+    }
+  };
+
+  const MESSAGE_TEMPLATES: Array<{ id: string; label: string }> = [
+    { id: 'request-receipt',     label: '📎 طلب صورة وصل التحويل' },
+    { id: 'received-confirm',    label: '✅ تأكيد استلام المبلغ' },
+    { id: 'call-us',             label: '📞 اتصل بالإدارة' },
+    { id: 'amount-mismatch',     label: '⚠️ المبلغ لا يطابق' },
+    { id: 'transfer-not-found',  label: '❌ لم نجد التحويل' },
+    { id: 'custom',              label: '✍️ رسالة مخصصة' },
+  ];
 
   const handleManualTopup = async () => {
     if (!topupForm.email || topupForm.amount <= 0) {
@@ -1522,10 +1576,12 @@ const PaymentRequestsPanel: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(pr => (
-                  <tr key={pr.id} className="hover:bg-slate-50/50 transition-colors">
+                  <React.Fragment key={pr.id}>
+                  <tr className="hover:bg-slate-50/50 transition-colors">
                     <td className="p-3">
                       <div className="font-black text-slate-800">{pr.firstName} {pr.lastName}</div>
                       <div className="text-[11px] text-slate-400 font-mono">{pr.email}</div>
+                      {pr.phone && <div className="text-[11px] text-slate-400 font-mono" dir="ltr">{pr.phone}</div>}
                     </td>
                     <td className="p-3">
                       <span className={`inline-flex items-center text-xs font-black px-2.5 py-1 rounded-lg ${TYPE_COLOR[pr.type] || 'bg-slate-100 text-slate-600'}`}>
@@ -1545,9 +1601,9 @@ const PaymentRequestsPanel: React.FC = () => {
                     </td>
                     <td className="p-3">
                       {pr.status === 'pending' ? (
-                        <div className="flex items-center gap-2">
-                          <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
-                            className="text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 outline-none focus:border-orange-500 font-bold w-28"
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <input aria-label="ملاحظة الإدارة" title="ملاحظة الإدارة" placeholder="ملاحظة"
+                            className="text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 outline-none focus:border-orange-500 font-bold w-24"
                             value={note[pr.id] || ''}
                             onChange={e => setNote(n => ({ ...n, [pr.id]: e.target.value }))}
                           />
@@ -1563,12 +1619,100 @@ const PaymentRequestsPanel: React.FC = () => {
                             className="text-xs font-black bg-red-500 hover:bg-red-400 text-white px-3 py-1.5 rounded-xl transition-all disabled:opacity-50">
                             {actionLoading === pr.id + 'reject' ? '...' : '❌ رفض'}
                           </button>
+                          <button
+                            onClick={() => {
+                              setMessageOpenId(messageOpenId === pr.id ? null : pr.id);
+                              setMessageTemplate('request-receipt');
+                              setMessageCustom('');
+                            }}
+                            className="text-xs font-black bg-blue-500 hover:bg-blue-400 text-white px-3 py-1.5 rounded-xl transition-all whitespace-nowrap"
+                            title="إرسال رسالة أو تعليمات الدفع"
+                          >
+                            💬 مراسلة
+                          </button>
                         </div>
                       ) : (
                         <span className="text-xs text-slate-400 font-bold">{pr.adminNote || 'تمت المعالجة'}</span>
                       )}
                     </td>
                   </tr>
+                  {messageOpenId === pr.id && (
+                    <tr className="bg-blue-50/40">
+                      <td colSpan={8} className="p-4">
+                        <div className="bg-white border border-blue-200 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="font-black text-blue-700 text-sm">
+                              💬 إرسال رسالة لـ {pr.firstName} {pr.lastName}
+                            </div>
+                            <button
+                              onClick={() => setMessageOpenId(null)}
+                              className="text-slate-400 hover:text-slate-600 text-lg leading-none px-2"
+                              aria-label="إغلاق"
+                            >×</button>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-black text-slate-500 mb-1.5">اختر القالب</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {MESSAGE_TEMPLATES.map(tpl => (
+                                <button
+                                  key={tpl.id}
+                                  onClick={() => setMessageTemplate(tpl.id)}
+                                  className={`text-[11px] font-black px-2.5 py-1.5 rounded-lg transition-all border ${
+                                    messageTemplate === tpl.id
+                                      ? 'bg-blue-600 text-white border-blue-600'
+                                      : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                                  }`}
+                                >
+                                  {tpl.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {messageTemplate === 'custom' ? (
+                            <div>
+                              <label className="block text-[11px] font-black text-slate-500 mb-1.5">نص الرسالة</label>
+                              <textarea
+                                rows={3}
+                                value={messageCustom}
+                                onChange={e => setMessageCustom(e.target.value)}
+                                placeholder="اكتب رسالتك هنا..."
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-500 resize-none"
+                              />
+                            </div>
+                          ) : (
+                            <div>
+                              <label className="block text-[11px] font-black text-slate-500 mb-1.5">
+                                إضافة سطر إضافي (اختياري — يُلحق بالقالب)
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={messageCustom}
+                                onChange={e => setMessageCustom(e.target.value)}
+                                placeholder="مثال: نرجو إرسال صورة وصل التحويل خلال 24 ساعة..."
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-500 resize-none"
+                              />
+                            </div>
+                          )}
+                          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                            <button
+                              onClick={() => setMessageOpenId(null)}
+                              className="text-xs font-black px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                            >
+                              إلغاء
+                            </button>
+                            <button
+                              onClick={() => handleSendMessage(pr.id)}
+                              disabled={messageSending}
+                              className="text-xs font-black px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-60"
+                            >
+                              {messageSending ? '...جاري الإرسال' : '📤 إرسال الرسالة'}
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -3366,7 +3510,7 @@ const AuditLogPanel: React.FC = () => {
                     </td>
                     <td className="p-4 text-sm text-slate-600 font-bold">{log.detail}</td>
                     <td className="p-4 text-xs text-slate-400 font-mono">
-                      {log.timestamp ? new Date(log.timestamp).toLocaleString('ar-EG') : '—'}
+                      {log.timestamp ? new Date(log.timestamp).toLocaleString('en-US') : '—'}
                     </td>
                   </tr>
                 ))}
@@ -4343,7 +4487,7 @@ export const AdminDashboard = () => {
             const ok = await updateExchangeRate(rate);
             setSaving(false);
             if (ok) {
-              setLastUpdate(new Date().toLocaleString('ar-LY'));
+              setLastUpdate(new Date().toLocaleString('en-US'));
               showAlert(`✅ تم تحديث سعر الصرف إلى ${rate} د.ل / 1 USD`, 'success');
             } else {
               showAlert('فشل تحديث سعر الصرف — يرجى المحاولة مرة أخرى', 'error');
@@ -5018,7 +5162,7 @@ export const AdminDashboard = () => {
                         )}
                       </td>
                       <td className="p-5 text-slate-500 font-bold text-xs">
-                        {new Date(tx.timestamp).toLocaleString('ar-EG')}
+                        {new Date(tx.timestamp).toLocaleString('en-US')}
                       </td>
                       <td className="p-5">
                         <div className="flex justify-center gap-2">
@@ -5395,7 +5539,7 @@ export const AdminDashboard = () => {
                                     <span className={`text-[10px] px-2 py-0.5 rounded-md font-black ${log.activityType === 'message' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
                                       {log.activityType === 'message' ? 'رسالة مباشرة' : log.title || 'إشعار'}
                                     </span>
-                                    <span className="text-[10px] text-slate-400 font-bold">UTC: {new Date(log.timestamp).toLocaleString('ar-LY')}</span>
+                                    <span className="text-[10px] text-slate-400 font-bold">UTC: {new Date(log.timestamp).toLocaleString('en-US')}</span>
                                   </div>
                                 </div>
                               </div>
@@ -5988,7 +6132,7 @@ export const AdminDashboard = () => {
                 <tbody className="divide-y divide-slate-100">
                   {allTransactions.length > 0 ? allTransactions.map((t, i) => (
                     <tr key={i}>
-                      <td className="p-4 text-sm text-slate-500 font-mono">{new Date(t.timestamp).toLocaleString('ar-EG')}</td>
+                      <td className="p-4 text-sm text-slate-500 font-mono">{new Date(t.timestamp).toLocaleString('en-US')}</td>
                       <td className="p-4 text-sm font-bold text-slate-800">{t.firstName} {t.lastName}</td>
                       <td className="p-4 text-sm text-slate-600">عملية {t.type}</td>
                       <td className="p-4 text-sm font-bold text-slate-900">${t.amount.toLocaleString()}</td>
@@ -6054,7 +6198,7 @@ export const AdminDashboard = () => {
                         <td className="p-4 font-bold text-slate-900 font-mono">${(car.reservePrice || 0).toLocaleString()}</td>
                         <td className="p-4 font-bold text-green-600 font-mono">${(car.currentBid || 0).toLocaleString()}</td>
                         <td className="p-4 text-sm text-slate-600 font-mono">
-                          {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-EG') : '-'}
+                          {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('en-US') : '-'}
                         </td>
                         <td className="p-4">
                           <div className="flex gap-2">
@@ -6614,7 +6758,7 @@ export const AdminDashboard = () => {
                           )}
                         </td>
                         <td className="p-6 text-sm text-amber-600 font-bold">
-                          {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-LY') : 'تنتهي قريباً'}
+                          {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('en-US') : 'تنتهي قريباً'}
                         </td>
                         <td className="p-6">
                           <div className="flex justify-center gap-2">

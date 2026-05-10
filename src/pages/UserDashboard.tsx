@@ -1596,7 +1596,7 @@ export const UserDashboard = () => {
                           <td className={`py-6 px-8 font-mono ${tx.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}`}>
                             {tx.type === 'credit' ? '+' : '-'}${tx.amount.toLocaleString()}
                           </td>
-                          <td className="py-6 px-8 text-slate-400 text-sm">{new Date(tx.timestamp).toLocaleString('ar-LY')}</td>
+                          <td className="py-6 px-8 text-slate-400 text-sm">{new Date(tx.timestamp).toLocaleString('en-US')}</td>
                           <td className="py-6 px-8">
                             <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase">
                               مكتملة ✅
@@ -1848,7 +1848,7 @@ export const UserDashboard = () => {
                           {msg.content}
                         </div>
                       )}
-                      <div className="text-[10px] font-bold text-slate-400 mt-4">{new Date(msg.timestamp).toLocaleString('ar-LY')}</div>
+                      <div className="text-[10px] font-bold text-slate-400 mt-4">{new Date(msg.timestamp).toLocaleString('en-US')}</div>
                     </div>
                     );
                   })}

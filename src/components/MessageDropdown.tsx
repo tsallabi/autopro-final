@@ -220,7 +220,7 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
                             />
                         </div>
                         <div className="text-[10px] text-slate-400 mt-4 font-black">
-                            {new Date(openMessage.timestamp).toLocaleString('ar-LY')}
+                            {new Date(openMessage.timestamp).toLocaleString('en-US')}
                         </div>
                     </div>
                 )}

@@ -203,19 +203,19 @@ export const AnalyticsDashboard: React.FC = () => {
         <KpiCard
           icon={<Eye className="w-6 h-6 text-white" />}
           label="إجمالي الزيارات"
-          value={(data?.kpis.totalVisits || 0).toLocaleString('ar-EG')}
+          value={(data?.kpis.totalVisits || 0).toLocaleString('en-US')}
           accent="bg-blue-500"
         />
         <KpiCard
           icon={<Users className="w-6 h-6 text-white" />}
           label="الزوار الفريدون"
-          value={(data?.kpis.uniqueVisitors || 0).toLocaleString('ar-EG')}
+          value={(data?.kpis.uniqueVisitors || 0).toLocaleString('en-US')}
           accent="bg-emerald-500"
         />
         <KpiCard
           icon={<Users className="w-6 h-6 text-white" />}
           label="زوار مسجلون"
-          value={(data?.kpis.loggedInVisitors || 0).toLocaleString('ar-EG')}
+          value={(data?.kpis.loggedInVisitors || 0).toLocaleString('en-US')}
           accent="bg-purple-500"
         />
         <KpiCard
@@ -277,7 +277,7 @@ export const AnalyticsDashboard: React.FC = () => {
                 <div key={i} className="group">
                   <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-slate-200 font-mono truncate flex-1 ml-2">{p.path}</span>
-                    <span className="text-white font-black">{p.views.toLocaleString('ar-EG')}</span>
+                    <span className="text-white font-black">{p.views.toLocaleString('en-US')}</span>
                   </div>
                   <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                     <div className="h-full bg-gradient-to-l from-orange-500 to-orange-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -304,7 +304,7 @@ export const AnalyticsDashboard: React.FC = () => {
                 <div key={i} className="group">
                   <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-slate-200 truncate flex-1 ml-2" title={r.referrer}>{shortenReferrer(r.referrer)}</span>
-                    <span className="text-white font-black">{r.visits.toLocaleString('ar-EG')}</span>
+                    <span className="text-white font-black">{r.visits.toLocaleString('en-US')}</span>
                   </div>
                   <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                     <div className="h-full bg-gradient-to-l from-emerald-500 to-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
