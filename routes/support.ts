@@ -154,18 +154,34 @@ export function registerSupportRoutes(ctx: AppContext) {
              dept, subject ? String(subject).trim() : null,
              finalMessage, createdAt);
 
-      // Notify admin so the inbox/badge updates immediately. Subject and
-      // body include the department label and guest contact info so the
-      // admin can decide priority.
+      // Insert into the existing messages center so the admin sees the
+      // inquiry in the same place they read everything else (no separate
+      // support panel UI). For logged-in users, sender = real userId so
+      // "رد" works through the existing flow. For guests, sender =
+      // 'admin-1' (so it doesn't break sender-name lookups) and the
+      // guest's name + email are embedded in the body so the admin can
+      // reply by email manually until a guest-aware reply UI is added.
       try {
-        const senderLabel = userId ? `مستخدم مسجَّل` : `${guestName || 'زائر'} <${guestEmail}>`;
-        sendInternalMessage('admin-1', 'admin-1',
-          `📩 استفسار جديد — ${DEPARTMENT_LABELS[dept]}`,
-          `من: ${senderLabel}\n\n` +
-          `الموضوع: ${subject || '—'}\n\n` +
-          `الرسالة:\n${finalMessage}\n\n` +
-          `(افتح "مركز الدعم" للرد)`,
-          'support_inquiry'
+        const senderForMsg = userId || 'admin-1';
+        const subjectLine = `📩 ${DEPARTMENT_LABELS[dept]}${subject ? ': ' + subject : ''}`;
+        const bodyLines: string[] = [];
+        if (!userId) {
+          bodyLines.push(`👤 الاسم: ${guestName || 'زائر'}`);
+          bodyLines.push(`📧 الإيميل: ${guestEmail}`);
+          bodyLines.push(`(زائر — يجب الرد عبر البريد الإلكتروني)`);
+          bodyLines.push('');
+        }
+        if (subject) {
+          bodyLines.push(`الموضوع: ${subject}`);
+          bodyLines.push('');
+        }
+        bodyLines.push(finalMessage);
+        bodyLines.push('');
+        bodyLines.push(`— رقم الاستفسار: ${id}`);
+        sendInternalMessage(senderForMsg, 'admin-1',
+          subjectLine,
+          bodyLines.join('\n'),
+          `support_${dept}`
         );
       } catch {}
 
