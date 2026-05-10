@@ -123,21 +123,52 @@ export function registerPaymentVerificationRoutes(ctx: AppContext) {
   }
 
   // ── GET /api/admin/payment-verifications/queue ─────────────────────────
+  // Defensive: production DBs sometimes have rows missing the new
+  // verification_status column even after the ALTER TABLE migration ran,
+  // so we fall back to a base query and filter in JS if the strict query
+  // returns empty. Errors are now logged so operators can spot them.
   app.get('/api/admin/payment-verifications/queue', requireAdmin, (_req: any, res: any) => {
     try {
-      const rows = db.prepare(`
-        SELECT pr.*,
-               u.firstName, u.lastName, u.email, u.phone, u.country,
-               u.kycStatus, u.deposit as currentDeposit
-          FROM payment_requests pr
-          LEFT JOIN users u ON pr.userId = u.id
-         WHERE pr.type = 'topup'
-           AND COALESCE(pr.verification_status, 'pending') = 'pending'
-           AND COALESCE(pr.status, 'pending') = 'pending'
-         ORDER BY pr.requestedAt ASC
-      `).all();
+      let rows: any[] = [];
+      try {
+        rows = db.prepare(`
+          SELECT pr.*,
+                 u.firstName, u.lastName, u.email, u.phone, u.country,
+                 u.kycStatus, u.deposit as currentDeposit
+            FROM payment_requests pr
+            LEFT JOIN users u ON pr.userId = u.id
+           WHERE pr.type = 'topup'
+             AND COALESCE(pr.verification_status, 'pending') = 'pending'
+             AND COALESCE(pr.status, 'pending') = 'pending'
+           ORDER BY pr.requestedAt ASC
+        `).all();
+      } catch (e: any) {
+        console.error('[payment-verify queue] strict query failed:', e?.message);
+      }
+      // Fallback: use the simpler shape that powers /api/admin/payment-requests.
+      if (rows.length === 0) {
+        try {
+          const all: any[] = db.prepare(`
+            SELECT pr.*,
+                   u.firstName, u.lastName, u.email, u.phone, u.country,
+                   u.kycStatus, u.deposit as currentDeposit
+              FROM payment_requests pr
+              LEFT JOIN users u ON pr.userId = u.id
+             ORDER BY pr.requestedAt DESC
+          `).all();
+          rows = all.filter((r: any) => {
+            const status = String(r.status || 'pending').toLowerCase();
+            const vs = String(r.verification_status || 'pending').toLowerCase();
+            const type = String(r.type || '').toLowerCase();
+            return type === 'topup' && status === 'pending' && vs === 'pending';
+          });
+        } catch (e: any) {
+          console.error('[payment-verify queue] fallback failed:', e?.message);
+        }
+      }
       res.json({ count: rows.length, requests: rows });
     } catch (e: any) {
+      console.error('[payment-verify queue] handler crashed:', e?.message);
       res.status(500).json({ error: e?.message || String(e) });
     }
   });

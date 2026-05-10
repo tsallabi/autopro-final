@@ -592,7 +592,7 @@ export const SellerDashboard = () => {
                             <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-1">الزمن / الحالة</div>
                             <div className="flex items-center gap-1">
                               <Clock className="w-4 h-4" />
-                              {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-EG') : 'تنتهي قريباً'}
+                              {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('en-US') : 'تنتهي قريباً'}
                             </div>
                           </td>
                           <td className="p-4 md:p-6 block md:table-cell w-full bg-slate-50/50 md:bg-transparent">
@@ -1001,7 +1001,7 @@ export const SellerDashboard = () => {
                            <div className="bg-orange-50 text-orange-600 px-3 py-1 text-[10px] font-black uppercase rounded-full border border-orange-100 flex items-center gap-1">
                              <Clock className="w-3 h-3"/> ستدخل المزاد
                            </div>
-                           <div className="text-[10px] font-black text-slate-800 bg-slate-100 px-3 py-1 rounded-full">{new Date(car.auctionStartTime || 0).toLocaleString('ar-LY')}</div>
+                           <div className="text-[10px] font-black text-slate-800 bg-slate-100 px-3 py-1 rounded-full">{new Date(car.auctionStartTime || 0).toLocaleString('en-US')}</div>
                         </div>
                         <div className="flex gap-4 items-center mb-6">
                             {car.images?.[0] ? <img src={car.images[0]} alt="car" className="w-16 h-16 rounded-2xl object-cover shadow-sm"/> : <div className="w-16 h-16 bg-slate-100 rounded-2xl"></div>}
@@ -1463,7 +1463,7 @@ export const SellerDashboard = () => {
                               </div>
                             </div>
                             <span className="text-xs text-slate-400 font-bold bg-slate-50 px-3 py-1 rounded-lg">
-                              {new Date(msg.timestamp).toLocaleString('ar-LY')}
+                              {new Date(msg.timestamp).toLocaleString('en-US')}
                             </span>
                           </div>
 

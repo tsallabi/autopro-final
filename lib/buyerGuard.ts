@@ -6,10 +6,17 @@
  *  - routes/buyer.ts:  POST /api/cars/:id/offer
  *  - any future bid/offer endpoint
  *
- * The check is conservative: a user can only bid if their account has been
- * approved by an admin (status='active') AND they have actually paid a
- * deposit (deposit > 0). This prevents the "registered but not approved"
- * scenario where a fresh OAuth account could bid before any verification.
+ * The check is conservative: a user can only bid if their `biddingEnabled`
+ * flag has been explicitly set to 1 by an admin. The admin flips this only
+ * after manually verifying the deposit, KYC, and identity. This separates
+ * three concerns that used to be tangled together:
+ *
+ *   - status='active' (registration approved → can browse the platform)
+ *   - kycStatus='approved' (identity verified → still no bid by itself)
+ *   - biddingEnabled=1 (admin's explicit OK to bid → THIS gates bidding)
+ *
+ * Banned/suspended/rejected accounts are still hard-blocked even if
+ * biddingEnabled is somehow 1, in case a banned user's flag wasn't reset.
  *
  * Why this lives in lib/ (not just inline in each handler):
  *   - Single source of truth — change the policy once, applies everywhere.
@@ -19,8 +26,7 @@
 
 export type IneligibilityReason =
   | 'not-found'
-  | 'not-active'
-  | 'no-deposit'
+  | 'not-bidding-enabled'
   | 'banned'
   | null;
 
@@ -38,7 +44,13 @@ export function checkBidEligibility(user: any): BidEligibility {
     return { ok: false, reason: 'not-found', message: 'المستخدم غير موجود' };
   }
 
-  // Hard blocks first — banned/suspended/rejected accounts must never bid.
+  // Admins are always allowed (used internally for admin-side counter offers).
+  if (String(user.role || '').toLowerCase() === 'admin') {
+    return { ok: true, reason: null };
+  }
+
+  // Hard blocks first — banned/suspended/rejected accounts must never bid,
+  // regardless of biddingEnabled.
   const status = String(user.status || '').toLowerCase();
   if (status === 'banned' || status === 'suspended' || status === 'rejected' || status === 'blocked') {
     return {
@@ -48,24 +60,14 @@ export function checkBidEligibility(user: any): BidEligibility {
     };
   }
 
-  // Admin must approve before any bid is allowed.
-  // Accepts only 'active' — any other value (pending, pending_approval, '', null) is blocked.
-  if (status !== 'active') {
+  // Single explicit bidding gate — admin must flip this on after verifying
+  // deposit + KYC + identity. Replaces the old status='active' && deposit>0
+  // check, which conflated registration approval with bidding permission.
+  if (Number(user.biddingEnabled) !== 1) {
     return {
       ok: false,
-      reason: 'not-active',
-      message: 'حسابك بانتظار موافقة الإدارة. لا يمكن المزايدة قبل تفعيل الحساب.',
-    };
-  }
-
-  // Deposit must be paid. buyingPower alone is not enough — admin could grant
-  // buyingPower by mistake without the user having any skin in the game.
-  const deposit = Number(user.deposit) || 0;
-  if (deposit <= 0) {
-    return {
-      ok: false,
-      reason: 'no-deposit',
-      message: 'يجب دفع العربون قبل المزايدة. الحد الأدنى $500 (خارج ليبيا) أو 1,000 د.ل (داخل ليبيا).',
+      reason: 'not-bidding-enabled',
+      message: 'لم يتم تفعيل صلاحية المزايدة في حسابك. راسل الإدارة لتفعيلها بعد دفع العربون.',
     };
   }
 

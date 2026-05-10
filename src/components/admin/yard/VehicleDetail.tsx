@@ -179,7 +179,7 @@ export const VehicleDetail: React.FC<VehicleDetailProps> = ({ vehicleId, onBack,
                     <span className="text-emerald-400">{log.toStatusAr}</span>
                   </div>
                   <div className="text-slate-400 text-xs mt-1">{log.reason}</div>
-                  <div className="text-slate-500 text-xs mt-1">{new Date(log.changedAt).toLocaleString('ar-EG')} — بواسطة {log.changedBy}</div>
+                  <div className="text-slate-500 text-xs mt-1">{new Date(log.changedAt).toLocaleString('en-US')} — بواسطة {log.changedBy}</div>
                 </div>
               </div>
             ))}
@@ -201,7 +201,7 @@ export const VehicleDetail: React.FC<VehicleDetailProps> = ({ vehicleId, onBack,
                     {m.movementType === 'IN' ? <LogIn className="w-5 h-5 text-emerald-500" /> : <LogOut className="w-5 h-5 text-orange-500" />}
                     <div>
                       <div className="font-black text-white">{m.movementType === 'IN' ? 'دخول' : 'خروج'}</div>
-                      <div className="text-xs text-slate-400">{new Date(m.timestamp).toLocaleString('ar-EG')}</div>
+                      <div className="text-xs text-slate-400">{new Date(m.timestamp).toLocaleString('en-US')}</div>
                     </div>
                   </div>
                   {m.gatePassNumber && <div className="font-mono font-black text-emerald-400 text-sm">{m.gatePassNumber}</div>}

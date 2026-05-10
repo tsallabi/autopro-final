@@ -88,7 +88,7 @@ export const DepositPage: React.FC = () => {
   }, [stripeAvailable]);
 
   const formatCurrency = (n: number) =>
-    finalCurrency === 'LYD' ? `${n.toLocaleString('ar-LY')} د.ل` : `$${n.toLocaleString('en-US')}`;
+    finalCurrency === 'LYD' ? `${n.toLocaleString('en-US')} د.ل` : `$${n.toLocaleString('en-US')}`;
 
   const copyText = (text: string, field: string) => {
     navigator.clipboard.writeText(text).catch(() => {});

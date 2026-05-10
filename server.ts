@@ -1230,6 +1230,13 @@ try { db.exec("ALTER TABLE users ADD COLUMN googleId TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN facebookId TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN profilePic TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN isEmailVerified INTEGER DEFAULT 0"); } catch (_) { }
+// [bidding-toggle] Explicit per-user flag the admin must set to allow
+// bidding/offers/Buy-Now. Defaults to 0 — registration alone is no
+// longer enough; the admin verifies deposit + KYC + identity, then
+// flips this on. See lib/buyerGuard.ts for the gate logic.
+try { db.exec("ALTER TABLE users ADD COLUMN biddingEnabled INTEGER DEFAULT 0"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN biddingEnabledAt TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE users ADD COLUMN biddingEnabledBy TEXT"); } catch (_) { }
 try { db.exec("ALTER TABLE users ADD COLUMN city TEXT"); } catch (_) { }
 
 // One-time migration: update admin email to real domain + mark as verified
@@ -3973,7 +3980,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // User Routes
   app.get("/api/users", requireAdmin, (req, res) => {
     try {
-      const users: any[] = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users").all();
+      // [bidding-toggle] Include biddingEnabled so admin UI can show
+      // the per-user bidding toggle column.
+      const users: any[] = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate, lastLogin, biddingEnabled, biddingEnabledAt, biddingEnabledBy FROM users ORDER BY joinDate DESC").all();
       res.json(users);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch users" });

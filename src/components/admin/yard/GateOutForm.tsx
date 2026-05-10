@@ -161,7 +161,7 @@ export const GateOutForm: React.FC<GateOutFormProps> = ({ onBack, onSuccess }) =
       <div class="row"><span class="lbl">المستلم:</span><span>${receiver.receiverName}</span></div>
       <div class="row"><span class="lbl">رقم الهوية:</span><span>${receiver.receiverIdNumber}</span></div>
       <div class="row"><span class="lbl">الهاتف:</span><span>${receiver.receiverPhone || '-'}</span></div>
-      <div class="row"><span class="lbl">التاريخ:</span><span>${new Date().toLocaleString('ar-EG')}</span></div>
+      <div class="row"><span class="lbl">التاريخ:</span><span>${new Date().toLocaleString('en-US')}</span></div>
       ${sigDataUrl ? `<div style="margin-top:30px;"><div class="lbl">توقيع المستلم:</div><img src="${sigDataUrl}" style="border:1px solid #ccc; background:#fff; max-width:300px;" /></div>` : ''}
       <p style="margin-top:40px; text-align:center; color:#999; font-size:12px;">AutoPro Yard Management — ${new Date().toISOString()}</p>
       </body></html>
