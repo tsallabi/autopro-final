@@ -35,6 +35,7 @@ import MarketingPanel from './components/admin/MarketingPanel';
 import WhatsAppPoster from './components/admin/WhatsAppPoster';
 import PaymentVerificationPanel from './components/admin/PaymentVerificationPanel';
 import BiddingActivationModal from './components/BiddingActivationModal';
+import SupportChatWidget from './components/SupportChatWidget';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -148,6 +149,8 @@ function AppContent() {
         {isAdmin && <PaymentVerificationPanel />}
         {/* Global activation popup — shown when an unverified user tries to bid/offer */}
         <BiddingActivationModal />
+        {/* Support chat widget — visible to every visitor on public pages */}
+        <SupportChatWidget />
     </>
   );
 }
