@@ -53,6 +53,19 @@ function ensureWhatsAppSchema(db: any): void {
     )
   `);
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_wa_log_postedAt ON whatsapp_post_log(postedAt)`); } catch {}
+  // site_settings is shared with deal-of-day. Both modules ensure it
+  // exists at registration so neither one breaks if the other isn't
+  // registered first.
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS site_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+      )
+    `);
+  } catch (e: any) {
+    console.error('[whatsapp-poster] failed to ensure site_settings table:', e?.message);
+  }
 }
 
 function getSetting(db: any, key: string): string | null {

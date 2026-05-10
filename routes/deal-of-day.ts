@@ -21,6 +21,20 @@ const TTL_MS = 60_000;
 export function registerDealOfDayRoutes(ctx: AppContext) {
   const { app, db } = ctx as any;
 
+  // Ensure the site_settings table exists. The whatsapp-poster module
+  // writes to it (key='deal_of_day_car_id'), and we read from it here.
+  // Idempotent — safe to run on every boot.
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS site_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+      )
+    `);
+  } catch (e: any) {
+    console.error('[deal-of-day] failed to ensure site_settings table:', e?.message);
+  }
+
   app.get('/api/deal-of-day', (_req: any, res: any) => {
     if (cache && cache.expiresAt > Date.now()) {
       return res.json(cache.value);
