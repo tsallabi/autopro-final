@@ -3696,12 +3696,106 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   // ======= OFFER MARKET & ADMIN ENDPOINTS =======
   app.get("/api/admin/offer-market-cars", requireAdmin, (req, res) => {
+    // [offer-card] Same enrichment as manage-live-auctions so the
+    // marketplace_management view has full bidder context too.
     try {
-      const cars: any[] = db.prepare("SELECT * FROM cars WHERE status = 'offer_market'").all();
-      res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
+      const cars: any[] = db.prepare(`
+        SELECT c.*,
+               c.currentBid AS highestOffer,
+               u.id         AS bidderId,
+               u.firstName  AS bidderFirstName,
+               u.lastName   AS bidderLastName,
+               u.email      AS bidderEmail,
+               u.phone      AS bidderPhone,
+               u.country    AS bidderCountry,
+               u.kycStatus  AS bidderKycStatus,
+               u.status     AS bidderStatus,
+               u.deposit    AS bidderDeposit,
+               u.buyingPower AS bidderBuyingPower,
+               u.joinDate   AS bidderJoinDate
+          FROM cars c
+          LEFT JOIN users u ON c.winnerId = u.id
+         WHERE c.status = 'offer_market'
+      `).all();
+      res.json(cars.map((car: any) => {
+        const bidderDetails = car.bidderId ? {
+          id: car.bidderId,
+          firstName: car.bidderFirstName, lastName: car.bidderLastName,
+          email: car.bidderEmail, phone: car.bidderPhone,
+          country: car.bidderCountry, kycStatus: car.bidderKycStatus,
+          status: car.bidderStatus,
+          deposit: Number(car.bidderDeposit) || 0,
+          buyingPower: Number(car.bidderBuyingPower) || 0,
+          joinDate: car.bidderJoinDate,
+        } : null;
+        return {
+          ...car,
+          highestOffer: Number(car.highestOffer) || 0,
+          bidderDetails,
+          images: JSON.parse(car.images || '[]'),
+        };
+      }));
     } catch (e) {
       res.status(500).json({ error: "Failed to fetch offer market cars" });
     }
+  });
+
+  // [contact-buyer] Admin → buyer messaging for offer negotiations.
+  // Mirrors the payment-verification contact-user pattern: accepts a template
+  // key or a custom message, uses sendInternalMessage + sendNotification.
+  const OFFER_TEMPLATES: Record<string, { subject: string; body: string }> = {
+    'ask-confirm': {
+      subject: '🔍 نريد تأكيد عرضك',
+      body: 'أهلاً، نشكرك على اهتمامك. نريد تأكيد جدية عرضك على السيارة قبل إكمال الإجراءات. يرجى التواصل مع إدارتنا لتوضيح أي تفاصيل.',
+    },
+    'suggest-counter': {
+      subject: '💡 نقترح عرضاً مضاداً مناسباً',
+      body: 'أهلاً، نقدّر عرضك. لكن السعر المعروض أقل من القيمة المتوقّعة للسيارة. نرجو إعادة النظر في عرضك أو التواصل معنا للتفاوض على سعر يناسب الطرفين.',
+    },
+    'request-payment': {
+      subject: '💳 يرجى إكمال دفع العربون',
+      body: 'أهلاً، لإكمال إجراءات قبول عرضك يجب أولاً دفع العربون. يمكنك الدفع عبر البنك أو نقداً في مكتبنا. للاستفسار راسل الإدارة.',
+    },
+    'clarify-doubt': {
+      subject: '❓ نريد توضيحاً إضافياً',
+      body: 'أهلاً، لدينا بعض الاستفسارات بخصوص عرضك. يرجى التواصل مع إدارتنا في أقرب وقت لإكمال إجراءات القبول.',
+    },
+  };
+
+  app.post("/api/admin/offers/:carId/contact-buyer", requireAdmin, (req: any, res) => {
+    const { carId } = req.params;
+    const { template, message, customSubject } = req.body || {};
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
+      if (!car) return res.status(404).json({ error: 'السيارة غير موجودة' });
+      if (!car.winnerId) return res.status(400).json({ error: 'لا يوجد مُزايد على هذه السيارة' });
+
+      let subject = customSubject;
+      let body = message;
+      if (template && OFFER_TEMPLATES[template]) {
+        subject = subject || OFFER_TEMPLATES[template].subject;
+        body = body || OFFER_TEMPLATES[template].body;
+      }
+      if (!subject || !body) {
+        return res.status(400).json({ error: 'يجب إرسال template أو message' });
+      }
+      const carLabel = `${car.year || ''} ${car.make || ''} ${car.model || ''}`.trim();
+      const fullBody = `بخصوص السيارة: ${carLabel}\nرقم اللوت: ${car.lotNumber || car.id}\n\n${body}`;
+
+      try {
+        sendNotification(car.winnerId, subject, fullBody.slice(0, 200), 'info');
+        sendInternalMessage('admin-1', car.winnerId, subject, fullBody);
+      } catch (e: any) {
+        return res.status(500).json({ error: 'فشل إرسال الرسالة: ' + e?.message });
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || String(e) });
+    }
+  });
+
+  app.get("/api/admin/offers/templates", requireAdmin, (_req, res) => {
+    res.json({ templates: OFFER_TEMPLATES });
   });
 
   app.post("/api/offers/:carId/accept", requireAuth, (req, res) => {
@@ -6186,11 +6280,86 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     try {
       const scheduledCars = db.prepare("SELECT * FROM cars WHERE (status = 'upcoming' AND auctionStartTime IS NOT NULL AND auctionStartTime != '' AND auctionEndDate IS NOT NULL AND auctionEndDate != '') OR status = 'live'").all();
       const unscheduledCars = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' AND (auctionStartTime IS NULL OR auctionStartTime = '' OR auctionEndDate IS NULL OR auctionEndDate = '')").all();
-      const offerCars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerCounterPrice IS NULL").all();
-      const counterCars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerCounterPrice IS NOT NULL").all();
+
+      // [offer-card] Both offerCars and counterCars now JOIN users so the
+      // admin sees who placed the offer (name, phone, KYC status, deposit,
+      // buying power) and can decide to accept / counter / reject / contact.
+      // Without this JOIN the admin used to see "$0" and "بدون عروض" because
+      // the frontend reads `car.highestOffer` and `car.bidderDetails` — neither
+      // existed on the raw cars row.
+      const offerSql = `
+        SELECT c.*,
+               c.currentBid AS highestOffer,
+               u.id         AS bidderId,
+               u.firstName  AS bidderFirstName,
+               u.lastName   AS bidderLastName,
+               u.email      AS bidderEmail,
+               u.phone      AS bidderPhone,
+               u.country    AS bidderCountry,
+               u.kycStatus  AS bidderKycStatus,
+               u.status     AS bidderStatus,
+               u.deposit    AS bidderDeposit,
+               u.buyingPower AS bidderBuyingPower,
+               u.joinDate   AS bidderJoinDate
+          FROM cars c
+          LEFT JOIN users u ON c.winnerId = u.id
+         WHERE c.status = 'offer_market'
+      `;
+      const offerCarsRaw = db.prepare(offerSql + " AND c.sellerCounterPrice IS NULL").all() as any[];
+      const counterCarsRaw = db.prepare(offerSql + " AND c.sellerCounterPrice IS NOT NULL").all() as any[];
+
+      function attachBidder(car: any) {
+        const bidderDetails = car.bidderId ? {
+          id: car.bidderId,
+          firstName: car.bidderFirstName,
+          lastName: car.bidderLastName,
+          email: car.bidderEmail,
+          phone: car.bidderPhone,
+          country: car.bidderCountry,
+          kycStatus: car.bidderKycStatus,
+          status: car.bidderStatus,
+          deposit: Number(car.bidderDeposit) || 0,
+          buyingPower: Number(car.bidderBuyingPower) || 0,
+          joinDate: car.bidderJoinDate,
+        } : null;
+        // Eligibility summary mirrors lib/buyerGuard.ts so the admin sees the
+        // same verdict the system uses to gate bids.
+        const eligibility = (() => {
+          if (!bidderDetails) return { eligible: false, reasons: ['لا يوجد مُزايد مسجَّل'] };
+          const reasons: string[] = [];
+          const status = String(bidderDetails.status || '').toLowerCase();
+          if (['banned', 'suspended', 'rejected', 'blocked'].includes(status)) reasons.push('الحساب محظور/معلَّق');
+          else if (status !== 'active') reasons.push('الحساب غير مُفعَّل من الإدارة');
+          if (bidderDetails.deposit <= 0) reasons.push('لم يدفع العربون');
+          if (bidderDetails.kycStatus !== 'approved') reasons.push('KYC غير مُعتَمد');
+          if (bidderDetails.buyingPower < (car.highestOffer || 0)) reasons.push('القوة الشرائية أقل من العرض');
+          return { eligible: reasons.length === 0, reasons };
+        })();
+        // Last 10 offer/bid history rows — for context.
+        let bidHistory: any[] = [];
+        try {
+          bidHistory = db.prepare(`
+            SELECT b.id, b.amount, b.timestamp, b.type,
+                   u.firstName, u.lastName
+              FROM bids b LEFT JOIN users u ON b.userId = u.id
+             WHERE b.carId = ?
+             ORDER BY b.timestamp DESC LIMIT 10
+          `).all(car.id);
+        } catch {}
+        return {
+          ...car,
+          highestOffer: Number(car.highestOffer) || 0,
+          bidderDetails,
+          bidderEligibility: eligibility,
+          bidHistory,
+        };
+      }
+
+      const offerCars = offerCarsRaw.map(attachBidder);
+      const counterCars = counterCarsRaw.map(attachBidder);
 
       const wonCarsRaw = db.prepare(`
-        SELECT c.*, 
+        SELECT c.*,
                u.firstName as winnerFirstName, u.lastName as winnerLastName, u.email as winnerEmail,
                s.firstName as sellerFirstName, s.lastName as sellerLastName, s.companyName as sellerCompanyName,
                a.firstName as accFirstName, a.lastName as accLastName, a.companyName as accCompanyName,

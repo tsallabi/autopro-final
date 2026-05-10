@@ -287,31 +287,69 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.offerCars.length === 0 && <tr><td colSpan={4} className="p-10 text-center font-bold text-slate-400">لا توجد سيارات في سوق العروض</td></tr>}
-              {data.offerCars.map((car: any) => (
+              {data.offerCars.map((car: any) => {
+                // [bidder-details] Render the full identity + eligibility of
+                // the offerer so the admin can negotiate from a position of
+                // knowledge instead of seeing "$0 / بدون عروض" mystery rows.
+                const b = car.bidderDetails;
+                const elig = car.bidderEligibility || { eligible: false, reasons: [] };
+                const kycOk = b?.kycStatus === 'approved';
+                const statusOk = String(b?.status || '').toLowerCase() === 'active';
+                return (
                 <tr key={car.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4 font-black text-slate-800">{car.year} {car.make} {car.model}</td>
-                  <td className="p-4">
+                  <td className="p-4 font-black text-slate-800">{car.year} {car.make} {car.model}<div className="text-[10px] text-slate-400 mt-1">Lot: {car.lotNumber || car.id}</div></td>
+                  <td className="p-4 max-w-[300px]">
                     <div className="font-black text-lg text-emerald-600">${Number(car.highestOffer || 0).toLocaleString()}</div>
-                    {car.bidderDetails ? (
-                      <div className="text-xs text-slate-500 font-bold">{car.bidderDetails.firstName} {car.bidderDetails.lastName}</div>
+                    {b ? (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-xs font-black text-slate-700 flex items-center gap-1.5 flex-wrap">
+                          {b.firstName} {b.lastName}
+                          {kycOk
+                            ? <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">KYC ✅</span>
+                            : <span className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">KYC ❌</span>}
+                          {statusOk
+                            ? <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">مفعَّل</span>
+                            : <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">غير مفعَّل</span>}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-bold">{b.email}</div>
+                        {b.phone && <div className="text-[10px] text-slate-500 font-bold" dir="ltr">{b.phone}</div>}
+                        <div className="text-[10px] text-slate-600 flex gap-2 flex-wrap">
+                          <span>عربون: <strong className={b.deposit > 0 ? 'text-emerald-600' : 'text-rose-500'}>${b.deposit.toLocaleString()}</strong></span>
+                          <span>قوة: <strong className={b.buyingPower >= car.highestOffer ? 'text-emerald-600' : 'text-rose-500'}>${b.buyingPower.toLocaleString()}</strong></span>
+                        </div>
+                        {!elig.eligible && elig.reasons.length > 0 && (
+                          <div className="text-[10px] bg-amber-50 border border-amber-200 text-amber-800 rounded px-2 py-1 mt-1 font-bold">
+                            ⚠️ {elig.reasons.join(' · ')}
+                          </div>
+                        )}
+                      </div>
                     ) : <span className="text-xs text-slate-400">بدون عروض</span>}
                   </td>
                   <td className="p-4 font-bold text-slate-600">${Number(car.reservePrice || 0).toLocaleString()}</td>
-                  <td className="p-4 flex gap-2 flex-wrap max-w-[250px]">
+                  <td className="p-4 flex gap-2 flex-wrap max-w-[280px]">
                     <button onClick={() => handleAction(`/api/offers/${car.id}/accept`, 'POST')} disabled={!car.highestOffer}
-                      className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-600 disabled:opacity-50">قبول العرض</button>
+                      className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-600 disabled:opacity-50">قبول</button>
                     <button onClick={() => {
                         const amount = window.prompt(`أدخل مبلغ العرض المضاد للسيارة:\n(${car.year} ${car.make} ${car.model})`);
                         if(amount && !isNaN(Number(amount))) {
                            handleAction(`/api/offers/${car.id}/counter`, 'POST', { counterAmount: Number(amount) });
                         }
                       }} disabled={!car.highestOffer}
-                      className="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-amber-600 disabled:opacity-50">عرض مضاد</button>
+                      className="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-amber-600 disabled:opacity-50">مضاد</button>
+                    <button onClick={() => {
+                        const tpl = window.prompt('اختر القالب:\n1) ask-confirm — تأكيد جدية العرض\n2) suggest-counter — اقتراح عرض مضاد\n3) request-payment — طلب دفع العربون\n4) clarify-doubt — توضيح إضافي\n\nأو اكتب رسالة مخصصة بالنص:');
+                        if (!tpl) return;
+                        const map: Record<string, string> = { '1': 'ask-confirm', '2': 'suggest-counter', '3': 'request-payment', '4': 'clarify-doubt' };
+                        const body: any = map[tpl] ? { template: map[tpl] } : { message: tpl };
+                        handleAction(`/api/admin/offers/${car.id}/contact-buyer`, 'POST', body);
+                      }} disabled={!car.bidderDetails}
+                      className="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-blue-600 disabled:opacity-50">💬 مراسلة</button>
                     <button onClick={() => handleAction(`/api/offers/${car.id}/reject`, 'POST')}
-                      className="bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-rose-600">رفض و إرجاع للمزاد</button>
+                      className="bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-rose-600">رفض</button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           </div>

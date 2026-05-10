@@ -114,7 +114,12 @@ export function registerSocketHandlers(ctx: AppContext) {
         user = bidResult.user;
         prevWinnerId = bidResult.prevWinnerId;
       } catch (err: any) {
-        socket.emit("bid_error", { message: err.message });
+        // Forward eligibility info so the client can show the activation modal.
+        socket.emit("bid_error", {
+          message: err.message,
+          requiresActivation: !!err.eligibilityReason,
+          eligibilityReason: err.eligibilityReason || null,
+        });
         return;
       }
 
@@ -240,7 +245,11 @@ export function registerSocketHandlers(ctx: AppContext) {
       try {
         assertCanBid(user);
       } catch (err: any) {
-        socket.emit("bid_error", { message: err.message });
+        socket.emit("bid_error", {
+          message: err.message,
+          requiresActivation: !!err.eligibilityReason,
+          eligibilityReason: err.eligibilityReason || null,
+        });
         return;
       }
 
