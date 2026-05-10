@@ -4881,13 +4881,40 @@ export const AdminDashboard = () => {
                               {user.status === 'active' ? '✓ تسجيل معتمد' : user.status === 'banned' ? '🚫 محظور' : user.status === 'suspended' ? '⏸ معلَّق' : user.status === 'rejected' ? '✗ مرفوض' : '🟡 جديد (بانتظار)'}
                             </div>
 
-                            {/* Step 2: KYC */}
+                            {/* Step 2: KYC — clickable approve/reject */}
                             {user.kycStatus === 'approved' ? (
                               <div className="flex items-center gap-1 text-[9px] text-emerald-600 font-black">
                                 <CheckCircle2 className="w-3 h-3" /> KYC معتمد
                               </div>
                             ) : (
-                              <div className="text-[9px] text-slate-500 font-bold">⚠️ KYC غير معتمد</div>
+                              <button
+                                onClick={() => {
+                                  showConfirm(
+                                    `✅ اعتماد KYC يدوياً لـ ${user.firstName}؟\n\nاستخدم هذا فقط بعد التحقق من الهوية والوثائق (في المكتب أو عبر واتساب). لا يفعّل المزايدة — استخدم زر "تفعيل المزايدة" بشكل منفصل.`,
+                                    async () => {
+                                      try {
+                                        const res = await authFetch(`/api/admin/kyc/${user.id}/approve`, {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ note: 'تم الاعتماد يدوياً من إدارة المستخدمين' }),
+                                        });
+                                        const data = await res.json().catch(() => ({}));
+                                        if (res.ok) {
+                                          showAlert('✅ تم اعتماد KYC', 'success');
+                                          setUsers((prev: any[]) => prev.map(u => u.id === user.id ? { ...u, kycStatus: 'approved' } : u));
+                                        } else {
+                                          showAlert(data.error || 'فشل اعتماد KYC', 'error');
+                                        }
+                                      } catch {
+                                        showAlert('خطأ في الاتصال', 'error');
+                                      }
+                                    }
+                                  );
+                                }}
+                                className="w-full text-[9px] font-black bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-2 py-1 rounded-lg transition-colors"
+                              >
+                                ⚠️ KYC غير معتمد (اضغط للاعتماد اليدوي)
+                              </button>
                             )}
 
                             {/* Step 3: Bidding toggle — the explicit gate */}
@@ -6173,18 +6200,25 @@ export const AdminDashboard = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-right min-w-[1000px]">
+                <table className="w-full text-right min-w-[1100px]">
                   <thead className="bg-slate-50 text-slate-500 text-sm">
                     <tr>
                       <th className="p-4 font-medium">السيارة</th>
                       <th className="p-4 font-medium">السعر الاحتياطي</th>
-                      <th className="p-4 font-medium">أعلى عرض</th>
+                      <th className="p-4 font-medium">أعلى عرض + المُزايد</th>
                       <th className="p-4 font-medium">الوقت المتبقي</th>
                       <th className="p-4 font-medium">إجراءات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {offerMarketCars.length > 0 ? offerMarketCars.map(car => (
+                    {offerMarketCars.length > 0 ? offerMarketCars.map(car => {
+                      // [bidder-display] Render full identity + eligibility
+                      // beside the offer amount instead of just a number.
+                      const b = (car as any).bidderDetails;
+                      const kycOk = b?.kycStatus === 'approved';
+                      const biddingOk = !!b?.biddingEnabled;
+                      const depositOk = b && b.deposit > 0;
+                      return (
                       <tr key={car.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
@@ -6196,7 +6230,29 @@ export const AdminDashboard = () => {
                           </div>
                         </td>
                         <td className="p-4 font-bold text-slate-900 font-mono">${(car.reservePrice || 0).toLocaleString()}</td>
-                        <td className="p-4 font-bold text-green-600 font-mono">${(car.currentBid || 0).toLocaleString()}</td>
+                        <td className="p-4 max-w-[280px]">
+                          <div className="font-black text-green-600 font-mono text-base mb-1">${(car.currentBid || 0).toLocaleString()}</div>
+                          {b ? (
+                            <div className="space-y-0.5">
+                              <div className="text-xs font-black text-slate-700 flex items-center gap-1.5 flex-wrap">
+                                {b.firstName} {b.lastName}
+                                {kycOk
+                                  ? <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded">KYC ✅</span>
+                                  : <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.5 rounded">KYC ❌</span>}
+                                {biddingOk
+                                  ? <span className="text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">⚡ مُفعَّل</span>
+                                  : <span className="text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded">🔒 غير مُفعَّل</span>}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-bold">{b.email}</div>
+                              {b.phone && <div className="text-[10px] text-slate-500 font-bold" dir="ltr">{b.phone}</div>}
+                              <div className="text-[10px]">
+                                <span className={depositOk ? 'text-emerald-600' : 'text-rose-500'}>عربون: ${b.deposit.toLocaleString()}</span>
+                                {' · '}
+                                <span className={b.buyingPower >= (car.currentBid || 0) ? 'text-emerald-600' : 'text-rose-500'}>قوة: ${b.buyingPower.toLocaleString()}</span>
+                              </div>
+                            </div>
+                          ) : <span className="text-xs text-slate-400">بدون عروض</span>}
+                        </td>
                         <td className="p-4 text-sm text-slate-600 font-mono">
                           {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('en-US') : '-'}
                         </td>
