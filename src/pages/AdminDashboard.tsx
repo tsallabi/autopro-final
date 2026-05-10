@@ -21,6 +21,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { ReportsPanel } from '../components/admin/ReportsPanel';
 import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
+import SupportInquiriesPanel from '../components/admin/SupportInquiriesPanel';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
 import { ShippingCentersManager } from '../components/admin/ShippingCentersManager';
 import { BannersManager } from '../components/admin/BannersManager';
@@ -5398,6 +5399,9 @@ export const AdminDashboard = () => {
 
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
+            {/* [support-widget] Inquiries from the public chat widget */}
+            <SupportInquiriesPanel />
+
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-2xl font-black text-slate-800">مركز رسائل الدعم والفرق المتخصصة</h2>

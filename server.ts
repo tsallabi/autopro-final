@@ -22,6 +22,7 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';
 import { registerOfficeInfoRoutes } from './routes/office-info.ts';
 import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
 import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
+import { registerSupportRoutes } from './routes/support.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
 import {
@@ -4618,6 +4619,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerOfficeInfoRoutes(ctx as any); console.log('[BOOT] ✓ office-info routes'); } catch (e: any) { console.error('[BOOT] office-info routes failed:', e?.message); }
   try { registerPaymentVerificationRoutes(ctx as any); console.log('[BOOT] ✓ payment-verification routes'); } catch (e: any) { console.error('[BOOT] payment-verification routes failed:', e?.message); }
   try { registerPaymentPhase3Routes(ctx as any); console.log('[BOOT] ✓ payment-phase3 routes'); } catch (e: any) { console.error('[BOOT] payment-phase3 routes failed:', e?.message); }
+  try { registerSupportRoutes(ctx as any); console.log('[BOOT] ✓ support routes'); } catch (e: any) { console.error('[BOOT] support routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
 
