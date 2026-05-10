@@ -3721,6 +3721,78 @@ export const AdminDashboard = () => {
     transport: 300,
     other: 100
   });
+  // [calc-persist] Track save state separately so the button can disable
+  // itself while POSTing and the success/error toast shows reliably.
+  const [calcSaving, setCalcSaving] = useState(false);
+  const [calcLoaded, setCalcLoaded] = useState(false);
+
+  // [calc-persist] Load from the same /api/settings endpoint that the
+  // public CostCalculator reads, using the same key precedence order
+  // (calculator_* first, then legacy fallbacks). This is what makes the
+  // values "stick" — without this useEffect the inputs reset to defaults
+  // on every page refresh.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!alive || !data) return;
+        const pickNum = (keys: string[], fallback: number) => {
+          for (const k of keys) {
+            const v = data[k];
+            if (v === null || v === undefined || v === '') continue;
+            const n = Number(v);
+            if (Number.isFinite(n)) return n;
+          }
+          return fallback;
+        };
+        setCalculatorSettings({
+          auctionFee: pickNum(['calculator_auction_fee', 'calc_auction_fee', 'auctionFee', 'auction_fee'], 500),
+          commission: pickNum(['calculator_commission', 'commission_rate', 'commission', 'platform_commission'], 5),
+          transport:  pickNum(['calculator_transport', 'transport_cost', 'transport', 'shipping_local'], 300),
+          other:      pickNum(['calculator_other', 'other_fees', 'other', 'misc_fees'], 100),
+        });
+      } catch (e) {
+        console.error('[admin calculator] load failed', e);
+      } finally {
+        if (alive) setCalcLoaded(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // [calc-persist] Save handler — wired to the "حفظ الإعدادات" button.
+  // Writes the four calculator_* keys to /api/settings so the public
+  // /calculator page (CostCalculator.tsx) picks them up immediately on
+  // its next fetch.
+  const handleSaveCalculatorSettings = async () => {
+    setCalcSaving(true);
+    try {
+      const res = await authFetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          calculator_auction_fee: String(calculatorSettings.auctionFee),
+          calculator_commission:  String(calculatorSettings.commission),
+          calculator_transport:   String(calculatorSettings.transport),
+          calculator_other:       String(calculatorSettings.other),
+        }),
+      });
+      if (res.ok) {
+        showAlert('✅ تم حفظ الإعدادات وستظهر في كل الحاسبات', 'success');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showAlert(data.error || 'فشل الحفظ — حاول مجدداً', 'error');
+      }
+    } catch (e) {
+      showAlert('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+      setCalcSaving(false);
+    }
+  };
+
   const [calcInput, setCalcInput] = useState<number>(5000);
   const [reportsAnalytics, setReportsAnalytics] = useState<any>({ activeUsers: 0, totalBids: 0, salesVol: 0, dbHitRate: 99.8, geoSalesRaw: [] });
 
@@ -4679,14 +4751,28 @@ export const AdminDashboard = () => {
                   </div>
                 </div>
 
-                <div className="bg-orange-50 border border-orange-100 p-6 rounded-[2rem] flex items-center gap-4">
-                  <div className="p-3 bg-orange-500 text-white rounded-2xl shadow-lg shadow-orange-500/20">
-                    <Settings className="w-5 h-5 animate-spin-slow" />
+                <div className="bg-orange-50 border border-orange-100 p-6 rounded-[2rem] flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-4 flex-1 min-w-[260px]">
+                    <div className="p-3 bg-orange-500 text-white rounded-2xl shadow-lg shadow-orange-500/20">
+                      <Settings className="w-5 h-5 animate-spin-slow" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-orange-900 text-sm">حفظ الإعدادات الافتراضية</h4>
+                      <p className="text-orange-700 text-xs font-bold mt-1">القيم التي تدخلها هنا يتم استخدامها كقيم افتراضية في كافة حسابات المنصة المحلية.</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-black text-orange-900 text-sm">حفظ الإعدادات الافتراضية</h4>
-                    <p className="text-orange-700 text-xs font-bold mt-1">القيم التي تدخلها هنا يتم استخدامها كقيم افتراضية في كافة حسابات المنصة المحلية.</p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveCalculatorSettings}
+                    disabled={calcSaving || !calcLoaded}
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg shadow-orange-500/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95"
+                  >
+                    {calcSaving ? (
+                      <>...جاري الحفظ</>
+                    ) : (
+                      <>💾 حفظ الإعدادات</>
+                    )}
+                  </button>
                 </div>
               </div>
 
