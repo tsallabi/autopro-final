@@ -287,8 +287,10 @@ export const EnhancedOverviewPanel: React.FC<{
       const res = await authFetch('/api/admin/dashboard-overview');
       if (res.ok) {
         const json = await res.json();
+        // Server returns BOTH `kpi` (new) and `kpis` (legacy typo) — accept either.
+        const apiKpi = json.kpi || json.kpis || {};
         setData({
-          kpi: { ...EMPTY_KPI, ...json.kpi },
+          kpi: { ...EMPTY_KPI, ...apiKpi },
           alerts: Array.isArray(json.alerts) ? json.alerts : [],
           recentSales: Array.isArray(json.recentSales) ? json.recentSales : [],
           topBuyers: Array.isArray(json.topBuyers) ? json.topBuyers : [],

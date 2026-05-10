@@ -342,10 +342,57 @@ export function registerAdminRoutes(ctx: AppContext) {
   });
 
   app.get("/api/admin/offer-market-cars", requireAdmin, (req, res) => {
+    // [bidder-display] Join users to expose who placed the offer + their
+    // eligibility (KYC, deposit, buyingPower, biddingEnabled). The marketplace
+    // view (case 'offer_market' in AdminDashboard) needs these fields to
+    // render the bidder column. Without the JOIN the UI would just show
+    // "currentBid" with no idea who's bidding.
     try {
-      const cars: any[] = db.prepare("SELECT * FROM cars WHERE status = 'offer_market'").all();
-      res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
-    } catch (e) {
+      const cars: any[] = db.prepare(`
+        SELECT c.*,
+               c.currentBid AS highestOffer,
+               u.id          AS bidderId,
+               u.firstName   AS bidderFirstName,
+               u.lastName    AS bidderLastName,
+               u.email       AS bidderEmail,
+               u.phone       AS bidderPhone,
+               u.country     AS bidderCountry,
+               u.kycStatus   AS bidderKycStatus,
+               u.status      AS bidderStatus,
+               u.deposit     AS bidderDeposit,
+               u.buyingPower AS bidderBuyingPower,
+               u.biddingEnabled AS bidderBiddingEnabled,
+               u.joinDate    AS bidderJoinDate
+          FROM cars c
+          LEFT JOIN users u ON c.winnerId = u.id
+         WHERE c.status = 'offer_market'
+      `).all();
+      res.json(cars.map((car: any) => {
+        const bidderDetails = car.bidderId ? {
+          id: car.bidderId,
+          firstName: car.bidderFirstName,
+          lastName: car.bidderLastName,
+          email: car.bidderEmail,
+          phone: car.bidderPhone,
+          country: car.bidderCountry,
+          kycStatus: car.bidderKycStatus,
+          status: car.bidderStatus,
+          deposit: Number(car.bidderDeposit) || 0,
+          buyingPower: Number(car.bidderBuyingPower) || 0,
+          biddingEnabled: Number(car.bidderBiddingEnabled) === 1,
+          joinDate: car.bidderJoinDate,
+        } : null;
+        let imagesArr: any[] = [];
+        try { imagesArr = car.images ? JSON.parse(car.images) : []; } catch { imagesArr = []; }
+        return {
+          ...car,
+          highestOffer: Number(car.highestOffer) || 0,
+          bidderDetails,
+          images: Array.isArray(imagesArr) ? imagesArr : [],
+        };
+      }));
+    } catch (e: any) {
+      console.error('[offer-market-cars] failed:', e?.message);
       res.status(500).json({ error: "Failed to fetch offer market cars" });
     }
   });
@@ -1691,8 +1738,68 @@ export function registerAdminRoutes(ctx: AppContext) {
     try {
       const scheduledCars = db.prepare("SELECT * FROM cars WHERE (status = 'upcoming' AND auctionStartTime IS NOT NULL) OR status = 'live'").all();
       const unscheduledCars = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' AND (auctionStartTime IS NULL OR auctionEndDate IS NULL)").all();
-      const offerCars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerCounterPrice IS NULL").all();
-      const counterCars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerCounterPrice IS NOT NULL").all();
+
+      // [bidder-display] Same JOIN-with-users enrichment we apply to
+      // /api/admin/offer-market-cars so the "عروض قيد التفاوض" tab can
+      // render WHO placed each offer + their KYC/deposit/biddingEnabled
+      // status. Without this the UI shows "$0 / بدون عروض" everywhere.
+      const offerSqlBase = `
+        SELECT c.*,
+               c.currentBid AS highestOffer,
+               u.id          AS bidderId,
+               u.firstName   AS bidderFirstName,
+               u.lastName    AS bidderLastName,
+               u.email       AS bidderEmail,
+               u.phone       AS bidderPhone,
+               u.country     AS bidderCountry,
+               u.kycStatus   AS bidderKycStatus,
+               u.status      AS bidderStatus,
+               u.deposit     AS bidderDeposit,
+               u.buyingPower AS bidderBuyingPower,
+               u.biddingEnabled AS bidderBiddingEnabled,
+               u.joinDate    AS bidderJoinDate
+          FROM cars c
+          LEFT JOIN users u ON c.winnerId = u.id
+         WHERE c.status = 'offer_market'
+      `;
+      const offerCarsRaw = db.prepare(offerSqlBase + " AND c.sellerCounterPrice IS NULL").all();
+      const counterCarsRaw = db.prepare(offerSqlBase + " AND c.sellerCounterPrice IS NOT NULL").all();
+
+      function attachBidder(car: any) {
+        const bidderDetails = car.bidderId ? {
+          id: car.bidderId,
+          firstName: car.bidderFirstName,
+          lastName: car.bidderLastName,
+          email: car.bidderEmail,
+          phone: car.bidderPhone,
+          country: car.bidderCountry,
+          kycStatus: car.bidderKycStatus,
+          status: car.bidderStatus,
+          deposit: Number(car.bidderDeposit) || 0,
+          buyingPower: Number(car.bidderBuyingPower) || 0,
+          biddingEnabled: Number(car.bidderBiddingEnabled) === 1,
+          joinDate: car.bidderJoinDate,
+        } : null;
+        const eligibility = (() => {
+          if (!bidderDetails) return { eligible: false, reasons: ['لا يوجد مُزايد مسجَّل'] };
+          const reasons: string[] = [];
+          const status = String(bidderDetails.status || '').toLowerCase();
+          if (['banned', 'suspended', 'rejected', 'blocked'].includes(status)) reasons.push('الحساب محظور');
+          if (!bidderDetails.biddingEnabled) reasons.push('المزايدة غير مُفعَّلة من الإدارة');
+          if (bidderDetails.deposit <= 0) reasons.push('لم يدفع العربون');
+          if (bidderDetails.kycStatus !== 'approved') reasons.push('KYC غير معتمد');
+          if (bidderDetails.buyingPower < (car.highestOffer || 0)) reasons.push('قوته الشرائية أقل من العرض');
+          return { eligible: reasons.length === 0, reasons };
+        })();
+        return {
+          ...car,
+          highestOffer: Number(car.highestOffer) || 0,
+          bidderDetails,
+          bidderEligibility: eligibility,
+        };
+      }
+      const offerCars = (offerCarsRaw as any[]).map(attachBidder);
+      const counterCars = (counterCarsRaw as any[]).map(attachBidder);
 
       const wonCarsRaw = db.prepare(`
         SELECT c.*,
@@ -2822,6 +2929,10 @@ export function registerAdminRoutes(ctx: AppContext) {
       // ─────────────────────── Response ───────────────────────
 
       res.json({
+        // Frontend (EnhancedOverview) reads `json.kpi` (singular). The legacy
+        // `kpis` key was a typo that made the entire dashboard show zeros.
+        // Send both for backward compat with anything else that may consume this.
+        kpi: kpis,
         kpis,
         alerts,
         topCars,
