@@ -4728,28 +4728,59 @@ export const AdminDashboard = () => {
                           </div>
                         </td>
 
-                        {/* Status & KYC */}
+                        {/* Status, KYC, Bidding-toggle (3 distinct steps) */}
                         <td className="p-6">
                           <div className="space-y-1.5">
-                            <div className={`text-[10px] font-black uppercase flex items-center gap-1.5 ${user.status === 'active' ? 'text-emerald-600' : 'text-slate-400'}`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></div>
-                              {user.status === 'active' ? 'حساب نشط' : 'حساب معلق'}
+                            {/* Step 1: registration approval */}
+                            <div className={`text-[10px] font-black uppercase flex items-center gap-1.5 ${user.status === 'active' ? 'text-emerald-600' : user.status === 'banned' || user.status === 'suspended' || user.status === 'rejected' ? 'text-rose-500' : 'text-amber-500'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'active' ? 'bg-emerald-500' : user.status === 'banned' || user.status === 'suspended' || user.status === 'rejected' ? 'bg-rose-500' : 'bg-amber-500 animate-pulse'}`}></div>
+                              {user.status === 'active' ? '✓ تسجيل معتمد' : user.status === 'banned' ? '🚫 محظور' : user.status === 'suspended' ? '⏸ معلَّق' : user.status === 'rejected' ? '✗ مرفوض' : '🟡 جديد (بانتظار)'}
                             </div>
-                            {pendingUsers.some(p => p.id === user.id) ? (
-                              <button
-                                onClick={() => {
-                                  showConfirm(`هل أنت متأكد من تفعيل حساب ${user.firstName}؟`, () => handleApproveUser(user.id));
-                                }}
-                                className="px-3 py-1 bg-orange-100 text-orange-600 rounded-lg text-[9px] font-black hover:bg-orange-500 hover:text-white transition-all border border-orange-200"
-                              >
-                                بانتظار التوثيق KYC (اضغط للتفعيل)
-                              </button>
-                            ) : (
+
+                            {/* Step 2: KYC */}
+                            {user.kycStatus === 'approved' ? (
                               <div className="flex items-center gap-1 text-[9px] text-emerald-600 font-black">
-                                <CheckCircle2 className="w-3 h-3" />
-                                موثق بالكامل
+                                <CheckCircle2 className="w-3 h-3" /> KYC معتمد
                               </div>
+                            ) : (
+                              <div className="text-[9px] text-slate-500 font-bold">⚠️ KYC غير معتمد</div>
                             )}
+
+                            {/* Step 3: Bidding toggle — the explicit gate */}
+                            <button
+                              onClick={() => {
+                                const targetState = !user.biddingEnabled;
+                                const msg = targetState
+                                  ? `⚡ تفعيل صلاحية المزايدة لـ ${user.firstName}؟\n\nتأكَّد قبل الموافقة:\n• دفع العربون: ${user.deposit > 0 ? '✅ نعم' : '❌ لا (الرصيد $0)'}\n• KYC معتمد: ${user.kycStatus === 'approved' ? '✅ نعم' : '❌ لا'}\n\nهل أنت متأكد؟`
+                                  : `⏸ إيقاف صلاحية المزايدة لـ ${user.firstName}؟ (لن يستطيع المزايدة بعد هذا)`;
+                                showConfirm(msg, async () => {
+                                  try {
+                                    const res = await authFetch(`/api/admin/users/${user.id}/toggle-bidding`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ enabled: targetState }),
+                                    });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                      showAlert(targetState ? '⚡ تم تفعيل المزايدة' : '⏸ تم إيقاف المزايدة', 'success');
+                                      // Optimistically update local state
+                                      setUsers((prev: any[]) => prev.map(u => u.id === user.id ? { ...u, biddingEnabled: targetState ? 1 : 0 } : u));
+                                    } else {
+                                      showAlert(data.error || 'فشل التحديث', 'error');
+                                    }
+                                  } catch {
+                                    showAlert('خطأ في الاتصال', 'error');
+                                  }
+                                });
+                              }}
+                              className={`w-full px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${
+                                user.biddingEnabled
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200'
+                              }`}
+                            >
+                              {user.biddingEnabled ? '⚡ مُفعَّل للمزايدة (اضغط للإيقاف)' : '🔒 المزايدة موقوفة (اضغط للتفعيل)'}
+                            </button>
                           </div>
                         </td>
 

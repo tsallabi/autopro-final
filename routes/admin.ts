@@ -403,7 +403,17 @@ export function registerAdminRoutes(ctx: AppContext) {
 
   app.get("/api/users", requireAdmin, (req, res) => {
     try {
-      const users: any[] = db.prepare("SELECT id, firstName, lastName, email, phone, role, status, kycStatus, deposit, buyingPower, commission, manager, office, companyName, country, address1, address2, joinDate FROM users").all();
+      // [bidding-toggle] Include biddingEnabled + lastLogin so the admin
+      // table can render the bidding toggle column and the lifecycle badges
+      // (registered → KYC approved → bidding enabled).
+      const users: any[] = db.prepare(`
+        SELECT id, firstName, lastName, email, phone, role, status, kycStatus,
+               deposit, buyingPower, commission, manager, office, companyName,
+               country, address1, address2, joinDate, lastLogin,
+               biddingEnabled, biddingEnabledAt, biddingEnabledBy
+          FROM users
+         ORDER BY joinDate DESC
+      `).all();
       res.json(users);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch users" });
@@ -434,6 +444,51 @@ export function registerAdminRoutes(ctx: AppContext) {
       res.json({ success: true, message: "تم تفعيل المستخدم بنجاح" });
     } catch (e) {
       res.status(500).json({ error: "فشل تفعيل المستخدم" });
+    }
+  });
+
+  // [bidding-toggle] Admin flips a user's biddingEnabled flag after
+  // verifying deposit + KYC + identity. This is the SINGLE explicit
+  // gate for bidding — replaces the old "approve user" tangle.
+  app.post("/api/admin/users/:id/toggle-bidding", requireAdmin, (req: any, res) => {
+    const { id } = req.params;
+    const { enabled } = req.body || {};
+    const adminId = req.user?.id || 'admin';
+    const flag = enabled ? 1 : 0;
+    try {
+      const user: any = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      if (String(user.role || '').toLowerCase() === 'admin') {
+        return res.status(400).json({ error: 'لا حاجة لتفعيل المزايدة لحسابات الإدارة' });
+      }
+      const now = new Date().toISOString();
+      db.prepare("UPDATE users SET biddingEnabled = ?, biddingEnabledAt = ?, biddingEnabledBy = ? WHERE id = ?")
+        .run(flag, flag ? now : null, flag ? adminId : null, id);
+
+      if (flag) {
+        try {
+          sendInternalMessage('admin-1', id,
+            '⚡ تم تفعيل صلاحية المزايدة!',
+            `تهانينا ${user.firstName || ''}!\n\nتم تفعيل حسابك للمزايدة. يمكنك الآن:\n\n` +
+            `• تقديم عروض على السيارات في سوق العروض\n` +
+            `• المشاركة في المزادات الحية\n` +
+            `• استخدام Buy Now للسيارات المتاحة\n\n` +
+            `بالتوفيق! 🏁\nفريق AutoPro Libya 🚗`
+          );
+          io.to(`user_${id}`).emit('bidding_enabled', { userId: id });
+        } catch {}
+      } else {
+        try {
+          sendInternalMessage('admin-1', id,
+            '⏸️ تم إيقاف صلاحية المزايدة مؤقتاً',
+            `تم إيقاف صلاحية المزايدة في حسابك. للاستفسار راسل الإدارة.`
+          );
+          io.to(`user_${id}`).emit('bidding_disabled', { userId: id });
+        } catch {}
+      }
+      res.json({ success: true, biddingEnabled: flag });
+    } catch (e: any) {
+      res.status(500).json({ error: 'فشل تحديث صلاحية المزايدة: ' + e?.message });
     }
   });
 
