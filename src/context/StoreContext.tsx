@@ -161,8 +161,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }));
     });
 
-    newSocket.on('bid_error', ({ message }) => {
-      showAlert(message, 'error');
+    newSocket.on('bid_error', (payload: any) => {
+      // [activation-modal] Eligibility errors get a system popup instead of
+      // a transient toast, so unverified users see clear next-steps.
+      if (payload?.requiresActivation) {
+        window.dispatchEvent(new CustomEvent('bidding:activation-required', {
+          detail: { reason: payload.eligibilityReason || 'unknown', message: payload.message || '' },
+        }));
+        return;
+      }
+      showAlert(payload?.message || 'خطأ في المزايدة', 'error');
     });
 
     newSocket.on('new_message', (message: Message) => {

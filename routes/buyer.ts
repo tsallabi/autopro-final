@@ -165,10 +165,17 @@ export function registerBuyerRoutes(ctx: AppContext) {
 
       // 🔐 SECURITY: Reject offers from non-active or no-deposit accounts
       // before checking buyingPower. Same policy as live bids.
+      // The structured response (requiresActivation + eligibilityReason)
+      // lets the frontend pop up a system-styled activation modal instead
+      // of a generic toast.
       try {
         assertCanBid(user);
       } catch (e: any) {
-        return res.status(e.statusCode || 403).json({ error: e.message });
+        return res.status(e.statusCode || 403).json({
+          error: e.message,
+          requiresActivation: true,
+          eligibilityReason: e.eligibilityReason || 'unknown',
+        });
       }
 
       if (!user || user.buyingPower < numericAmount) {

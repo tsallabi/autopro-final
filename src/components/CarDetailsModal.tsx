@@ -125,8 +125,16 @@ export const CarDetailsModal: React.FC<CarDetailsModalProps> = ({ car, onClose, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id, amount }),
       });
-      if (res.ok) { showAlert('تم تقديم العرض بنجاح', 'success'); onClose(); }
-      else { const err = await res.json(); showAlert(err.error || 'فشل تقديم العرض'); }
+      if (res.ok) { showAlert('تم تقديم العرض بنجاح', 'success'); onClose(); return; }
+      const err = await res.json();
+      if (err.requiresActivation) {
+        window.dispatchEvent(new CustomEvent('bidding:activation-required', {
+          detail: { reason: err.eligibilityReason || 'unknown', message: err.error || '' },
+        }));
+        onClose();
+      } else {
+        showAlert(err.error || 'فشل تقديم العرض');
+      }
     } catch { showAlert('فشل الاتصال بالخادم'); }
   };
 

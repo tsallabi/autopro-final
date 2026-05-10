@@ -783,6 +783,13 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
       const data = await res.json();
       if (res.ok) {
         showAlert(data.message || t('carDetails.offerPanel.submitSuccess'), 'success');
+      } else if (data.requiresActivation) {
+        // [activation-modal] System-styled popup explaining the user needs
+        // admin approval + paid deposit. Dispatched via global event so the
+        // BiddingActivationModal mounted in App.tsx renders the dialog.
+        window.dispatchEvent(new CustomEvent('bidding:activation-required', {
+          detail: { reason: data.eligibilityReason || 'unknown', message: data.error || '' },
+        }));
       } else {
         showAlert(data.error || t('carDetails.offerPanel.submitFail'), 'error');
       }
