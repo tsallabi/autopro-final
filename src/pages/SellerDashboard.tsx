@@ -9,6 +9,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useStore, authFetch } from '../context/StoreContext';
 import { IbanUpdateCard, KycUploadCard } from '../components/SellerKycComponents';
+import KycDocumentsUploader from '../components/KycDocumentsUploader';
 import { UnifiedCarForm } from '../components/UnifiedCarForm';
 import DealerYardPortal from '../components/dealer/DealerYardPortal';
 export const SellerDashboard = () => {
@@ -1949,6 +1950,11 @@ export const SellerDashboard = () => {
 
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
+            {/* [kyc-uploader] Post-signup checklist asking sellers to upload
+                passport + commercial register + activity license so they can
+                receive payouts. Hides itself once KYC is approved. */}
+            <KycDocumentsUploader />
+
             <div className="flex justify-between items-center mb-8">
               <div>
                 <h2 className="text-3xl font-black text-slate-800">الرئيسية (Seller Dashboard)</h2>

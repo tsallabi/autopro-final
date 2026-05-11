@@ -16,6 +16,7 @@ import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { SHIPMENT_STATUS_LABELS } from '../types';
 import { KycPanel } from '../components/KycPanel';
+import KycDocumentsUploader from '../components/KycDocumentsUploader';
 import { useTranslation } from 'react-i18next';
 import { useClickOutside } from '../hooks/useClickOutside';
 
@@ -571,6 +572,11 @@ export const UserDashboard = () => {
 
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* [kyc-uploader] Post-signup checklist asking buyers to upload
+            national-ID or passport so they can bid. Hides itself once
+            KYC is approved. */}
+        <KycDocumentsUploader />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           {[
             { label: t('userDashboard.overview.availablePower'), value: `$${availableBuyingPower.toLocaleString()}`, icon: Wallet, color: 'text-orange-500', bg: 'bg-orange-50', title: t('userDashboard.overview.availablePowerDesc'), link: 'wallet' },

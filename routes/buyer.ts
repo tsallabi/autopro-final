@@ -557,6 +557,12 @@ export function registerBuyerRoutes(ctx: AppContext) {
       if (!req.file) return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
       const { userId, docType } = req.body;
       if (!userId) return res.status(400).json({ error: 'userId مطلوب' });
+      // Lock down: a user can only upload docs against their OWN userId
+      // unless they're an admin doing it on someone's behalf.
+      const reqUser = (req as any).user;
+      if (reqUser && reqUser.role !== 'admin' && reqUser.id !== userId) {
+        return res.status(403).json({ error: 'لا يمكنك رفع وثائق لمستخدم آخر' });
+      }
 
       const docId = `kyc-${Date.now()}`;
       const url = `/uploads/kyc/${req.file.filename}`;
@@ -564,11 +570,38 @@ export function registerBuyerRoutes(ctx: AppContext) {
       db.prepare(`INSERT INTO kyc_documents (id, userId, docType, filename, url, status, uploadedAt)
         VALUES (?, ?, ?, ?, ?, 'pending', ?)`).run(docId, userId, docType || 'identity', req.file.originalname, url, new Date().toISOString());
 
+      // Mark user as pending review so the admin sees them in the KYC center.
+      try {
+        db.prepare(`UPDATE users SET kycStatus = 'pending' WHERE id = ? AND COALESCE(kycStatus, '') != 'approved'`).run(userId);
+      } catch {}
+
       res.json({ success: true, id: docId, url });
     } catch (e: any) {
       res.status(500).json({ error: e.message || 'فشل رفع مستند KYC' });
     }
   }) as any);
+
+  // GET /api/kyc/my-documents — fetch current user's uploaded KYC docs.
+  // Used by the post-signup uploader card so users see which doc types
+  // are already submitted and which still need attention.
+  app.get('/api/kyc/my-documents', requireAuth, (req: any, res: any) => {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'غير مخوَّل' });
+    try {
+      const docs = db.prepare(
+        `SELECT id, docType, filename, url, status, uploadedAt, reviewedAt, reviewNote
+           FROM kyc_documents WHERE userId = ? ORDER BY uploadedAt DESC`
+      ).all(userId);
+      const u: any = db.prepare(`SELECT kycStatus, role FROM users WHERE id = ?`).get(userId);
+      res.json({
+        kycStatus: u?.kycStatus || 'pending',
+        role: u?.role || 'buyer',
+        documents: docs,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'فشل جلب الوثائق' });
+    }
+  });
 
   // ======= NOTIFICATIONS =======
 
