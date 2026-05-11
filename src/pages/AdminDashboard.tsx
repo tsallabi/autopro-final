@@ -6408,7 +6408,8 @@ export const AdminDashboard = () => {
                           </div>
                         </td>
                       </tr>
-                    )) : (
+                      );
+                    }) : (
                       <tr>
                         <td colSpan={5} className="p-8 text-center text-slate-500">لا توجد سيارات في سوق العروض حالياً</td>
                       </tr>
