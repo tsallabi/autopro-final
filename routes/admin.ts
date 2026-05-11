@@ -898,14 +898,24 @@ export function registerAdminRoutes(ctx: AppContext) {
   // ══════════════════════════════════════════════════════════════
 
   app.get("/api/admin/kyc-pending", requireAdmin, (req, res) => {
+    // [kyc-show-all] Return every user awaiting KYC review — INCLUDING
+    // those who haven't uploaded any documents yet. The old INNER JOIN
+    // on kyc_documents hid registered users from the admin until they
+    // had at least one document row, so 19 pending users + a seller
+    // never showed up in the KYC center. Switched to LEFT JOIN and key
+    // off users.kycStatus instead of doc presence so the admin can
+    // approve manually (offline / WhatsApp / in-person) too.
     try {
       const users: any[] = db.prepare(`
-        SELECT DISTINCT u.id, u.firstName, u.lastName, u.email, u.phone, u.kycStatus, u.joinDate,
-          (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) as docCount
-        FROM users u
-        INNER JOIN kyc_documents kd ON kd.userId = u.id
-        WHERE u.role = 'seller' OR kd.docType = 'kyc'
-        ORDER BY u.joinDate DESC
+        SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.role,
+               u.kycStatus, u.status, u.joinDate,
+               (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) AS docCount
+          FROM users u
+         WHERE COALESCE(u.kycStatus, 'pending') != 'approved'
+           AND u.role != 'admin'
+         ORDER BY
+           CASE WHEN (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) > 0 THEN 0 ELSE 1 END,
+           u.joinDate DESC
       `).all();
 
       const result = users.map((u: any) => ({
@@ -914,7 +924,8 @@ export function registerAdminRoutes(ctx: AppContext) {
       }));
 
       res.json(result);
-    } catch (e) {
+    } catch (e: any) {
+      console.error('[kyc-pending] query failed:', e?.message);
       res.status(500).json({ error: "فشل جلب طلبات KYC" });
     }
   });
