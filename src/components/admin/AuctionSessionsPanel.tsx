@@ -160,6 +160,7 @@ export default function AuctionSessionsPanel() {
   // Modal state
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<AuctionSession | null>(null);
+  const [bulkAddTarget, setBulkAddTarget] = useState<AuctionSession | null>(null);
 
   const fetchSessions = async () => {
     setLoading(true);
@@ -322,6 +323,7 @@ export default function AuctionSessionsPanel() {
                     session={s}
                     onEdit={() => { setShowCreate(false); setEditing(s); }}
                     onCancel={() => handleCancel(s)}
+                    onBulkAdd={() => setBulkAddTarget(s)}
                   />
                 ))}
               </div>
@@ -362,6 +364,15 @@ export default function AuctionSessionsPanel() {
           onSaved={() => { setShowCreate(false); setEditing(null); (window as any).__recurPrefill = null; fetchSessions(); }}
         />
       )}
+
+      {/* Bulk-add modal */}
+      {bulkAddTarget && (
+        <BulkAddModal
+          session={bulkAddTarget}
+          onClose={() => setBulkAddTarget(null)}
+          onDone={() => { setBulkAddTarget(null); fetchSessions(); }}
+        />
+      )}
     </div>
   );
 }
@@ -375,11 +386,13 @@ function SessionCard({
   onEdit,
   onCancel,
   onRecur,
+  onBulkAdd,
 }: {
   session: AuctionSession;
   onEdit?: () => void;
   onCancel?: () => void;
   onRecur?: () => void;
+  onBulkAdd?: () => void;
 }) {
   const cat = catOf(session.category);
 
@@ -457,6 +470,13 @@ function SessionCard({
         <div className="flex items-center gap-2 flex-wrap">
           {isScheduled && (
             <>
+              <button
+                onClick={onBulkAdd}
+                title="نقل السيارات الموجودة في المخزون إلى هذه الجلسة (آمن — لا يلمس السيارات في البث المباشر)"
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black px-4 py-2 rounded-xl text-xs transition-all active:scale-95 inline-flex items-center gap-1.5"
+              >
+                📥 نقل سيارات
+              </button>
               <button
                 onClick={onEdit}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2 rounded-xl text-xs transition-all active:scale-95 inline-flex items-center gap-1.5"
@@ -887,6 +907,208 @@ function SessionFormModal({
           >
             {submitting ? 'جاري الحفظ...' : (editing ? '✓ حفظ التعديلات' : '+ إنشاء الجلسة')}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Bulk-Add Modal — safely move free upcoming cars into a session
+   ============================================================ */
+
+interface BulkPreview {
+  sessionCategory: string;
+  totalFreeUpcoming: number;
+  matchingCategory: number;
+  uncategorized: number;
+  defaultMode: 'matching' | 'uncategorized';
+}
+
+function BulkAddModal({
+  session,
+  onClose,
+  onDone,
+}: {
+  session: AuctionSession;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [preview, setPreview] = useState<BulkPreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<'matching' | 'uncategorized' | 'all'>('matching');
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ attached: number; candidates: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await authFetch(`/api/admin/auction-sessions/${session.id}/bulk-add-preview`);
+        const data = await res.json();
+        if (!res.ok) {
+          setErr(data?.error || 'فشل التحضير');
+        } else {
+          setPreview(data);
+          setMode(data.defaultMode || 'matching');
+        }
+      } catch (e: any) {
+        setErr(e?.message || 'خطأ في الاتصال');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [session.id]);
+
+  async function submit() {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const res = await authFetch(`/api/admin/auction-sessions/${session.id}/bulk-add`, {
+        method: 'POST',
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data?.error || 'فشل النقل');
+      } else {
+        setResult({ attached: data.attached, candidates: data.candidates });
+      }
+    } catch (e: any) {
+      setErr(e?.message || 'خطأ في الاتصال');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const catLabel = catOf(session.category)?.label || session.category;
+  const willMove =
+    mode === 'matching' ? preview?.matchingCategory ?? 0 :
+    mode === 'uncategorized' ? preview?.uncategorized ?? 0 :
+    preview?.totalFreeUpcoming ?? 0;
+
+  return (
+    <div
+      dir="rtl"
+      className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+      >
+        <div className="p-6 border-b border-slate-100">
+          <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+            📥 نقل سيارات إلى جلسة
+          </h3>
+          <p className="text-xs text-slate-500 font-bold mt-1">
+            الجلسة: <span className="font-black text-slate-700">{session.name}</span> · {catLabel}
+          </p>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {loading && <div className="text-center text-slate-500 font-bold py-6">...جاري التحضير</div>}
+
+          {!loading && err && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm font-bold rounded-xl p-3">
+              ❌ {err}
+            </div>
+          )}
+
+          {!loading && preview && !result && (
+            <>
+              <div className="bg-blue-50 border border-blue-100 text-blue-800 text-xs font-bold rounded-xl p-3">
+                🔒 <strong>آمن:</strong> سيتم نقل السيارات في وضع <code>upcoming</code> فقط — لن نلمس أي سيارة في البث المباشر.
+              </div>
+
+              <div className="space-y-2">
+                <label className="block">
+                  <input
+                    type="radio"
+                    checked={mode === 'matching'}
+                    onChange={() => setMode('matching')}
+                    className="ml-2"
+                  />
+                  <span className="font-bold text-slate-800">سيارات من نفس الفئة ({catLabel})</span>
+                  <span className="text-xs text-slate-500 font-bold mr-2">
+                    — {preview.matchingCategory} سيارة
+                  </span>
+                </label>
+
+                <label className="block">
+                  <input
+                    type="radio"
+                    checked={mode === 'uncategorized'}
+                    onChange={() => setMode('uncategorized')}
+                    className="ml-2"
+                  />
+                  <span className="font-bold text-slate-800">سيارات بدون فئة محددة</span>
+                  <span className="text-xs text-slate-500 font-bold mr-2">
+                    — {preview.uncategorized} سيارة (المخزون الحالي قبل تحديث الفئات)
+                  </span>
+                </label>
+
+                <label className="block">
+                  <input
+                    type="radio"
+                    checked={mode === 'all'}
+                    onChange={() => setMode('all')}
+                    className="ml-2"
+                  />
+                  <span className="font-bold text-slate-800">⚠️ كل السيارات الـ upcoming</span>
+                  <span className="text-xs text-slate-500 font-bold mr-2">
+                    — {preview.totalFreeUpcoming} سيارة (بصرف النظر عن الفئة — استخدم بحذر)
+                  </span>
+                </label>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 font-bold rounded-xl p-3 text-sm text-center">
+                سيتم نقل <span className="text-2xl font-black text-amber-700 mx-2">{willMove}</span> سيارة
+              </div>
+            </>
+          )}
+
+          {result && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+              <div className="text-4xl mb-2">✅</div>
+              <div className="font-black text-emerald-700 text-lg">
+                تم نقل {result.attached} سيارة بنجاح
+              </div>
+              {result.attached !== result.candidates && (
+                <div className="text-xs text-emerald-600 font-bold mt-1">
+                  ({result.candidates - result.attached} سيارة تم تخطّيها — قد تكون في جلسة أخرى)
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+          {!result ? (
+            <>
+              <button
+                onClick={onClose}
+                disabled={submitting}
+                className="bg-white hover:bg-slate-100 text-slate-700 font-black px-4 py-2 rounded-xl text-sm transition-all"
+              >
+                إلغاء
+              </button>
+              <button
+                disabled={submitting || loading || willMove === 0}
+                onClick={submit}
+                className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-black px-6 py-2 rounded-xl text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95 inline-flex items-center gap-2"
+              >
+                {submitting ? '...جاري النقل' : `📥 نقل ${willMove} سيارة`}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onDone}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-2 rounded-xl text-sm shadow-lg shadow-orange-500/20 transition-all active:scale-95"
+            >
+              تم
+            </button>
+          )}
         </div>
       </div>
     </div>
