@@ -162,56 +162,10 @@ app.post("/api/admin/backup-to-github", requireAdmin, async (_req, res) => {
   // 2026-05-09 because deployments often run `tsx server.ts` directly,
   // which bypasses this patcher. Keeping them only here meant the routes
   // and the camera fix were missing in production.
-  {
-    label: '6/12 fix checkUpcomingAuctions to honor auctionStartTime + auctionEndDate',
-    find: `  function checkUpcomingAuctions() {
-    if (isTransitioning) return;
-    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
-    if (liveRow && liveRow.count === 0) {
-      const next: any = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' ORDER BY auctionEndDate ASC, id ASC LIMIT 1").get();
-      if (next) {
-        // Auction duration: 5 minutes
-        const newEndDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-        db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
-        io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
-        io.emit("auction_started", { carId: next.id });
-        console.log(\`[AUCTION QUEUE] Car \${next.id} is now LIVE. Ends at \${newEndDate}\`);
-      }
-    }
-  }`,
-    replace: `  // [SCHED] Honor admin-set auctionStartTime: only activate cars whose start time has arrived (or is unset).
-  // Honor admin-set auctionEndDate when it's in the future; fall back to start+duration, then now+duration.
-  function checkUpcomingAuctions() {
-    if (isTransitioning) return;
-    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
-    if (!liveRow || liveRow.count > 0) return;
-    const nowIso = new Date().toISOString();
-    const defaultDurationMin = Number(process.env.AUCTION_DURATION_MIN) || 5;
-    const next: any = db.prepare(\`
-      SELECT * FROM cars
-       WHERE status = 'upcoming'
-         AND (auctionStartTime IS NULL OR auctionStartTime = '' OR auctionStartTime <= ?)
-       ORDER BY
-         CASE WHEN auctionStartTime IS NULL OR auctionStartTime = '' THEN 1 ELSE 0 END,
-         auctionStartTime ASC,
-         id ASC
-       LIMIT 1
-    \`).get(nowIso);
-    if (!next) return;
-    let newEndDate: string;
-    if (next.auctionEndDate && next.auctionEndDate > nowIso) {
-      newEndDate = next.auctionEndDate;
-    } else if (next.auctionStartTime) {
-      newEndDate = new Date(new Date(next.auctionStartTime).getTime() + defaultDurationMin * 60 * 1000).toISOString();
-    } else {
-      newEndDate = new Date(Date.now() + defaultDurationMin * 60 * 1000).toISOString();
-    }
-    db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
-    io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
-    io.emit("auction_started", { carId: next.id });
-    console.log(\`[AUCTION QUEUE] Car \${next.id} is now LIVE (start=\${next.auctionStartTime || 'n/a'}, end=\${newEndDate})\`);
-  }`,
-  },
+  // Old patch 6/12 (checkUpcomingAuctions auctionStartTime fix) was promoted
+  // directly into server.ts on 2026-05-12 alongside the auction-sessions
+  // sessionId filter — keeping it as a patch caused boot to fail because
+  // the `find` no longer matched the edited function.
   {
     label: '7/12 fix tickAuctions auto-repair to use AUCTION_DURATION_MIN',
     find: `    // AUTO REPAIR: Any live car missing an end date gets exactly 5 minutes from NOW.
