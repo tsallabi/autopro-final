@@ -296,6 +296,93 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     }
   });
 
+  // [bulk-add] Preview how many free upcoming cars would move into a session.
+  // Used by the frontend confirm dialog before the admin commits. ONLY counts
+  // cars with status='upcoming' AND no sessionId — `live` cars are excluded
+  // so the existing auction never gets disrupted.
+  app.get('/api/admin/auction-sessions/:id/bulk-add-preview', requireAdmin, (req: any, res: any) => {
+    try {
+      const session = getSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'الجلسة غير موجودة' });
+      const cat = session.category;
+      const totalFree = (db.prepare(`
+        SELECT COUNT(*) AS c FROM cars
+         WHERE status = 'upcoming'
+           AND (sessionId IS NULL OR sessionId = '')
+      `).get() as any).c;
+      const matchingCategory = (db.prepare(`
+        SELECT COUNT(*) AS c FROM cars
+         WHERE status = 'upcoming'
+           AND (sessionId IS NULL OR sessionId = '')
+           AND category = ?
+      `).get(cat) as any).c;
+      const uncategorized = (db.prepare(`
+        SELECT COUNT(*) AS c FROM cars
+         WHERE status = 'upcoming'
+           AND (sessionId IS NULL OR sessionId = '')
+           AND (category IS NULL OR category = '')
+      `).get() as any).c;
+      res.json({
+        sessionCategory: cat,
+        totalFreeUpcoming: totalFree,
+        matchingCategory,
+        uncategorized,
+        // The "safe" default when the admin clicks bulk-add: match category
+        // if any cars match; otherwise fall back to uncategorized (existing
+        // inventory that has no category set yet).
+        defaultMode: matchingCategory > 0 ? 'matching' : 'uncategorized',
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'فشل التحضير' });
+    }
+  });
+
+  // [bulk-add] Move free upcoming cars into a session in one shot.
+  // Modes:
+  //   'matching'      → only cars whose category matches the session
+  //   'uncategorized' → only cars with no category set
+  //   'all'           → every free upcoming car (admin must confirm)
+  // NEVER touches cars that are currently 'live' or already in another session.
+  app.post('/api/admin/auction-sessions/:id/bulk-add', requireAdmin, (req: any, res: any) => {
+    try {
+      const session = getSession(req.params.id);
+      if (!session) return res.status(404).json({ error: 'الجلسة غير موجودة' });
+      if (session.status === 'closed' || session.status === 'cancelled') {
+        return res.status(400).json({ error: 'لا يمكن إضافة سيارات لجلسة منتهية أو ملغاة' });
+      }
+      const mode = String(req.body?.mode || 'matching');
+      if (!['matching', 'uncategorized', 'all'].includes(mode)) {
+        return res.status(400).json({ error: 'mode غير صحيح' });
+      }
+
+      let where = `status = 'upcoming' AND (sessionId IS NULL OR sessionId = '')`;
+      const params: any[] = [];
+      if (mode === 'matching') {
+        where += ` AND category = ?`;
+        params.push(session.category);
+      } else if (mode === 'uncategorized') {
+        where += ` AND (category IS NULL OR category = '')`;
+      }
+      // 'all' has no extra filter
+
+      const candidates: any[] = db.prepare(
+        `SELECT id FROM cars WHERE ${where} LIMIT 500`
+      ).all(...params);
+      const ids = candidates.map((r: any) => r.id);
+      const attached = attachCars(session.id, session.category as Category, ids);
+      try { io.emit('session_cars_changed', { id: session.id }); } catch {}
+      res.json({
+        success: true,
+        attached,
+        candidates: ids.length,
+        mode,
+      });
+    } catch (e: any) {
+      console.error('[sessions] bulk-add failed:', e?.message);
+      res.status(500).json({ error: e?.message || 'فشل النقل' });
+    }
+  });
+
   // Admin: remove a car from a session. Reverts car to legacy/free state.
   app.delete('/api/admin/auction-sessions/:id/cars/:carId', requireAdmin, (req: any, res: any) => {
     try {
