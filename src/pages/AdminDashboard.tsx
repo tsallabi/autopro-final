@@ -8,7 +8,7 @@ import {
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key, Hash, BarChart3, Image
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert, User, LogOut, Key, Hash, BarChart3, Image, Calendar
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -22,6 +22,7 @@ import { ReportsPanel } from '../components/admin/ReportsPanel';
 import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 import { EnhancedOverviewPanel } from '../components/admin/EnhancedOverview';
 import IntegrationsPanel from '../components/admin/IntegrationsPanel';
+import AuctionSessionsPanel from '../components/admin/AuctionSessionsPanel';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagement';
 import { ShippingCentersManager } from '../components/admin/ShippingCentersManager';
 import { BannersManager } from '../components/admin/BannersManager';
@@ -111,7 +112,7 @@ export const FOOTER_DEFAULT = {
 const TEAM_PERMISSIONS: Record<string, string[]> = {
   'registration': ['overview', 'user_management', 'kyc_review', 'messages'],
   'accounting': ['overview', 'financial_approvals', 'payment_requests', 'withdrawal_requests', 'all_invoices', 'financial_ledger', 'expenses', 'payment_gateways'],
-  'purchasing': ['overview', 'cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'reports'],
+  'purchasing': ['overview', 'cars', 'inventory_review', 'manage_live_auctions', 'auction_sessions', 'marketplace_management', 'reports'],
   'transport': ['overview', 'shipments_tracking', 'document_approvals'],
   'clearance': ['overview', 'shipments_tracking', 'document_approvals'],
   'shipping': ['overview', 'shipments_tracking', 'document_approvals', 'shipping_settings', 'shipping_centers'],
@@ -5754,6 +5755,9 @@ export const AdminDashboard = () => {
       case 'manage_live_auctions':
         return <ManageLiveAuctionsPanel currentUser={currentUser} />;
 
+      case 'auction_sessions':
+        return <AuctionSessionsPanel />;
+
       case 'employee_management':
         return <EmployeeManagementPanel />;
 
@@ -7681,6 +7685,7 @@ export const AdminDashboard = () => {
                 { id: 'cars', label: 'إدارة السيارات', icon: Car },
                 { id: 'inventory_review', label: 'مراجعة السيارات', icon: ShieldCheck, badge: (adminPendingCars?.length || 0) },
                 { id: 'manage_live_auctions', label: 'إدارة مزاداتنا الحية', icon: Gavel },
+                { id: 'auction_sessions', label: '📅 جلسات المزاد المجدولة', icon: Calendar },
                 { id: 'marketplace_management', label: 'سوق العروض', icon: Handshake },
                 { id: 'inspections', label: 'طلبات الفحص', icon: Shield },
               ]

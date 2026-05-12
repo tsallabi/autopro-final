@@ -22,6 +22,7 @@ import { registerDealOfDayRoutes } from './routes/deal-of-day.ts';
 import { registerOfficeInfoRoutes } from './routes/office-info.ts';
 import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
 import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
+import { registerAuctionSessionsRoutes } from './routes/auction-sessions.ts';
 import { registerSupportRoutes } from './routes/support.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
@@ -1254,6 +1255,31 @@ try { db.exec("ALTER TABLE cars ADD COLUMN createdAt TEXT"); } catch (_) { }
 // Backfill existing rows where createdAt is NULL so the hourly cron still behaves sanely
 try { db.prepare("UPDATE cars SET createdAt = COALESCE(createdAt, datetime('now'))").run(); } catch (_) { }
 
+// [auction-sessions] Category + session assignment for the multi-session
+// live auction system. Existing cars stay with NULL values and behave
+// exactly as before (the legacy scheduler picks them up). Cars with a
+// sessionId are managed by the session scheduler instead.
+try { db.exec("ALTER TABLE cars ADD COLUMN category TEXT"); } catch (_) { }
+try { db.exec("ALTER TABLE cars ADD COLUMN sessionId TEXT"); } catch (_) { }
+db.exec(`
+  CREATE TABLE IF NOT EXISTS auction_sessions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    scheduledStart TEXT NOT NULL,
+    durationMinPerCar INTEGER DEFAULT 5,
+    status TEXT DEFAULT 'scheduled',
+    actualStart TEXT,
+    actualEnd TEXT,
+    recurringDaily INTEGER DEFAULT 0,
+    recurringTime TEXT,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL
+  )
+`);
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_status_start ON auction_sessions(status, scheduledStart)`); } catch {}
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cars_session ON cars(sessionId, status)`); } catch {}
+
 // ======= SAVED SEARCHES (Marketing Alerts) =======
 db.exec(`
   CREATE TABLE IF NOT EXISTS saved_searches (
@@ -2268,20 +2294,40 @@ async function startServer() {
     }
   }
 
+  // [SCHED] Honor admin-set auctionStartTime: only activate cars whose start time has arrived (or is unset).
+  // Honor admin-set auctionEndDate when it's in the future; fall back to start+duration, then now+duration.
+  // [auction-sessions] Only manage cars NOT bound to a session — session
+  // cars are activated by the session scheduler in routes/auction-sessions.ts.
   function checkUpcomingAuctions() {
     if (isTransitioning) return;
-    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
-    if (liveRow && liveRow.count === 0) {
-      const next: any = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' ORDER BY auctionEndDate ASC, id ASC LIMIT 1").get();
-      if (next) {
-        // Auction duration: 5 minutes
-        const newEndDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-        db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
-        io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
-        io.emit("auction_started", { carId: next.id });
-        console.log(`[AUCTION QUEUE] Car ${next.id} is now LIVE. Ends at ${newEndDate}`);
-      }
+    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live' AND (sessionId IS NULL OR sessionId = '')").get();
+    if (!liveRow || liveRow.count > 0) return;
+    const nowIso = new Date().toISOString();
+    const defaultDurationMin = Number(process.env.AUCTION_DURATION_MIN) || 5;
+    const next: any = db.prepare(`
+      SELECT * FROM cars
+       WHERE status = 'upcoming'
+         AND (sessionId IS NULL OR sessionId = '')
+         AND (auctionStartTime IS NULL OR auctionStartTime = '' OR auctionStartTime <= ?)
+       ORDER BY
+         CASE WHEN auctionStartTime IS NULL OR auctionStartTime = '' THEN 1 ELSE 0 END,
+         auctionStartTime ASC,
+         id ASC
+       LIMIT 1
+    `).get(nowIso);
+    if (!next) return;
+    let newEndDate: string;
+    if (next.auctionEndDate && next.auctionEndDate > nowIso) {
+      newEndDate = next.auctionEndDate;
+    } else if (next.auctionStartTime) {
+      newEndDate = new Date(new Date(next.auctionStartTime).getTime() + defaultDurationMin * 60 * 1000).toISOString();
+    } else {
+      newEndDate = new Date(Date.now() + defaultDurationMin * 60 * 1000).toISOString();
     }
+    db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
+    io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
+    io.emit("auction_started", { carId: next.id });
+    console.log(`[AUCTION QUEUE] Car ${next.id} is now LIVE (start=${next.auctionStartTime || 'n/a'}, end=${newEndDate})`);
   }
 
   function tickAuctions() {
@@ -4619,6 +4665,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerOfficeInfoRoutes(ctx as any); console.log('[BOOT] ✓ office-info routes'); } catch (e: any) { console.error('[BOOT] office-info routes failed:', e?.message); }
   try { registerPaymentVerificationRoutes(ctx as any); console.log('[BOOT] ✓ payment-verification routes'); } catch (e: any) { console.error('[BOOT] payment-verification routes failed:', e?.message); }
   try { registerPaymentPhase3Routes(ctx as any); console.log('[BOOT] ✓ payment-phase3 routes'); } catch (e: any) { console.error('[BOOT] payment-phase3 routes failed:', e?.message); }
+  try { registerAuctionSessionsRoutes(ctx as any); console.log('[BOOT] ✓ auction-sessions routes + scheduler'); } catch (e: any) { console.error('[BOOT] auction-sessions routes failed:', e?.message); }
   try { registerSupportRoutes(ctx as any); console.log('[BOOT] ✓ support routes'); } catch (e: any) { console.error('[BOOT] support routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
