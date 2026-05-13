@@ -24,6 +24,7 @@ import { registerPaymentVerificationRoutes } from './routes/payment-verification
 import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
 import { registerAuctionSessionsRoutes } from './routes/auction-sessions.ts';
 import { scheduleHourlyStatsPush } from './lib/agentcollab-stats.ts';
+import { scheduleEntitySync } from './lib/agentcollab-sync.ts';
 import { registerSupportRoutes } from './routes/support.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
@@ -4679,6 +4680,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     console.log('[BOOT] ✓ agentcollab-stats hourly push');
   } catch (e: any) {
     console.error('[BOOT] agentcollab-stats failed to start:', e?.message);
+  }
+
+  // [agentcollab-phase-2b] Every-30-minute entity sync (customers,
+  // employees, products, orders). Re-uses the same env vars. Same safety
+  // guarantees: never throws, no-op when disabled.
+  try {
+    scheduleEntitySync(db);
+    console.log('[BOOT] ✓ agentcollab-sync entity push (30min)');
+  } catch (e: any) {
+    console.error('[BOOT] agentcollab-sync failed to start:', e?.message);
   }
 
   // GET /api/seller/wallet/:sellerId - Full wallet summary
