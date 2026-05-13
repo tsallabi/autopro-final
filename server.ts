@@ -23,6 +23,7 @@ import { registerOfficeInfoRoutes } from './routes/office-info.ts';
 import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
 import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
 import { registerAuctionSessionsRoutes } from './routes/auction-sessions.ts';
+import { scheduleHourlyStatsPush } from './lib/agentcollab-stats.ts';
 import { registerSupportRoutes } from './routes/support.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
@@ -4669,6 +4670,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerSupportRoutes(ctx as any); console.log('[BOOT] ✓ support routes'); } catch (e: any) { console.error('[BOOT] support routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
+
+  // [agentcollab-phase-2a] Hourly summary stats push. Re-uses the same
+  // env vars as the existing Phase-1 webhook — no new secret. Safe no-op
+  // when AGENTCOLLAB_ENABLED != 'true'.
+  try {
+    scheduleHourlyStatsPush(db);
+    console.log('[BOOT] ✓ agentcollab-stats hourly push');
+  } catch (e: any) {
+    console.error('[BOOT] agentcollab-stats failed to start:', e?.message);
+  }
 
   // GET /api/seller/wallet/:sellerId - Full wallet summary
   app.get("/api/seller/wallet/:sellerId", requireAuth, (req, res) => {
