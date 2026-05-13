@@ -43,7 +43,7 @@ function baseUrl(): string {
 }
 
 function slug(): string {
-  return process.env.AGENTCOLLAB_SITE_SLUG || 'auto-pro';
+  return process.env.AGENTCOLLAB_SITE_SLUG || 'site';
 }
 
 function scalar(db: any, sql: string, params: any[] = []): number {
