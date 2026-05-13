@@ -151,7 +151,11 @@ export function registerCarRoutes(ctx: AppContext) {
       buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
       acceptOffers, videoUrl, inspectionPdf,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
-      exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes
+      exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
+      // [auction-sessions] Optional routing — if provided, this car will be
+      // managed by the scheduled session scheduler instead of the legacy
+      // continuous one. Both default to NULL (legacy behavior).
+      category, sessionId
     } = req.body;
 
     // VIN LOCK - check for duplicates
@@ -163,6 +167,27 @@ export function registerCarRoutes(ctx: AppContext) {
     // If user is a seller and no sellerId provided, auto-set from auth token
     const effectiveSellerId = sellerId || ((req as any).user?.role === 'seller' ? (req as any).user.id : '');
 
+    // [auction-sessions] Validate session if provided — must exist, be
+    // 'scheduled' (not live/closed/cancelled). If the admin picked a
+    // session whose category differs from the car's, use the session's
+    // category to keep the routing consistent.
+    let safeCategory: string | null = (category && String(category).trim()) || null;
+    let safeSessionId: string | null = null;
+    if (sessionId && String(sessionId).trim()) {
+      const sess: any = db.prepare(
+        `SELECT id, category, status FROM auction_sessions WHERE id = ?`
+      ).get(sessionId);
+      if (!sess) {
+        return res.status(400).json({ error: 'الجلسة المختارة غير موجودة' });
+      }
+      if (sess.status !== 'scheduled') {
+        return res.status(400).json({ error: 'لا يمكن إضافة سيارة لجلسة منتهية أو مباشرة' });
+      }
+      safeSessionId = sess.id;
+      // Override with session's category so the car appears under the right tab
+      safeCategory = sess.category;
+    }
+
     const id = Date.now().toString();
     try {
       db.prepare(`
@@ -171,18 +196,20 @@ export function registerCarRoutes(ctx: AppContext) {
           transmission, drive, drivetrain, fuelType, exteriorColor, interiorColor,
           primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
-          auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers
+          auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
+          category, sessionId
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
         currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || '', inspectionPdf || '', 'pending_approval',
-        auctionEndDate || '', effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0
+        auctionEndDate || '', effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
+        safeCategory, safeSessionId
       );
-      res.json({ id, ...req.body });
+      res.json({ id, ...req.body, category: safeCategory, sessionId: safeSessionId });
     } catch (e) {
       console.error(e);
       res.status(400).json({ error: "Failed to add car or invalid data" });
