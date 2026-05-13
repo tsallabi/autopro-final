@@ -71,6 +71,18 @@ const ComboSelect = ({ label, icon: Icon, value, options, onChange, required = f
     );
 };
 
+// [auction-sessions] Match the categories list used everywhere else
+// (admin sessions panel + server) so the same key flows end-to-end.
+const VEHICLE_CATEGORIES: { key: string; label: string; icon: string }[] = [
+    { key: '',                label: '— غير محدد (يدخل النظام العادي) —', icon: '' },
+    { key: 'cars',            label: 'سيارات ركوبة', icon: '🚗' },
+    { key: 'trucks',          label: 'شاحنات', icon: '🚚' },
+    { key: 'heavy_equipment', label: 'معدات ثقيلة', icon: '🏗️' },
+    { key: 'motorcycles',     label: 'دراجات نارية', icon: '🏍️' },
+    { key: 'jet_skis',        label: 'دراجات بحرية', icon: '🌊' },
+    { key: 'boats',           label: 'قوارب', icon: '🚤' },
+];
+
 export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onSubmit, onCancel, isSubmitting }) => {
     const { showAlert } = useStore();
     const [formData, setFormData] = useState<any>({
@@ -82,8 +94,41 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         specialNote: '', buyNowPrice: '', acceptedOfferPercentage: ACCEPTED_OFFER_OPTIONS[0],
         bodyType: BODY_TYPES[0], interiorColor: '', exteriorColor: '', auctionLights: AUCTION_LIGHTS[0], conditionReportType: CONDITION_REPORT_TYPES[0],
         youtubeVideoUrl: '', isRecommended: false, primaryDamage: 'بدون ضرر', location: '', titleType: 'الولايات المتحدة us',
+        // [auction-sessions] New optional fields. '' means "no category /
+        // no session" — the legacy continuous scheduler picks the car up.
+        category: '',
+        sessionId: '',
         ...(initialData || {}),
     });
+
+    // [auction-sessions] Load available scheduled sessions so the user can
+    // optionally route this car straight into one. Done in a separate effect
+    // so the rest of the form keeps working even if the request fails.
+    const [availableSessions, setAvailableSessions] = useState<Array<{ id: string; name: string; category: string; scheduledStart: string }>>([]);
+    React.useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const token = localStorage.getItem('authToken') || '';
+                const res = await fetch('/api/admin/auction-sessions', {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!alive) return;
+                const list = Array.isArray(data?.sessions) ? data.sessions : [];
+                // Only sessions still scheduled (not live / closed / cancelled)
+                setAvailableSessions(list
+                    .filter((s: any) => s.status === 'scheduled')
+                    .map((s: any) => ({
+                        id: s.id, name: s.name, category: s.category, scheduledStart: s.scheduledStart,
+                    })));
+            } catch {
+                // Silent — sessions are optional
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
 
     const [isDecodingVin, setIsDecodingVin] = useState(false);
 
@@ -387,6 +432,67 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                 <ComboSelect label="إضاءة المزاد (حالة عامة)" value={formData.auctionLights} options={AUCTION_LIGHTS} onChange={(v: string) => handleFieldChange('auctionLights', v)} />
                                 <ComboSelect label="نوع تقرير الفحص" value={formData.conditionReportType} options={CONDITION_REPORT_TYPES} onChange={(v: string) => handleFieldChange('conditionReportType', v)} />
                                 <ComboSelect label="حالة السيارة" value={formData.runsDrives || 'تعمل وتسير'} options={['تعمل وتسير', 'المحرك يعمل فقط', 'لا تعمل ولا تسير']} onChange={(v: string) => handleFieldChange('runsDrives', v)} />
+                            </div>
+                        </div>
+
+                        {/* [auction-sessions] Box 1.5: Category + Session routing */}
+                        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-2xl">
+                            <h2 className="text-lg font-black text-orange-500 flex items-center gap-2 mb-6 border-b border-slate-800 pb-4">
+                                📅 تصنيف المركبة وجدولة المزاد
+                            </h2>
+                            <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-4 text-[11px] text-slate-300 font-bold leading-relaxed">
+                                💡 اختر تصنيف المركبة لتظهر في الجلسة المناسبة. لو تركت "الجدولة" فارغة، السيارة تدخل النظام العادي مباشرة (المزاد المستمر الحالي). لو اخترت جلسة، السيارة تنتظر بدء وقت الجلسة فقط.
+                            </div>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-black text-orange-500 mb-2">تصنيف المركبة (Category)</label>
+                                    <select
+                                        value={formData.category || ''}
+                                        onChange={e => handleFieldChange('category', e.target.value)}
+                                        aria-label="تصنيف المركبة"
+                                        title="تصنيف المركبة"
+                                        className={iptClass}
+                                    >
+                                        {VEHICLE_CATEGORIES.map(c => (
+                                            <option key={c.key || 'none'} value={c.key}>
+                                                {c.icon ? `${c.icon} ` : ''}{c.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black text-orange-500 mb-2">
+                                        جدولة المزاد (اختياري)
+                                        {availableSessions.length === 0 && (
+                                            <span className="text-[10px] text-slate-500 font-normal mr-2">— لا توجد جلسات مجدولة حالياً</span>
+                                        )}
+                                    </label>
+                                    <select
+                                        value={formData.sessionId || ''}
+                                        onChange={e => handleFieldChange('sessionId', e.target.value)}
+                                        disabled={availableSessions.length === 0}
+                                        aria-label="جدولة المزاد"
+                                        title="جدولة المزاد"
+                                        className={iptClass}
+                                    >
+                                        <option value="">— بدون جلسة (نظام المزاد العادي) —</option>
+                                        {availableSessions.map(s => {
+                                            const when = (() => {
+                                                try {
+                                                    return new Date(s.scheduledStart).toLocaleString('en-US', {
+                                                        month: 'short', day: '2-digit',
+                                                        hour: '2-digit', minute: '2-digit',
+                                                    });
+                                                } catch { return s.scheduledStart; }
+                                            })();
+                                            return (
+                                                <option key={s.id} value={s.id}>
+                                                    {s.name} — {when}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                </div>
                             </div>
                         </div>
 

@@ -898,21 +898,27 @@ export function registerAdminRoutes(ctx: AppContext) {
   // ══════════════════════════════════════════════════════════════
 
   app.get("/api/admin/kyc-pending", requireAdmin, (req, res) => {
-    // [kyc-show-all] Return every user awaiting KYC review — INCLUDING
-    // those who haven't uploaded any documents yet. The old INNER JOIN
-    // on kyc_documents hid registered users from the admin until they
-    // had at least one document row, so 19 pending users + a seller
-    // never showed up in the KYC center. Switched to LEFT JOIN and key
-    // off users.kycStatus instead of doc presence so the admin can
-    // approve manually (offline / WhatsApp / in-person) too.
+    // [kyc-show-all] Return every user awaiting any kind of admin review:
+    //   - kycStatus != 'approved'  (KYC not yet verified) OR
+    //   - status = 'pending_approval' (account itself not yet activated)
+    // The previous filter showed only kycStatus != 'approved', which hid
+    // 53 stuck users whose KYC was approved long ago but whose account
+    // status was never flipped to 'active'.
+    //
+    // Also `COALESCE(u.role, '') != 'admin'` — bare `u.role != 'admin'`
+    // evaluates to NULL (≈ false) for users with NULL role, which would
+    // silently drop them from the list.
     try {
       const users: any[] = db.prepare(`
         SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.role,
                u.kycStatus, u.status, u.joinDate,
                (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) AS docCount
           FROM users u
-         WHERE COALESCE(u.kycStatus, 'pending') != 'approved'
-           AND u.role != 'admin'
+         WHERE (
+                 COALESCE(u.kycStatus, 'pending') != 'approved'
+                 OR COALESCE(u.status, '') = 'pending_approval'
+               )
+           AND COALESCE(u.role, '') != 'admin'
          ORDER BY
            CASE WHEN (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) > 0 THEN 0 ELSE 1 END,
            u.joinDate DESC
@@ -935,10 +941,19 @@ export function registerAdminRoutes(ctx: AppContext) {
     const { note } = req.body;
     try {
       db.prepare("UPDATE users SET kycStatus = 'approved' WHERE id = ?").run(userId);
+      // [kyc-unblock] If the user is still 'pending_approval', flip them
+      // to 'active' so they can use the platform. This DOES NOT enable
+      // bidding — biddingEnabled is a separate explicit toggle the admin
+      // controls from the user-management view after deposit verification.
+      // We only touch pending_approval; banned/suspended/rejected stay as-is.
+      db.prepare(`UPDATE users
+                     SET status = 'active'
+                   WHERE id = ?
+                     AND COALESCE(status, '') IN ('', 'pending_approval')`).run(userId);
       db.prepare("UPDATE kyc_documents SET status = 'approved', reviewedAt = ?, reviewNote = ? WHERE userId = ? AND status = 'pending'")
         .run(new Date().toISOString(), note || '', userId);
 
-      sendNotification(userId, '✅ تم توثيق حسابك (KYC)', 'تمت مراجعة وثائقك وتوثيق حسابك. يمكنك الآن طلب سحب أرباحك بحرية.', 'success');
+      sendNotification(userId, '✅ تم توثيق حسابك (KYC)', 'تمت مراجعة وثائقك وتوثيق حسابك. لتفعيل المزايدة يرجى التواصل مع الإدارة لإكمال خطوات العربون.', 'success');
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "فشل الموافقة على KYC" });
