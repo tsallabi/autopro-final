@@ -25,6 +25,7 @@ import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
 import { registerAuctionSessionsRoutes } from './routes/auction-sessions.ts';
 import { scheduleHourlyStatsPush } from './lib/agentcollab-stats.ts';
 import { scheduleEntitySync } from './lib/agentcollab-sync.ts';
+import { registerAgentCollabInboundRoutes } from './routes/agentcollab-inbound.ts';
 import { registerSupportRoutes } from './routes/support.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
@@ -4690,6 +4691,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     console.log('[BOOT] ✓ agentcollab-sync entity push (30min)');
   } catch (e: any) {
     console.error('[BOOT] agentcollab-sync failed to start:', e?.message);
+  }
+
+  // [agentcollab-phase-3] Inbound write-back endpoints. Returns 503 if
+  // AGENTCOLLAB_OUTBOUND_TOKEN isn't set, so it's a no-op until config
+  // arrives — never breaks the boot.
+  try {
+    registerAgentCollabInboundRoutes(ctx as any);
+    console.log('[BOOT] ✓ agentcollab-inbound write-back routes');
+  } catch (e: any) {
+    console.error('[BOOT] agentcollab-inbound failed to start:', e?.message);
   }
 
   // GET /api/seller/wallet/:sellerId - Full wallet summary
