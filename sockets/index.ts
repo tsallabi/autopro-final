@@ -140,11 +140,16 @@ export function registerSocketHandlers(ctx: AppContext) {
             io.to(carId).emit("car_updated", { id: carId, auctionEndDate: newEndDate });
 
             const addedSec = Math.ceil(addedMs / 1000);
+            // [stuck-transition-fix] Only shift LEGACY (sessionless) upcoming
+            // cars. Session cars are ordered by the session scheduler — adding
+            // future end dates to them causes tickAuctionSessions to skip them
+            // and the rotation gets stuck on the just-finalized car.
             db.prepare(`
                 UPDATE cars
                 SET auctionEndDate = datetime(auctionEndDate, '+' || ? || ' seconds'),
                     auctionStartTime = datetime(auctionStartTime, '+' || ? || ' seconds')
                 WHERE status = 'upcoming'
+                  AND (sessionId IS NULL OR sessionId = '')
             `).run(addedSec, addedSec);
 
             io.emit("upcoming_cars_shifted", { shiftMs: addedMs });

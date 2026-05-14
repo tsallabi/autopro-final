@@ -120,9 +120,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
    */
   function attachCars(sessionId: string, category: Category, carIds: string[]): number {
     if (!Array.isArray(carIds) || carIds.length === 0) return 0;
+    // [stuck-transition-fix] Clear auctionEndDate + auctionStartTime when a car
+    // joins a session. Without this, leftover end dates from prior legacy runs
+    // (or from anti-sniping shifts) cause the session scheduler to skip the
+    // car forever because of its `auctionEndDate <= now` filter.
     const stmt = db.prepare(`
       UPDATE cars
-         SET sessionId = ?, category = ?
+         SET sessionId = ?,
+             category = ?,
+             auctionEndDate = NULL,
+             auctionStartTime = NULL
        WHERE id = ?
          AND (sessionId IS NULL OR sessionId = ? OR sessionId = '')
     `);
@@ -532,22 +539,51 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     const liveSessions: any[] = db.prepare(`SELECT * FROM auction_sessions WHERE status = 'live'`).all();
     for (const s of liveSessions) {
       try {
+        // [stuck-transition-fix] Safety-net: if a session car has been 'live'
+        // with an end date >60 s in the past, the legacy tickAuctions in
+        // server.ts must have skipped it (transition flag stuck, exception,
+        // etc.). Force-flip it to 'offer_market' so the rotation can advance.
+        // 60 s grace period guards against clock skew while still recovering
+        // from a hang within one user-visible cycle.
+        const stuckGraceIso = new Date(Date.now() - 60_000).toISOString();
+        const stuck: any[] = db.prepare(`
+          SELECT id FROM cars
+           WHERE sessionId = ?
+             AND status = 'live'
+             AND auctionEndDate IS NOT NULL
+             AND auctionEndDate != ''
+             AND auctionEndDate <= ?
+        `).all(s.id, stuckGraceIso);
+        for (const c of stuck) {
+          console.warn(`[sessions] FORCE-FINALIZING stuck live car ${c.id} (session ${s.id})`);
+          const offerEnd = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          db.prepare(`
+            UPDATE cars
+               SET status = 'offer_market', offerMarketEndTime = ?
+             WHERE id = ? AND status = 'live'
+          `).run(offerEnd, c.id);
+          try { io.emit('car_updated', { id: c.id, status: 'offer_market', offerMarketEndTime: offerEnd }); } catch {}
+        }
+
         const liveCount: any = db.prepare(`
           SELECT COUNT(*) as c FROM cars
            WHERE sessionId = ? AND status = 'live'
         `).get(s.id);
 
         if (liveCount && liveCount.c === 0) {
-          // Find the next upcoming car. The auctionEndDate <= now filter lets
-          // pre-scheduled "fake" end dates from prior runs not block rotation.
+          // [stuck-transition-fix] Within a live session, the session itself is
+          // the authority over which car runs next — pick the first upcoming car
+          // regardless of any leftover auctionEndDate value. The previous
+          // `auctionEndDate <= now` filter caused the rotation to stall whenever
+          // a car carried a future end date from a prior activation or from the
+          // anti-sniping shift in sockets/index.ts.
           const next: any = db.prepare(`
             SELECT * FROM cars
              WHERE sessionId = ?
                AND status = 'upcoming'
-               AND (auctionEndDate IS NULL OR auctionEndDate = '' OR auctionEndDate <= ?)
              ORDER BY id ASC
              LIMIT 1
-          `).get(s.id, now);
+          `).get(s.id);
 
           if (next) {
             const durationMs = (s.durationMinPerCar || 5) * 60_000;
@@ -720,11 +756,15 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
   // Start background loops.
   // ──────────────────────────────────────────────────────────────────
   if (!DISABLED) {
+    // [stuck-transition-fix] Tick every 2 s instead of 15 s so the next car in
+    // a session activates within ~2 s after the previous one finalizes (legacy
+    // tickAuctions runs every 1 s). The queries are tiny (count + LIMIT 1) so
+    // the load is negligible.
     setInterval(() => {
       try { tickAuctionSessions(); } catch (e: any) {
         console.error('[sessions] tickAuctionSessions crashed:', e?.message);
       }
-    }, 15_000);
+    }, 2_000);
 
     setInterval(() => {
       try { ensureRecurringSessions(); } catch (e: any) {
