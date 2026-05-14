@@ -120,25 +120,40 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
    */
   function attachCars(sessionId: string, category: Category, carIds: string[]): number {
     if (!Array.isArray(carIds) || carIds.length === 0) return 0;
-    // [stuck-transition-fix] Clear auctionEndDate + auctionStartTime when a car
-    // joins a session. Without this, leftover end dates from prior legacy runs
-    // (or from anti-sniping shifts) cause the session scheduler to skip the
-    // car forever because of its `auctionEndDate <= now` filter.
+    // [precise-schedule] Compute auctionStartTime for each newly-attached car so
+    // the frontend and backend agree on the order, and so users see exactly
+    // when their car is expected to go live. Schedule = session.scheduledStart
+    // + (existingCarCount + index) * durationMinPerCar.
+    //
+    // Frontend sorts upcoming cars by auctionStartTime; backend must use the
+    // same field as authority. Clearing auctionEndDate ensures no stale
+    // future end date blocks the rotation.
+    const session: any = db.prepare(
+      `SELECT scheduledStart, durationMinPerCar FROM auction_sessions WHERE id = ?`
+    ).get(sessionId);
+    const existing: any = db.prepare(
+      `SELECT COUNT(*) AS c FROM cars WHERE sessionId = ?`
+    ).get(sessionId);
+    const startMs = session ? new Date(session.scheduledStart).getTime() : Date.now();
+    const durationMs = (session?.durationMinPerCar || 5) * 60_000;
+    const offset = existing?.c || 0;
+
     const stmt = db.prepare(`
       UPDATE cars
          SET sessionId = ?,
              category = ?,
              auctionEndDate = NULL,
-             auctionStartTime = NULL
+             auctionStartTime = ?
        WHERE id = ?
          AND (sessionId IS NULL OR sessionId = ? OR sessionId = '')
     `);
     let changed = 0;
     const tx = db.transaction((ids: string[]) => {
-      for (const cid of ids) {
-        const r = stmt.run(sessionId, category, cid, sessionId);
+      ids.forEach((cid, i) => {
+        const scheduledIso = new Date(startMs + (offset + i) * durationMs).toISOString();
+        const r = stmt.run(sessionId, category, scheduledIso, cid, sessionId);
         changed += r.changes;
-      }
+      });
     });
     tx(carIds);
     return changed;
@@ -571,17 +586,20 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         `).get(s.id);
 
         if (liveCount && liveCount.c === 0) {
-          // [stuck-transition-fix] Within a live session, the session itself is
-          // the authority over which car runs next — pick the first upcoming car
-          // regardless of any leftover auctionEndDate value. The previous
-          // `auctionEndDate <= now` filter caused the rotation to stall whenever
-          // a car carried a future end date from a prior activation or from the
-          // anti-sniping shift in sockets/index.ts.
+          // [precise-schedule] Pick the next car by auctionStartTime — the same
+          // field the frontend uses to render the "next car" transition screen.
+          // If both agree on the order, the announced next car always matches
+          // the one actually activated.
+          //
+          // Tie-break on id so identical timestamps remain deterministic.
+          // Cars without auctionStartTime fall to the end via COALESCE so they
+          // can still be picked once the scheduled ones have run.
           const next: any = db.prepare(`
             SELECT * FROM cars
              WHERE sessionId = ?
                AND status = 'upcoming'
-             ORDER BY id ASC
+             ORDER BY COALESCE(auctionStartTime, '9999-12-31T23:59:59Z') ASC,
+                      id ASC
              LIMIT 1
           `).get(s.id);
 
@@ -753,9 +771,51 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Backfill: assign auctionStartTime to existing session cars that have
+  // none. Without this, sessions that were attached before the precise-
+  // schedule fix landed would still sort unpredictably and the frontend's
+  // "next car" announcement could disagree with what actually activates.
+  // ──────────────────────────────────────────────────────────────────
+  function backfillSessionSchedule(): void {
+    try {
+      const sessions: any[] = db.prepare(`
+        SELECT id, scheduledStart, durationMinPerCar
+          FROM auction_sessions
+         WHERE status IN ('scheduled', 'live')
+      `).all();
+      for (const s of sessions) {
+        const cars: any[] = db.prepare(`
+          SELECT id, auctionStartTime FROM cars
+           WHERE sessionId = ?
+             AND status IN ('upcoming', 'live')
+           ORDER BY id ASC
+        `).all(s.id);
+        const startMs = new Date(s.scheduledStart).getTime();
+        const durationMs = (s.durationMinPerCar || 5) * 60_000;
+        let assigned = 0;
+        cars.forEach((c, idx) => {
+          if (c.auctionStartTime) return;
+          const iso = new Date(startMs + idx * durationMs).toISOString();
+          db.prepare(`UPDATE cars SET auctionStartTime = ? WHERE id = ?`).run(iso, c.id);
+          assigned++;
+        });
+        if (assigned > 0) {
+          console.log(`[sessions] backfilled auctionStartTime for ${assigned} cars in session ${s.id}`);
+        }
+      }
+    } catch (e: any) {
+      console.error('[sessions] backfillSessionSchedule failed:', e?.message);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Start background loops.
   // ──────────────────────────────────────────────────────────────────
   if (!DISABLED) {
+    // Run schedule backfill once at boot so existing sessions get sane times.
+    try { backfillSessionSchedule(); } catch (e: any) {
+      console.error('[sessions] initial backfillSessionSchedule crashed:', e?.message);
+    }
     // [stuck-transition-fix] Tick every 2 s instead of 15 s so the next car in
     // a session activates within ~2 s after the previous one finalizes (legacy
     // tickAuctions runs every 1 s). The queries are tiny (count + LIMIT 1) so

@@ -9,8 +9,22 @@ export const LiveAuctionRoom = () => {
     const { cars } = useStore();
 
     const liveCar = cars.find(c => c.status === 'live' || c.status === 'ultimo');
-    const upcomingCars = cars.filter(c => c.status === 'upcoming');
-    const nextCar = upcomingCars.sort((a, b) => new Date(a.auctionStartTime || a.auctionEndDate || 0).getTime() - new Date(b.auctionStartTime || b.auctionEndDate || 0).getTime())[0];
+    // [precise-schedule] Match the backend's tickAuctionSessions ordering:
+    // primary = auctionStartTime ASC (sessions assign this on attach),
+    // tie-break = id ASC (deterministic when scheduled times collide).
+    // Cars with no auctionStartTime sort last so legacy queue cars don't
+    // jump ahead of session-scheduled cars. The frontend and backend must
+    // agree on this exact order; otherwise the "next car" transition screen
+    // and the car that actually activates disagree.
+    const upcomingCars = cars
+        .filter(c => c.status === 'upcoming')
+        .sort((a, b) => {
+            const aTime = a.auctionStartTime ? new Date(a.auctionStartTime).getTime() : Number.MAX_SAFE_INTEGER;
+            const bTime = b.auctionStartTime ? new Date(b.auctionStartTime).getTime() : Number.MAX_SAFE_INTEGER;
+            if (aTime !== bTime) return aTime - bTime;
+            return String(a.id).localeCompare(String(b.id));
+        });
+    const nextCar = upcomingCars[0];
 
     const containerRef = useRef<HTMLDivElement>(null);
     const [isTvMode, setIsTvMode] = useState(false);
