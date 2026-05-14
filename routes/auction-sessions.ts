@@ -120,18 +120,40 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
    */
   function attachCars(sessionId: string, category: Category, carIds: string[]): number {
     if (!Array.isArray(carIds) || carIds.length === 0) return 0;
+    // [precise-schedule] Compute auctionStartTime for each newly-attached car so
+    // the frontend and backend agree on the order, and so users see exactly
+    // when their car is expected to go live. Schedule = session.scheduledStart
+    // + (existingCarCount + index) * durationMinPerCar.
+    //
+    // Frontend sorts upcoming cars by auctionStartTime; backend must use the
+    // same field as authority. Clearing auctionEndDate ensures no stale
+    // future end date blocks the rotation.
+    const session: any = db.prepare(
+      `SELECT scheduledStart, durationMinPerCar FROM auction_sessions WHERE id = ?`
+    ).get(sessionId);
+    const existing: any = db.prepare(
+      `SELECT COUNT(*) AS c FROM cars WHERE sessionId = ?`
+    ).get(sessionId);
+    const startMs = session ? new Date(session.scheduledStart).getTime() : Date.now();
+    const durationMs = (session?.durationMinPerCar || 5) * 60_000;
+    const offset = existing?.c || 0;
+
     const stmt = db.prepare(`
       UPDATE cars
-         SET sessionId = ?, category = ?
+         SET sessionId = ?,
+             category = ?,
+             auctionEndDate = NULL,
+             auctionStartTime = ?
        WHERE id = ?
          AND (sessionId IS NULL OR sessionId = ? OR sessionId = '')
     `);
     let changed = 0;
     const tx = db.transaction((ids: string[]) => {
-      for (const cid of ids) {
-        const r = stmt.run(sessionId, category, cid, sessionId);
+      ids.forEach((cid, i) => {
+        const scheduledIso = new Date(startMs + (offset + i) * durationMs).toISOString();
+        const r = stmt.run(sessionId, category, scheduledIso, cid, sessionId);
         changed += r.changes;
-      }
+      });
     });
     tx(carIds);
     return changed;
@@ -212,6 +234,7 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         category,
         scheduledStart,
         durationMinPerCar,
+        transitionGraceSeconds,
         recurringDaily,
         recurringTime,
         carIds,
@@ -233,6 +256,10 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
       if (!Number.isFinite(duration) || duration < 1 || duration > 60) {
         return res.status(400).json({ error: 'مدة كل سيارة يجب أن تكون بين 1 و 60 دقيقة' });
       }
+      const grace = Number(transitionGraceSeconds ?? 7);
+      if (!Number.isFinite(grace) || grace < 0 || grace > 60) {
+        return res.status(400).json({ error: 'مدة الانتقال بين السيارات يجب أن تكون بين 0 و 60 ثانية' });
+      }
       const recurring = recurringDaily ? 1 : 0;
       if (recurring && (!recurringTime || !libyaTimeTodayToUtcIso(recurringTime))) {
         return res.status(400).json({ error: 'وقت التكرار اليومي غير صالح (HH:mm)' });
@@ -244,15 +271,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
 
       db.prepare(`
         INSERT INTO auction_sessions
-          (id, name, category, scheduledStart, durationMinPerCar, status,
+          (id, name, category, scheduledStart, durationMinPerCar, transitionGraceSeconds, status,
            recurringDaily, recurringTime, createdBy, createdAt)
-        VALUES (?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)
       `).run(
         id,
         trimmedName,
         category,
         startDate.toISOString(),
         Math.floor(duration),
+        Math.floor(grace),
         recurring,
         recurring ? String(recurringTime) : null,
         adminId,
@@ -416,11 +444,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     try {
       const session = getSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'الجلسة غير موجودة' });
-      if (session.status === 'live') {
+      // [transition-grace-config] Allow transitionGraceSeconds edits even on a
+      // live session so the admin can fine-tune pacing while it's running.
+      // Other fields still require the session to not be live.
+      const onlyGraceEdit = req.body
+        && Object.keys(req.body).every((k) => k === 'transitionGraceSeconds');
+      if (session.status === 'live' && !onlyGraceEdit) {
         return res.status(400).json({ error: 'لا يمكن تعديل جلسة مباشرة' });
       }
 
-      const { name, scheduledStart, durationMinPerCar, recurringDaily, recurringTime } = req.body || {};
+      const { name, scheduledStart, durationMinPerCar, transitionGraceSeconds, recurringDaily, recurringTime } = req.body || {};
 
       const updates: string[] = [];
       const values: any[] = [];
@@ -441,6 +474,13 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
           return res.status(400).json({ error: 'مدة كل سيارة يجب أن تكون بين 1 و 60 دقيقة' });
         }
         updates.push('durationMinPerCar = ?'); values.push(Math.floor(dur));
+      }
+      if (transitionGraceSeconds !== undefined) {
+        const grace = Number(transitionGraceSeconds);
+        if (!Number.isFinite(grace) || grace < 0 || grace > 60) {
+          return res.status(400).json({ error: 'مدة الانتقال بين السيارات يجب أن تكون بين 0 و 60 ثانية' });
+        }
+        updates.push('transitionGraceSeconds = ?'); values.push(Math.floor(grace));
       }
       if (recurringDaily !== undefined) {
         updates.push('recurringDaily = ?'); values.push(recurringDaily ? 1 : 0);
@@ -532,22 +572,81 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     const liveSessions: any[] = db.prepare(`SELECT * FROM auction_sessions WHERE status = 'live'`).all();
     for (const s of liveSessions) {
       try {
+        // [stuck-transition-fix] Safety-net: if a session car has been 'live'
+        // with an end date >60 s in the past, the legacy tickAuctions in
+        // server.ts must have skipped it (transition flag stuck, exception,
+        // etc.). Force-flip it to 'offer_market' so the rotation can advance.
+        // 60 s grace period guards against clock skew while still recovering
+        // from a hang within one user-visible cycle.
+        const stuckGraceIso = new Date(Date.now() - 60_000).toISOString();
+        const stuck: any[] = db.prepare(`
+          SELECT id FROM cars
+           WHERE sessionId = ?
+             AND status = 'live'
+             AND auctionEndDate IS NOT NULL
+             AND auctionEndDate != ''
+             AND auctionEndDate <= ?
+        `).all(s.id, stuckGraceIso);
+        for (const c of stuck) {
+          console.warn(`[sessions] FORCE-FINALIZING stuck live car ${c.id} (session ${s.id})`);
+          const offerEnd = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          db.prepare(`
+            UPDATE cars
+               SET status = 'offer_market', offerMarketEndTime = ?
+             WHERE id = ? AND status = 'live'
+          `).run(offerEnd, c.id);
+          try { io.emit('car_updated', { id: c.id, status: 'offer_market', offerMarketEndTime: offerEnd }); } catch {}
+        }
+
         const liveCount: any = db.prepare(`
           SELECT COUNT(*) as c FROM cars
            WHERE sessionId = ? AND status = 'live'
         `).get(s.id);
 
         if (liveCount && liveCount.c === 0) {
-          // Find the next upcoming car. The auctionEndDate <= now filter lets
-          // pre-scheduled "fake" end dates from prior runs not block rotation.
+          // [transition-screen-grace] Hold for transitionGraceSeconds after the
+          // previous car finalized so the "next car coming up" screen on the
+          // live auction page has time to be seen by users (build
+          // anticipation). The tick interval is 2 s, but the actual delay
+          // between cars is governed by this per-session grace value. Default
+          // 7 s; admin-configurable per session.
+          const graceSec = Number.isFinite(Number(s.transitionGraceSeconds))
+            ? Math.max(0, Math.min(60, Math.floor(Number(s.transitionGraceSeconds))))
+            : 7;
+          const TRANSITION_GRACE_MS = graceSec * 1000;
+          const lastFinalized: any = db.prepare(`
+            SELECT MAX(auctionEndDate) AS lastEnd FROM cars
+             WHERE sessionId = ?
+               AND status IN ('closed', 'offer_market', 'pending_seller')
+               AND auctionEndDate IS NOT NULL
+               AND auctionEndDate != ''
+          `).get(s.id);
+          if (lastFinalized?.lastEnd) {
+            const lastEndMs = new Date(lastFinalized.lastEnd).getTime();
+            const elapsed = Date.now() - lastEndMs;
+            if (elapsed < TRANSITION_GRACE_MS) {
+              // Still inside the transition window — let the user see the
+              // "next car" screen before flipping it to a live auction.
+              continue;
+            }
+          }
+
+          // [precise-schedule] Pick the next car by auctionStartTime — the same
+          // field the frontend uses to render the "next car" transition screen.
+          // If both agree on the order, the announced next car always matches
+          // the one actually activated.
+          //
+          // Tie-break on id so identical timestamps remain deterministic.
+          // Cars without auctionStartTime fall to the end via COALESCE so they
+          // can still be picked once the scheduled ones have run.
           const next: any = db.prepare(`
             SELECT * FROM cars
              WHERE sessionId = ?
                AND status = 'upcoming'
-               AND (auctionEndDate IS NULL OR auctionEndDate = '' OR auctionEndDate <= ?)
-             ORDER BY id ASC
+             ORDER BY COALESCE(auctionStartTime, '9999-12-31T23:59:59Z') ASC,
+                      id ASC
              LIMIT 1
-          `).get(s.id, now);
+          `).get(s.id);
 
           if (next) {
             const durationMs = (s.durationMinPerCar || 5) * 60_000;
@@ -642,15 +741,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
           const now = new Date().toISOString();
           db.prepare(`
             INSERT INTO auction_sessions
-              (id, name, category, scheduledStart, durationMinPerCar, status,
+              (id, name, category, scheduledStart, durationMinPerCar, transitionGraceSeconds, status,
                recurringDaily, recurringTime, createdBy, createdAt)
-            VALUES (?, ?, ?, ?, ?, 'scheduled', 1, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'scheduled', 1, ?, ?, ?)
           `).run(
             id,
             t.name,
             t.category,
             todayIso,
             t.durationMinPerCar || 5,
+            t.transitionGraceSeconds ?? 7,
             t.recurringTime,
             t.createdBy || 'cron',
             now,
@@ -717,14 +817,60 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Backfill: assign auctionStartTime to existing session cars that have
+  // none. Without this, sessions that were attached before the precise-
+  // schedule fix landed would still sort unpredictably and the frontend's
+  // "next car" announcement could disagree with what actually activates.
+  // ──────────────────────────────────────────────────────────────────
+  function backfillSessionSchedule(): void {
+    try {
+      const sessions: any[] = db.prepare(`
+        SELECT id, scheduledStart, durationMinPerCar
+          FROM auction_sessions
+         WHERE status IN ('scheduled', 'live')
+      `).all();
+      for (const s of sessions) {
+        const cars: any[] = db.prepare(`
+          SELECT id, auctionStartTime FROM cars
+           WHERE sessionId = ?
+             AND status IN ('upcoming', 'live')
+           ORDER BY id ASC
+        `).all(s.id);
+        const startMs = new Date(s.scheduledStart).getTime();
+        const durationMs = (s.durationMinPerCar || 5) * 60_000;
+        let assigned = 0;
+        cars.forEach((c, idx) => {
+          if (c.auctionStartTime) return;
+          const iso = new Date(startMs + idx * durationMs).toISOString();
+          db.prepare(`UPDATE cars SET auctionStartTime = ? WHERE id = ?`).run(iso, c.id);
+          assigned++;
+        });
+        if (assigned > 0) {
+          console.log(`[sessions] backfilled auctionStartTime for ${assigned} cars in session ${s.id}`);
+        }
+      }
+    } catch (e: any) {
+      console.error('[sessions] backfillSessionSchedule failed:', e?.message);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Start background loops.
   // ──────────────────────────────────────────────────────────────────
   if (!DISABLED) {
+    // Run schedule backfill once at boot so existing sessions get sane times.
+    try { backfillSessionSchedule(); } catch (e: any) {
+      console.error('[sessions] initial backfillSessionSchedule crashed:', e?.message);
+    }
+    // [stuck-transition-fix] Tick every 2 s instead of 15 s so the next car in
+    // a session activates within ~2 s after the previous one finalizes (legacy
+    // tickAuctions runs every 1 s). The queries are tiny (count + LIMIT 1) so
+    // the load is negligible.
     setInterval(() => {
       try { tickAuctionSessions(); } catch (e: any) {
         console.error('[sessions] tickAuctionSessions crashed:', e?.message);
       }
-    }, 15_000);
+    }, 2_000);
 
     setInterval(() => {
       try { ensureRecurringSessions(); } catch (e: any) {

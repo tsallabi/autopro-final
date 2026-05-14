@@ -1271,6 +1271,7 @@ db.exec(`
     category TEXT NOT NULL,
     scheduledStart TEXT NOT NULL,
     durationMinPerCar INTEGER DEFAULT 5,
+    transitionGraceSeconds INTEGER DEFAULT 7,
     status TEXT DEFAULT 'scheduled',
     actualStart TEXT,
     actualEnd TEXT,
@@ -1280,6 +1281,7 @@ db.exec(`
     createdAt TEXT NOT NULL
   )
 `);
+try { db.exec("ALTER TABLE auction_sessions ADD COLUMN transitionGraceSeconds INTEGER DEFAULT 7"); } catch (_) { }
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_status_start ON auction_sessions(status, scheduledStart)`); } catch {}
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cars_session ON cars(sessionId, status)`); } catch {}
 
