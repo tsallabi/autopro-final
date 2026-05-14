@@ -586,6 +586,30 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         `).get(s.id);
 
         if (liveCount && liveCount.c === 0) {
+          // [transition-screen-grace] Hold for ~7 s after the previous car
+          // finalized so the "next car coming up" screen on the live auction
+          // page has time to be seen by users (build anticipation). The tick
+          // interval is 2 s, but the actual delay between cars is governed
+          // by this grace period — without it, the next car activates so
+          // quickly that the transition screen flashes for under a second.
+          const TRANSITION_GRACE_MS = 7_000;
+          const lastFinalized: any = db.prepare(`
+            SELECT MAX(auctionEndDate) AS lastEnd FROM cars
+             WHERE sessionId = ?
+               AND status IN ('closed', 'offer_market', 'pending_seller')
+               AND auctionEndDate IS NOT NULL
+               AND auctionEndDate != ''
+          `).get(s.id);
+          if (lastFinalized?.lastEnd) {
+            const lastEndMs = new Date(lastFinalized.lastEnd).getTime();
+            const elapsed = Date.now() - lastEndMs;
+            if (elapsed < TRANSITION_GRACE_MS) {
+              // Still inside the transition window — let the user see the
+              // "next car" screen before flipping it to a live auction.
+              continue;
+            }
+          }
+
           // [precise-schedule] Pick the next car by auctionStartTime — the same
           // field the frontend uses to render the "next car" transition screen.
           // If both agree on the order, the announced next car always matches
