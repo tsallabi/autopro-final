@@ -234,6 +234,7 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         category,
         scheduledStart,
         durationMinPerCar,
+        transitionGraceSeconds,
         recurringDaily,
         recurringTime,
         carIds,
@@ -255,6 +256,10 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
       if (!Number.isFinite(duration) || duration < 1 || duration > 60) {
         return res.status(400).json({ error: 'مدة كل سيارة يجب أن تكون بين 1 و 60 دقيقة' });
       }
+      const grace = Number(transitionGraceSeconds ?? 7);
+      if (!Number.isFinite(grace) || grace < 0 || grace > 60) {
+        return res.status(400).json({ error: 'مدة الانتقال بين السيارات يجب أن تكون بين 0 و 60 ثانية' });
+      }
       const recurring = recurringDaily ? 1 : 0;
       if (recurring && (!recurringTime || !libyaTimeTodayToUtcIso(recurringTime))) {
         return res.status(400).json({ error: 'وقت التكرار اليومي غير صالح (HH:mm)' });
@@ -266,15 +271,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
 
       db.prepare(`
         INSERT INTO auction_sessions
-          (id, name, category, scheduledStart, durationMinPerCar, status,
+          (id, name, category, scheduledStart, durationMinPerCar, transitionGraceSeconds, status,
            recurringDaily, recurringTime, createdBy, createdAt)
-        VALUES (?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)
       `).run(
         id,
         trimmedName,
         category,
         startDate.toISOString(),
         Math.floor(duration),
+        Math.floor(grace),
         recurring,
         recurring ? String(recurringTime) : null,
         adminId,
@@ -438,11 +444,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     try {
       const session = getSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'الجلسة غير موجودة' });
-      if (session.status === 'live') {
+      // [transition-grace-config] Allow transitionGraceSeconds edits even on a
+      // live session so the admin can fine-tune pacing while it's running.
+      // Other fields still require the session to not be live.
+      const onlyGraceEdit = req.body
+        && Object.keys(req.body).every((k) => k === 'transitionGraceSeconds');
+      if (session.status === 'live' && !onlyGraceEdit) {
         return res.status(400).json({ error: 'لا يمكن تعديل جلسة مباشرة' });
       }
 
-      const { name, scheduledStart, durationMinPerCar, recurringDaily, recurringTime } = req.body || {};
+      const { name, scheduledStart, durationMinPerCar, transitionGraceSeconds, recurringDaily, recurringTime } = req.body || {};
 
       const updates: string[] = [];
       const values: any[] = [];
@@ -463,6 +474,13 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
           return res.status(400).json({ error: 'مدة كل سيارة يجب أن تكون بين 1 و 60 دقيقة' });
         }
         updates.push('durationMinPerCar = ?'); values.push(Math.floor(dur));
+      }
+      if (transitionGraceSeconds !== undefined) {
+        const grace = Number(transitionGraceSeconds);
+        if (!Number.isFinite(grace) || grace < 0 || grace > 60) {
+          return res.status(400).json({ error: 'مدة الانتقال بين السيارات يجب أن تكون بين 0 و 60 ثانية' });
+        }
+        updates.push('transitionGraceSeconds = ?'); values.push(Math.floor(grace));
       }
       if (recurringDaily !== undefined) {
         updates.push('recurringDaily = ?'); values.push(recurringDaily ? 1 : 0);
@@ -586,13 +604,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         `).get(s.id);
 
         if (liveCount && liveCount.c === 0) {
-          // [transition-screen-grace] Hold for ~7 s after the previous car
-          // finalized so the "next car coming up" screen on the live auction
-          // page has time to be seen by users (build anticipation). The tick
-          // interval is 2 s, but the actual delay between cars is governed
-          // by this grace period — without it, the next car activates so
-          // quickly that the transition screen flashes for under a second.
-          const TRANSITION_GRACE_MS = 7_000;
+          // [transition-screen-grace] Hold for transitionGraceSeconds after the
+          // previous car finalized so the "next car coming up" screen on the
+          // live auction page has time to be seen by users (build
+          // anticipation). The tick interval is 2 s, but the actual delay
+          // between cars is governed by this per-session grace value. Default
+          // 7 s; admin-configurable per session.
+          const graceSec = Number.isFinite(Number(s.transitionGraceSeconds))
+            ? Math.max(0, Math.min(60, Math.floor(Number(s.transitionGraceSeconds))))
+            : 7;
+          const TRANSITION_GRACE_MS = graceSec * 1000;
           const lastFinalized: any = db.prepare(`
             SELECT MAX(auctionEndDate) AS lastEnd FROM cars
              WHERE sessionId = ?
@@ -720,15 +741,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
           const now = new Date().toISOString();
           db.prepare(`
             INSERT INTO auction_sessions
-              (id, name, category, scheduledStart, durationMinPerCar, status,
+              (id, name, category, scheduledStart, durationMinPerCar, transitionGraceSeconds, status,
                recurringDaily, recurringTime, createdBy, createdAt)
-            VALUES (?, ?, ?, ?, ?, 'scheduled', 1, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'scheduled', 1, ?, ?, ?)
           `).run(
             id,
             t.name,
             t.category,
             todayIso,
             t.durationMinPerCar || 5,
+            t.transitionGraceSeconds ?? 7,
             t.recurringTime,
             t.createdBy || 'cron',
             now,

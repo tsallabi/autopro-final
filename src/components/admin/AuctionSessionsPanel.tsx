@@ -26,6 +26,7 @@ interface AuctionSession {
   category: string;
   scheduledStart: string;
   durationMinPerCar: number;
+  transitionGraceSeconds?: number;
   status: SessionStatus;
   actualStart?: string | null;
   actualEnd?: string | null;
@@ -135,6 +136,7 @@ interface FormState {
   date: string;
   time: string;
   durationMinPerCar: number;
+  transitionGraceSeconds: number;
   recurringDaily: boolean;
   recurringTime: string;
   carIds: string[];
@@ -146,6 +148,7 @@ const EMPTY_FORM: FormState = {
   date: '',
   time: '',
   durationMinPerCar: 5,
+  transitionGraceSeconds: 7,
   recurringDaily: false,
   recurringTime: '',
   carIds: [],
@@ -235,6 +238,7 @@ export default function AuctionSessionsPanel() {
       date: dateStr,
       time: time || '18:00',
       durationMinPerCar: s.durationMinPerCar || 5,
+      transitionGraceSeconds: s.transitionGraceSeconds ?? 7,
       recurringDaily: false,
       recurringTime: '',
       carIds: [],
@@ -538,6 +542,7 @@ function SessionFormModal({
         date,
         time,
         durationMinPerCar: editing.durationMinPerCar || 5,
+        transitionGraceSeconds: editing.transitionGraceSeconds ?? 7,
         recurringDaily: editing.recurringDaily === 1,
         recurringTime: editing.recurringTime || '',
         carIds: [],
@@ -639,6 +644,10 @@ function SessionFormModal({
       setFormError('المدة بين 1 و 60 دقيقة');
       return;
     }
+    if (form.transitionGraceSeconds < 0 || form.transitionGraceSeconds > 60) {
+      setFormError('مدة الانتقال بين السيارات بين 0 و 60 ثانية');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -647,6 +656,7 @@ function SessionFormModal({
           name: form.name.trim(),
           scheduledStart,
           durationMinPerCar: form.durationMinPerCar,
+          transitionGraceSeconds: form.transitionGraceSeconds,
           recurringDaily: form.recurringDaily ? 1 : 0,
           recurringTime: form.recurringDaily ? form.recurringTime || null : null,
         };
@@ -672,6 +682,7 @@ function SessionFormModal({
           category: form.category,
           scheduledStart,
           durationMinPerCar: form.durationMinPerCar,
+          transitionGraceSeconds: form.transitionGraceSeconds,
           carIds: form.carIds,
         };
         if (form.recurringDaily) {
@@ -797,6 +808,22 @@ function SessionFormModal({
               onChange={e => setForm(f => ({ ...f, durationMinPerCar: Number(e.target.value) || 5 }))}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-orange-500"
             />
+          </div>
+
+          {/* Transition grace between cars */}
+          <div>
+            <label className="block text-xs font-black text-slate-400 mb-1.5 uppercase">مدة الانتقال بين السيارات (ثوان)</label>
+            <input
+              type="number"
+              min={0}
+              max={60}
+              value={form.transitionGraceSeconds}
+              onChange={e => setForm(f => ({ ...f, transitionGraceSeconds: Number(e.target.value) }))}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-orange-500"
+            />
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">
+              الوقت الذي تظهر فيه شاشة "السيارة القادمة هي ..." قبل بدء مزاد السيارة التالية. الافتراضي 7 ثوان.
+            </p>
           </div>
 
           {/* Recurring */}
