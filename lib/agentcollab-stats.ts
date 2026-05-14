@@ -28,14 +28,16 @@
  *     server so the operator can see "[agentcollab-stats]" lines.
  */
 import crypto from 'crypto';
+import { getKeys } from './agentcollab-bootstrap.ts';
 
 const TIMEOUT_MS = 10_000;
 const PUSH_INTERVAL_MS = 60 * 60 * 1000;   // 1 hour
 const FIRST_PUSH_DELAY_MS = 30 * 1000;     // 30 seconds after boot
 
 function isEnabled(): boolean {
-  return String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() === 'true'
-    && !!process.env.AGENTCOLLAB_API_KEY;
+  if (String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() !== 'true') return false;
+  // [phase-5] Read live — bootstrap may rotate the key on restart.
+  return !!getKeys().api_key;
 }
 
 function baseUrl(): string {
@@ -185,14 +187,16 @@ export async function pushStatsSnapshot(db: any): Promise<void> {
 
   const snapshot = buildSnapshot(db);
   const body = JSON.stringify(snapshot);
+  // [phase-5] Read keys at call time — bootstrap populates them async, so
+  // capturing at module load would freeze the empty pre-bootstrap values.
+  const keys = getKeys();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.AGENTCOLLAB_API_KEY}`,
+    'Authorization': `Bearer ${keys.api_key}`,
   };
 
-  const hmacSecret = process.env.AGENTCOLLAB_HMAC_SECRET || '';
-  if (hmacSecret) {
-    const sig = crypto.createHmac('sha256', hmacSecret).update(body).digest('hex');
+  if (keys.hmac_secret) {
+    const sig = crypto.createHmac('sha256', keys.hmac_secret).update(body).digest('hex');
     headers['X-AgentCollab-Signature'] = `sha256=${sig}`;
   }
 

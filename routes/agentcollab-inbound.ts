@@ -30,6 +30,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import type { AppContext } from '../lib/types.ts';
+import { getKeys } from '../lib/agentcollab-bootstrap.ts';
 
 type EntityType = 'customer' | 'order' | 'employee' | 'product';
 const VALID_ENTITIES: EntityType[] = ['customer', 'order', 'employee', 'product'];
@@ -362,8 +363,12 @@ export function registerAgentCollabInboundRoutes(ctx: AppContext) {
 
   // Auth middleware.
   router.use((req: any, res: any, next: any) => {
+    // [phase-5] Resolve keys per-request — bootstrap may have refreshed them
+    // since boot (e.g. after a key rotation in AgentCollab + restart).
+    const keys = getKeys();
+
     // 1. Bearer
-    const expectedToken = process.env.AGENTCOLLAB_OUTBOUND_TOKEN || '';
+    const expectedToken = keys.outbound_token || '';
     if (!expectedToken) {
       return res.status(503).json({ detail: 'AGENTCOLLAB_OUTBOUND_TOKEN not configured' });
     }
@@ -376,7 +381,7 @@ export function registerAgentCollabInboundRoutes(ctx: AppContext) {
     }
 
     // 2. HMAC (only if secret configured)
-    const hmacSecret = process.env.AGENTCOLLAB_HMAC_SECRET || '';
+    const hmacSecret = keys.hmac_secret || '';
     if (hmacSecret) {
       const sigHeader = String(req.headers['x-agentcollab-signature'] || '');
       const sent = sigHeader.startsWith('sha256=') ? sigHeader.slice(7) : sigHeader;

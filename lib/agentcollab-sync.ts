@@ -34,6 +34,7 @@
  *   - Idempotent scheduling — multiple boot calls register one timer.
  */
 import crypto from 'crypto';
+import { getKeys } from './agentcollab-bootstrap.ts';
 
 const TIMEOUT_MS = 30_000;
 const SYNC_INTERVAL_MS = 30 * 60 * 1000;   // 30 minutes
@@ -44,8 +45,10 @@ const MAX_ROWS_PER_ENTITY = 5000;           // safety ceiling per cycle
 type EntityType = 'customers' | 'orders' | 'employees' | 'products';
 
 function isEnabled(): boolean {
-  return String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() === 'true'
-    && !!process.env.AGENTCOLLAB_API_KEY;
+  if (String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() !== 'true') return false;
+  // [phase-5] Read live so a key rotation picked up at next bootstrap
+  // is reflected here without a code change.
+  return !!getKeys().api_key;
 }
 
 function baseUrl(): string {
@@ -274,13 +277,14 @@ interface BatchResult {
 
 async function postBatch(entityType: EntityType, items: any[]): Promise<BatchResult | null> {
   const body = JSON.stringify({ items });
+  // [phase-5] Resolve keys at call time, never at module load.
+  const keys = getKeys();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.AGENTCOLLAB_API_KEY}`,
+    'Authorization': `Bearer ${keys.api_key}`,
   };
-  const hmacSecret = process.env.AGENTCOLLAB_HMAC_SECRET || '';
-  if (hmacSecret) {
-    const sig = crypto.createHmac('sha256', hmacSecret).update(body).digest('hex');
+  if (keys.hmac_secret) {
+    const sig = crypto.createHmac('sha256', keys.hmac_secret).update(body).digest('hex');
     headers['X-AgentCollab-Signature'] = `sha256=${sig}`;
   }
 

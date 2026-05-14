@@ -23,6 +23,7 @@ import { registerOfficeInfoRoutes } from './routes/office-info.ts';
 import { registerPaymentVerificationRoutes } from './routes/payment-verification.ts';
 import { registerPaymentPhase3Routes } from './routes/payment-phase3.ts';
 import { registerAuctionSessionsRoutes } from './routes/auction-sessions.ts';
+import { bootstrapKeys } from './lib/agentcollab-bootstrap.ts';
 import { scheduleHourlyStatsPush } from './lib/agentcollab-stats.ts';
 import { scheduleEntitySync } from './lib/agentcollab-sync.ts';
 import { registerAgentCollabInboundRoutes } from './routes/agentcollab-inbound.ts';
@@ -4674,6 +4675,16 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerSupportRoutes(ctx as any); console.log('[BOOT] ✓ support routes'); } catch (e: any) { console.error('[BOOT] support routes failed:', e?.message); }
   registerSocketHandlers(ctx as any);
   console.log('[BOOT] ✓ socket handlers');
+
+  // [agentcollab-phase-5] Fetch fresh AgentCollab keys before any push/sync
+  // module runs. If AGENTCOLLAB_BOOTSTRAP_TOKEN is unset, this is a no-op
+  // and the modules below fall back to the legacy env vars via getKeys().
+  try {
+    await bootstrapKeys();
+    console.log('[BOOT] ✓ agentcollab-bootstrap fetched keys');
+  } catch (e: any) {
+    console.error('[BOOT] agentcollab-bootstrap failed (continuing with legacy env):', e?.message);
+  }
 
   // [agentcollab-phase-2a] Hourly summary stats push. Re-uses the same
   // env vars as the existing Phase-1 webhook — no new secret. Safe no-op
