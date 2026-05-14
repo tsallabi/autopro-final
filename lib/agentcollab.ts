@@ -17,6 +17,7 @@
  *   - No PII beyond the optional external_user_email passed by the caller.
  */
 import crypto from 'crypto';
+import { getKeys } from './agentcollab-bootstrap.ts';
 
 export type EventType =
   | 'user.signup' | 'user.login' | 'user.churn'
@@ -39,9 +40,11 @@ const MAX_RETRIES = 2;          // total attempts = MAX_RETRIES + 1
 const RETRY_BASE_MS = 500;
 
 function isEnabled(): boolean {
-  return String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() === 'true'
-    && !!process.env.AGENTCOLLAB_WEBHOOK_URL
-    && !!process.env.AGENTCOLLAB_API_KEY;
+  if (String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() !== 'true') return false;
+  // [phase-5] Resolve via bootstrap cache so a key rotation picked up at
+  // the last restart is reflected here automatically.
+  const k = getKeys();
+  return !!k.webhook_url && !!k.api_key;
 }
 
 function signBody(rawBody: string, secret: string): string {
@@ -75,13 +78,16 @@ export function track(eventType: EventType, payload: Record<string, any>, opts: 
   };
 
   const rawBody = JSON.stringify(body);
-  const secret = process.env.AGENTCOLLAB_HMAC_SECRET || '';
+  // [phase-5] Read keys at call time (after isEnabled passed) — bootstrap
+  // populates the cache async, so we must never freeze pre-bootstrap values.
+  const keys = getKeys();
+  const secret = keys.hmac_secret || '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.AGENTCOLLAB_API_KEY}`,
+    'Authorization': `Bearer ${keys.api_key}`,
     'X-AgentCollab-Signature': signBody(rawBody, secret),
   };
-  const url = process.env.AGENTCOLLAB_WEBHOOK_URL!;
+  const url = keys.webhook_url;
 
   // Fire-and-forget — caller is not blocked.
   (async () => {
