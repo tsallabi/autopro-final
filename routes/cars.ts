@@ -138,7 +138,20 @@ export function registerCarRoutes(ctx: AppContext) {
 
   // GET /api/cars — list all cars (public)
   app.get("/api/cars", (req, res) => {
-    const cars: any[] = db.prepare("SELECT * FROM cars").all();
+    // [session-countdown] LEFT JOIN auction_sessions so the marketplace
+    // card timer can show "بعد X ساعة" for cars in a scheduled session.
+    // Without the join, upcoming cars bound to a session show "لا يوجد
+    // موعد" because their own auctionStartTime is still NULL — the
+    // session scheduler only sets it when the session opens.
+    const cars: any[] = db.prepare(`
+      SELECT c.*,
+             s.scheduledStart AS sessionScheduledStart,
+             s.name           AS sessionName,
+             s.status         AS sessionStatus,
+             s.category       AS sessionCategory
+        FROM cars c
+        LEFT JOIN auction_sessions s ON c.sessionId = s.id
+    `).all();
     res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
   });
 

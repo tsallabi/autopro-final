@@ -28,7 +28,16 @@ const ListCarTimer = ({ car }: { car: Car }) => {
   useEffect(() => {
     const updateCountdown = () => {
       let targetTime = 0;
-      if (car.status === 'upcoming' && car.auctionStartTime) {
+      // [session-countdown] If the car is bound to a scheduled auction
+      // session, count down to the session's start instead of falling
+      // back to "لا موعد". The backend now joins session info into
+      // /api/cars so the countdown works for upcoming cars whose own
+      // auctionStartTime hasn't been set yet.
+      const sessionStart = (car as any).sessionScheduledStart;
+      const sessionStatus = (car as any).sessionStatus;
+      if (car.status === 'upcoming' && sessionStart && sessionStatus === 'scheduled') {
+        targetTime = new Date(sessionStart).getTime();
+      } else if (car.status === 'upcoming' && car.auctionStartTime) {
         targetTime = new Date(car.auctionStartTime).getTime();
       } else if (car.status === 'live' && car.auctionEndDate) {
         targetTime = new Date(car.auctionEndDate).getTime();
@@ -1083,6 +1092,29 @@ export const Home = () => {
         <main className="flex-1 space-y-6 min-w-0 overflow-hidden w-full max-w-[100vw] pb-32 lg:pb-0 pt-0">
           {/* Featured Cars Hero Slider */}
           <FeaturedCarsSlider />
+
+          {/* [daily-auction-banner] Promotional banner above the tabs
+              — points new visitors to the daily 6 PM auction schedule. */}
+          <div
+            dir="rtl"
+            className="mt-2 mb-4 bg-gradient-to-l from-orange-500 via-orange-600 to-amber-600 text-white rounded-2xl p-4 sm:p-5 shadow-lg shadow-orange-500/20 flex items-center justify-between gap-3 flex-wrap"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-[260px]">
+              <div className="text-3xl sm:text-4xl shrink-0">🔥</div>
+              <div className="min-w-0">
+                <div className="font-black text-sm sm:text-base">مزادات يومية تبدأ الساعة 6 مساءً بتوقيت ليبيا</div>
+                <div className="text-[11px] sm:text-xs font-bold text-orange-50 mt-0.5">
+                  سجّل اليوم وادفع العربون لتتمكّن من المزايدة والفوز بسيارتك
+                </div>
+              </div>
+            </div>
+            <a
+              href="/auth"
+              className="bg-white text-orange-600 hover:bg-orange-50 font-black px-4 py-2 rounded-xl text-xs sm:text-sm shadow-md transition-all active:scale-95 whitespace-nowrap"
+            >
+              سجّل وادفع العربون ←
+            </a>
+          </div>
 
           {/* Tabs Bar Sticky Fix */}
           <div className="flex items-center gap-2 overflow-x-auto pb-4 pt-2 mb-4 scrollbar-hide min-w-0 w-full max-w-[100vw] lg:sticky lg:top-[85px] sticky top-[40px] z-[40] bg-[#F8FAFC]">

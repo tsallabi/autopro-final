@@ -8064,6 +8064,17 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       const now = new Date().toISOString();
       if (action === 'approve') {
         db.prepare("UPDATE users SET kycStatus = 'approved' WHERE id = ?").run(userId);
+        // [kyc-unstick] Also flip status='active' if currently pending —
+        // matches the behavior of /api/admin/kyc/:userId/approve. Without
+        // this, the user stays in the KYC Center list because the query
+        // matches on (kycStatus != approved OR status = pending_approval).
+        // Conservative: only touches pending_approval (or NULL/empty);
+        // banned/suspended/rejected accounts stay as-is. Does NOT enable
+        // bidding — biddingEnabled remains a separate explicit toggle.
+        db.prepare(`UPDATE users
+                       SET status = 'active'
+                     WHERE id = ?
+                       AND COALESCE(status, '') IN ('', 'pending_approval')`).run(userId);
         db.prepare("UPDATE kyc_documents SET status = 'approved', reviewedAt = ?, reviewNote = ? WHERE userId = ? AND status = 'pending'")
           .run(now, notes || '', userId);
         try { sendNotification(userId, '✅ تم توثيق حسابك (KYC)', 'تمت مراجعة وثائقك وتوثيق حسابك.', 'success'); } catch (_) {}
