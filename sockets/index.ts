@@ -140,16 +140,19 @@ export function registerSocketHandlers(ctx: AppContext) {
             io.to(carId).emit("car_updated", { id: carId, auctionEndDate: newEndDate });
 
             const addedSec = Math.ceil(addedMs / 1000);
-            // [stuck-transition-fix] Only shift LEGACY (sessionless) upcoming
-            // cars. Session cars are ordered by the session scheduler — adding
-            // future end dates to them causes tickAuctionSessions to skip them
-            // and the rotation gets stuck on the just-finalized car.
+            // [schedule-shifts-on-extensions] Shift every upcoming car's
+            // auctionStartTime forward by the same amount the current car was
+            // extended. This keeps the user-visible schedule honest: if a bid
+            // war on car 1 pushes it 30 s past its window, cars 2, 3, ...
+            // slide 30 s later too. Session cars now have a per-car
+            // auctionStartTime (set by attachCars) so the picker's
+            // ORDER BY auctionStartTime stays correct even after shifts.
+            // datetime(NULL, ...) returns NULL, so NULL columns are no-ops.
             db.prepare(`
                 UPDATE cars
                 SET auctionEndDate = datetime(auctionEndDate, '+' || ? || ' seconds'),
                     auctionStartTime = datetime(auctionStartTime, '+' || ? || ' seconds')
                 WHERE status = 'upcoming'
-                  AND (sessionId IS NULL OR sessionId = '')
             `).run(addedSec, addedSec);
 
             io.emit("upcoming_cars_shifted", { shiftMs: addedMs });
