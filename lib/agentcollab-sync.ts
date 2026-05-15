@@ -164,8 +164,11 @@ interface ProductRow {
 
 function buildProducts(db: any): ProductRow[] {
   try {
+    // [schema-fix] The cars table column is `odometer`, not `mileage`.
+    // Selecting `mileage` was raising "no such column" inside the try/catch
+    // and quietly aborting every products sync.
     const rows: any[] = db.prepare(`
-      SELECT id, lotNumber, vin, make, model, year, mileage, currentBid,
+      SELECT id, lotNumber, vin, make, model, year, odometer, currentBid,
              reservePrice, buyItNow, status, category, sessionId,
              location, primaryDamage, titleType
         FROM cars
@@ -190,7 +193,7 @@ function buildProducts(db: any): ProductRow[] {
           make: c.make,
           model: c.model,
           year: c.year,
-          mileage: c.mileage,
+          mileage: c.odometer ?? null,
           current_bid: Number(c.currentBid) || 0,
           reserve_price: Number(c.reservePrice) || 0,
           buy_it_now: Number(c.buyItNow) || 0,
