@@ -26,13 +26,31 @@ const ListCarTimer = ({ car }: { car: Car }) => {
   const [timeLeft, setTimeLeft] = useState('00:00:00');
 
   useEffect(() => {
+    // [daily-auction-fallback] Every car (whether upcoming or in offer_market)
+    // eventually enters the daily 6 PM Libya live auction. When a car has no
+    // car-specific or session-specific time set yet, fall back to the next
+    // occurrence of 6 PM Libya time instead of showing "لا يوجد موعد".
+    //
+    // Libya is UTC+2 with no DST → 18:00 Libya = 16:00 UTC.
+    const nextDailyAuctionMs = (): number => {
+      const DAILY_HOUR_LIBYA = 18;
+      const targetUtcHour = DAILY_HOUR_LIBYA - 2;
+      const now = new Date();
+      const today = new Date(Date.UTC(
+        now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+        targetUtcHour, 0, 0, 0
+      ));
+      if (today.getTime() <= now.getTime()) {
+        today.setUTCDate(today.getUTCDate() + 1);
+      }
+      return today.getTime();
+    };
+
     const updateCountdown = () => {
       let targetTime = 0;
       // [session-countdown] If the car is bound to a scheduled auction
-      // session, count down to the session's start instead of falling
-      // back to "لا موعد". The backend now joins session info into
-      // /api/cars so the countdown works for upcoming cars whose own
-      // auctionStartTime hasn't been set yet.
+      // session, count down to the session's start. Backend joins session
+      // info into /api/cars.
       const sessionStart = (car as any).sessionScheduledStart;
       const sessionStatus = (car as any).sessionStatus;
       if (car.status === 'upcoming' && sessionStart && sessionStatus === 'scheduled') {
@@ -41,6 +59,10 @@ const ListCarTimer = ({ car }: { car: Car }) => {
         targetTime = new Date(car.auctionStartTime).getTime();
       } else if (car.status === 'live' && car.auctionEndDate) {
         targetTime = new Date(car.auctionEndDate).getTime();
+      } else if (car.status === 'upcoming' || car.status === 'offer_market') {
+        // [daily-auction-fallback] Show the next 6 PM Libya time so the
+        // user knows when this car (re-)enters the live auction.
+        targetTime = nextDailyAuctionMs();
       }
 
       if (!targetTime) {
