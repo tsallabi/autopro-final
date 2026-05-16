@@ -244,6 +244,15 @@ export default function PaymentVerificationPanel() {
     }
   }
 
+  // Normalize a phone for wa.me — keep only digits, drop the leading +.
+  // Libya numbers usually start with 218 country code; if the user typed
+  // a local 09... we add the 218 prefix so wa.me works.
+  function toWaLink(phone: string, text: string): string {
+    let digits = String(phone).replace(/[^\d]/g, '');
+    if (digits.startsWith('0')) digits = '218' + digits.slice(1);
+    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+  }
+
   async function handleContact() {
     if (!activeId) return;
     setSubmitting(true);
@@ -256,7 +265,20 @@ export default function PaymentVerificationPanel() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('✓ تم إرسال الرسالة');
+        const d = data?.delivery || {};
+        const parts: string[] = [];
+        if (d.inApp) parts.push('إشعار داخلي');
+        if (d.email) parts.push(`إيميل (${d.emailTo})`);
+        if (!d.email && d.emailError) parts.push(`فشل الإيميل: ${d.emailError}`);
+
+        // If the user has a phone, also open WhatsApp with the same message
+        // so the admin can press send and the customer sees it immediately.
+        if (d.phone) {
+          const waText = `${data?.subject || ''}\n\n${data?.plainMessage || ''}`.trim();
+          window.open(toWaLink(d.phone, waText), '_blank', 'noopener,noreferrer');
+          parts.push('فتح واتساب');
+        }
+        showToast(parts.length ? `✓ ${parts.join(' · ')}` : '✓ تم الإرسال');
         cancelAction();
       } else {
         showToast(data?.error || 'فشل الإرسال');
@@ -445,7 +467,28 @@ export default function PaymentVerificationPanel() {
 
                     {!isActive && (
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-                        <button onClick={() => startAction(req, 'contact')} type="button" style={btn('#3b82f6')}>💬 مراسلة</button>
+                        <button onClick={() => startAction(req, 'contact')} type="button" style={btn('#3b82f6')}>💬 مراسلة (إيميل + داخلي)</button>
+                        {req.phone && (
+                          <a
+                            href={toWaLink(
+                              req.phone,
+                              `مرحباً ${req.firstName || ''}،\n\nبخصوص طلب شحن محفظتك بمبلغ $${Number(req.amount).toLocaleString('en-US')} على AutoPro Libya — يرجى التواصل معنا لإكمال الإجراء.\n\nشكراً.`,
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...btn('#22c55e'), textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                          >
+                            💚 واتساب
+                          </a>
+                        )}
+                        {req.email && (
+                          <a
+                            href={`mailto:${req.email}?subject=${encodeURIComponent('بخصوص طلب شحن محفظتك في AutoPro Libya')}&body=${encodeURIComponent(`مرحباً ${req.firstName || ''}،\n\nبخصوص طلب شحن محفظتك بمبلغ $${Number(req.amount).toLocaleString('en-US')} — يرجى التواصل معنا لإكمال الإجراء.\n\nشكراً،\nفريق AutoPro Libya`)}`}
+                            style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                          >
+                            📧 إيميل
+                          </a>
+                        )}
                         <button onClick={() => startAction(req, 'verify')} type="button" style={btn('#16a34a')}>✅ تأكيد الاستلام</button>
                         <button onClick={() => startAction(req, 'reject')} type="button" style={btn('#dc2626')}>❌ رفض</button>
                       </div>

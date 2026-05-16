@@ -40,7 +40,11 @@ export const WalletPage = () => {
 
     /* top-up form */
     const [topupAmount, setTopupAmount] = useState('');
-    const [topupMethod, setTopupMethod] = useState('bank_transfer');
+    // [mypay-first] Default to MyPay (electronic payment) so the user sees the
+    // instant flow first and bank-transfer becomes the explicit "I prefer
+    // offline" choice. The string `mypay_card` is intercepted in handleTopup
+    // and routed to the MyPay checkout endpoint.
+    const [topupMethod, setTopupMethod] = useState('mypay_card');
     const [topupRef, setTopupRef] = useState('');
     const [topupLoading, setTopupLoading] = useState(false);
 
@@ -83,6 +87,31 @@ export const WalletPage = () => {
         e.preventDefault();
         if (!currentUser || !topupAmount) return;
         setTopupLoading(true);
+
+        // [mypay-first] When the user chose MyPay, route through the MyPay
+        // checkout endpoint and redirect to the gateway URL. MyPay quotes in
+        // LYD, so we send `amountLYD` directly (the form input is already in
+        // dinars — same currency users think in).
+        if (topupMethod === 'mypay_card') {
+            try {
+                const res = await authFetch('/api/payments/mypay/checkout', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: currentUser.id, amountLYD: Number(topupAmount) }),
+                });
+                const data = await res.json();
+                if (res.ok && data.checkoutUrl) {
+                    window.location.href = data.checkoutUrl;
+                    return;
+                }
+                showAlert(data?.error || 'فشل فتح بوابة الدفع', 'error');
+            } catch (err: any) {
+                showAlert(err?.message || 'فشل الاتصال ببوابة الدفع', 'error');
+            } finally {
+                setTopupLoading(false);
+            }
+            return;
+        }
+
         const res = await authFetch('/api/wallet/topup', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id, amount: Number(topupAmount), method: topupMethod, referenceNo: topupRef })
@@ -90,14 +119,11 @@ export const WalletPage = () => {
         const data = await res.json();
         if (res.ok) {
             showAlert(data.message, 'success');
-            // [office-info] If non-electronic method, show the office modal so the user
-            // knows exactly HOW to pay and which reference number to mention.
             if (topupMethod === 'bank_transfer' || topupMethod === 'cash') {
                 setLastRequestRef(data.requestId || data.id || topupRef || '');
                 setOfficeModalOpen(true);
             }
             setTopupAmount(''); setTopupRef('');
-            // Don't navigate to overview if modal is open — let user read the bank info first.
             if (topupMethod !== 'bank_transfer' && topupMethod !== 'cash') {
                 setActiveTab('overview');
             }
@@ -453,28 +479,42 @@ export const WalletPage = () => {
                                     <div>
                                         <label className="block text-[11px] font-black text-slate-400 uppercase tracking-tighter mb-2">طريقة الدفع</label>
                                         <select aria-label="تحديد" title="تحديد" className={inp} value={topupMethod} onChange={e => setTopupMethod(e.target.value)}>
+                                            <option value="mypay_card">⚡ MyPay (دفع إلكتروني فوري — مُوصى به)</option>
                                             <option value="bank_transfer">تحويل بنكي</option>
                                             <option value="cash">نقداً في المكتب</option>
-                                            <option value="card">بطاقة ائتمان</option>
+                                            <option value="card">بطاقة ائتمان (يدوي)</option>
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="block text-[11px] font-black text-slate-400 uppercase tracking-tighter mb-2">رقم مرجع التحويل</label>
-                                        <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  type="text" className={inp}
-                                            value={topupRef} onChange={e => setTopupRef(e.target.value)} />
-                                    </div>
-                                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 flex items-start gap-2">
-                                        <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-                                        <p className="text-xs font-bold text-blue-700">
-                                            بعد الإرسال، سيُراجَع الطلب خلال 24 ساعة. عند الموافقة، يُضاف الرصيد تلقائياً وتصلك إشعار.
-                                            <br />
-                                            💡 يمكنك إرفاق رابط صورة وصل التحويل من تبويب "نظرة عامة" بعد الإرسال لتسريع المراجعة.
-                                        </p>
-                                    </div>
+                                    {topupMethod !== 'mypay_card' && (
+                                        <div>
+                                            <label className="block text-[11px] font-black text-slate-400 uppercase tracking-tighter mb-2">رقم مرجع التحويل</label>
+                                            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" type="text" className={inp}
+                                                value={topupRef} onChange={e => setTopupRef(e.target.value)} />
+                                        </div>
+                                    )}
+                                    {topupMethod === 'mypay_card' ? (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-start gap-2">
+                                            <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                            <p className="text-xs font-bold text-emerald-700">
+                                                ⚡ الدفع الإلكتروني الفوري عبر MyPay. سيُضاف الرصيد لمحفظتك خلال ثوانٍ بعد إتمام الدفع — بدون انتظار مراجعة.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 flex items-start gap-2">
+                                            <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                                            <p className="text-xs font-bold text-blue-700">
+                                                بعد الإرسال، سيُراجَع الطلب خلال 24 ساعة. عند الموافقة، يُضاف الرصيد تلقائياً وتصلك إشعار.
+                                                <br />
+                                                💡 يمكنك إرفاق رابط صورة وصل التحويل من تبويب "نظرة عامة" بعد الإرسال لتسريع المراجعة.
+                                            </p>
+                                        </div>
+                                    )}
                                     <button type="submit" disabled={topupLoading}
                                         className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-600/20 transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2">
                                         <Send className="w-5 h-5" />
-                                        {topupLoading ? 'جاري الإرسال...' : 'إرسال طلب الشحن'}
+                                        {topupLoading
+                                          ? (topupMethod === 'mypay_card' ? 'جاري فتح بوابة الدفع...' : 'جاري الإرسال...')
+                                          : (topupMethod === 'mypay_card' ? '⚡ الدفع الإلكتروني الآن' : 'إرسال طلب الشحن')}
                                     </button>
                                 </form>
                             </div>
