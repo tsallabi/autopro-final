@@ -260,13 +260,36 @@ export default function AuctionSessionsPanel() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => { setEditing(null); setShowCreate(true); }}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          جلسة جديدة
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={async () => {
+              if (!window.confirm('تحرير كل السيارات العالقة من جلسات منتهية؟ ستصبح متاحة لجلسة اليوم.')) return;
+              try {
+                const res = await authFetch('/api/admin/auction-sessions/free-orphans', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  alert(data?.error || 'فشل تحرير السيارات');
+                  return;
+                }
+                alert(`تم تحرير ${data?.freed ?? 0} سيارة. يمكنك الآن نقلها إلى الجلسات.`);
+                fetchSessions();
+              } catch (e: any) {
+                alert(e?.message || 'فشل تحرير السيارات');
+              }
+            }}
+            className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-black px-5 py-3 rounded-2xl border border-amber-300 transition-all active:scale-95 flex items-center gap-2"
+            title="إذا كانت السيارات متاحة في تبويب قريباً لكن الجلسة تقول 0، اضغط هنا"
+          >
+            🔓 تحرير السيارات العالقة
+          </button>
+          <button
+            onClick={() => { setEditing(null); setShowCreate(true); }}
+            className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            جلسة جديدة
+          </button>
+        </div>
       </div>
 
       {error && (

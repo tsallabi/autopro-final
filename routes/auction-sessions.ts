@@ -138,6 +138,10 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     const durationMs = (session?.durationMinPerCar || 5) * 60_000;
     const offset = existing?.c || 0;
 
+    // [orphan-recovery] A car is eligible to (re-)attach if its current
+    // sessionId is empty OR is the target session OR points at a session
+    // that has already closed/been cancelled. This lets the daily recurring
+    // session pick up cars that were never finalized yesterday.
     const stmt = db.prepare(`
       UPDATE cars
          SET sessionId = ?,
@@ -145,7 +149,14 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
              auctionEndDate = NULL,
              auctionStartTime = ?
        WHERE id = ?
-         AND (sessionId IS NULL OR sessionId = ? OR sessionId = '')
+         AND (
+           sessionId IS NULL
+           OR sessionId = ''
+           OR sessionId = ?
+           OR sessionId IN (
+             SELECT id FROM auction_sessions WHERE status IN ('closed', 'cancelled')
+           )
+         )
     `);
     let changed = 0;
     const tx = db.transaction((ids: string[]) => {
@@ -333,21 +344,28 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
       const session = getSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'الجلسة غير موجودة' });
       const cat = session.category;
+      // [orphan-recovery] "Free" includes cars in closed/cancelled sessions
+      // — yesterday's recurring instance leaves cars stranded otherwise.
+      const FREE_CLAUSE = `
+        (sessionId IS NULL
+         OR sessionId = ''
+         OR sessionId IN (SELECT id FROM auction_sessions WHERE status IN ('closed', 'cancelled')))
+      `;
       const totalFree = (db.prepare(`
         SELECT COUNT(*) AS c FROM cars
          WHERE status = 'upcoming'
-           AND (sessionId IS NULL OR sessionId = '')
+           AND ${FREE_CLAUSE}
       `).get() as any).c;
       const matchingCategory = (db.prepare(`
         SELECT COUNT(*) AS c FROM cars
          WHERE status = 'upcoming'
-           AND (sessionId IS NULL OR sessionId = '')
+           AND ${FREE_CLAUSE}
            AND category = ?
       `).get(cat) as any).c;
       const uncategorized = (db.prepare(`
         SELECT COUNT(*) AS c FROM cars
          WHERE status = 'upcoming'
-           AND (sessionId IS NULL OR sessionId = '')
+           AND ${FREE_CLAUSE}
            AND (category IS NULL OR category = '')
       `).get() as any).c;
       res.json({
@@ -383,7 +401,13 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         return res.status(400).json({ error: 'mode غير صحيح' });
       }
 
-      let where = `status = 'upcoming' AND (sessionId IS NULL OR sessionId = '')`;
+      // [orphan-recovery] Same broadened "free" semantics as the preview.
+      let where = `
+        status = 'upcoming'
+        AND (sessionId IS NULL
+             OR sessionId = ''
+             OR sessionId IN (SELECT id FROM auction_sessions WHERE status IN ('closed', 'cancelled')))
+      `;
       const params: any[] = [];
       if (mode === 'matching') {
         where += ` AND category = ?`;
@@ -408,6 +432,21 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     } catch (e: any) {
       console.error('[sessions] bulk-add failed:', e?.message);
       res.status(500).json({ error: e?.message || 'فشل النقل' });
+    }
+  });
+
+  // Admin: free all orphan cars stuck on closed/cancelled sessions.
+  // Returns how many were freed so the UI can show a clear message.
+  // Run this if the daily recurring auction reports 0 cars even though the
+  // "قريباً" tab has plenty.
+  app.post('/api/admin/auction-sessions/free-orphans', requireAdmin, (_req: any, res: any) => {
+    try {
+      const freed = freeOrphanCars();
+      try { io.emit('orphans_freed', { count: freed }); } catch {}
+      res.json({ success: true, freed });
+    } catch (e: any) {
+      console.error('[sessions] free-orphans failed:', e?.message);
+      res.status(500).json({ error: e?.message || 'فشل تحرير السيارات' });
     }
   });
 
@@ -679,6 +718,20 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
         `).get(s.id);
 
         if (remaining && remaining.c === 0) {
+          // [orphan-cleanup] Free any cars that were attached but never made
+          // it through the rotation (e.g. session ran out of time or was
+          // partially completed). Without this, those cars stay bound to a
+          // closed session and are invisible to bulk-add / recurring-attach
+          // queries that filter on `sessionId IS NULL`.
+          //
+          // Only touches upcoming cars — sold (closed/winnerId) and offer-
+          // market cars keep the sessionId for audit/history.
+          db.prepare(`
+            UPDATE cars
+               SET sessionId = NULL
+             WHERE sessionId = ?
+               AND status = 'upcoming'
+          `).run(s.id);
           db.prepare(`
             UPDATE auction_sessions
                SET status = 'closed', actualEnd = ?
@@ -756,12 +809,16 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
             now,
           );
 
-          // Auto-populate from inventory: free upcoming cars in this category.
+          // [orphan-recovery] Auto-populate from inventory: include cars whose
+          // last session has closed/cancelled. Otherwise yesterday's leftover
+          // cars stay stranded with sessionId pointing at a closed row.
           const free: any[] = db.prepare(`
             SELECT id FROM cars
              WHERE status = 'upcoming'
                AND category = ?
-               AND (sessionId IS NULL OR sessionId = '')
+               AND (sessionId IS NULL
+                    OR sessionId = ''
+                    OR sessionId IN (SELECT id FROM auction_sessions WHERE status IN ('closed', 'cancelled')))
           `).all(t.category);
           if (free.length > 0) {
             attachCars(id, t.category as Category, free.map((c: any) => c.id));
@@ -822,6 +879,36 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
   // schedule fix landed would still sort unpredictably and the frontend's
   // "next car" announcement could disagree with what actually activates.
   // ──────────────────────────────────────────────────────────────────
+  /**
+   * One-time orphan cleanup: any upcoming car whose sessionId points at a
+   * closed/cancelled session has its sessionId cleared. Returns the number
+   * of cars freed so the boot log shows clear evidence of cleanup.
+   *
+   * This is the recovery path for cars that pre-date the "close session
+   * frees its upcoming queue" fix landed in this same patch.
+   */
+  function freeOrphanCars(): number {
+    try {
+      const result: any = db.prepare(`
+        UPDATE cars
+           SET sessionId = NULL
+         WHERE status = 'upcoming'
+           AND sessionId IS NOT NULL
+           AND sessionId != ''
+           AND sessionId IN (
+             SELECT id FROM auction_sessions WHERE status IN ('closed', 'cancelled')
+           )
+      `).run();
+      if (result && result.changes > 0) {
+        console.log(`[sessions] freed ${result.changes} orphan cars from closed/cancelled sessions`);
+      }
+      return result?.changes || 0;
+    } catch (e: any) {
+      console.error('[sessions] freeOrphanCars failed:', e?.message);
+      return 0;
+    }
+  }
+
   function backfillSessionSchedule(): void {
     try {
       const sessions: any[] = db.prepare(`
@@ -858,6 +945,12 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
   // Start background loops.
   // ──────────────────────────────────────────────────────────────────
   if (!DISABLED) {
+    // [orphan-recovery] Free cars stuck on yesterday's closed session BEFORE
+    // ensureRecurringSessions runs — so today's recurring instance picks them
+    // up via its category filter.
+    try { freeOrphanCars(); } catch (e: any) {
+      console.error('[sessions] initial freeOrphanCars crashed:', e?.message);
+    }
     // Run schedule backfill once at boot so existing sessions get sane times.
     try { backfillSessionSchedule(); } catch (e: any) {
       console.error('[sessions] initial backfillSessionSchedule crashed:', e?.message);
