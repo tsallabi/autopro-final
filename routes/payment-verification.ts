@@ -66,7 +66,7 @@ const TEMPLATES: Record<string, { subject: string; body: string }> = {
 };
 
 export function registerPaymentVerificationRoutes(ctx: AppContext) {
-  const { app, db, sendNotification, sendInternalMessage } = ctx as any;
+  const { app, db, sendNotification, sendInternalMessage, sendEmail } = ctx as any;
 
   // ── Schema migrations (idempotent) ─────────────────────────────────────
   ['verification_status TEXT DEFAULT \'pending\'',
@@ -283,7 +283,18 @@ export function registerPaymentVerificationRoutes(ctx: AppContext) {
   });
 
   // ── POST /api/admin/payment-verifications/:id/contact-user ─────────────
-  app.post('/api/admin/payment-verifications/:id/contact-user', requireAdmin, (req: any, res: any) => {
+  //
+  // Sends the message on every available channel so the user actually
+  // sees it instead of relying on the in-app notification alone:
+  //   • In-app notification + internal message (always)
+  //   • Email (whenever the user has one — uses sendEmail which prefers
+  //     Resend then falls back to SMTP)
+  //   • Returns the user's phone so the admin UI can build a wa.me link
+  //     and continue the conversation on WhatsApp.
+  //
+  // The response includes per-channel delivery flags so the admin can
+  // see exactly what was sent.
+  app.post('/api/admin/payment-verifications/:id/contact-user', requireAdmin, async (req: any, res: any) => {
     const { id } = req.params;
     const { template, message, customSubject } = req.body || {};
 
@@ -303,14 +314,63 @@ export function registerPaymentVerificationRoutes(ctx: AppContext) {
         return res.status(400).json({ error: 'يجب إرسال template أو message' });
       }
 
+      // Pull the user once so we have email + phone for both email send
+      // and the wa.me link the admin UI builds.
+      const user: any = db.prepare(
+        'SELECT id, firstName, lastName, email, phone FROM users WHERE id = ?'
+      ).get(pr.userId);
+
+      const delivery: { inApp: boolean; email: boolean; emailError?: string; emailTo?: string; phone?: string } = {
+        inApp: false,
+        email: false,
+      };
+
+      // (1) In-app channels (notification + internal message)
       try {
-        sendNotification(pr.userId, subject, body.slice(0, 200), 'info');
+        sendNotification(pr.userId, subject, String(body).slice(0, 200), 'info');
         sendInternalMessage('admin-1', pr.userId, subject, body);
+        delivery.inApp = true;
       } catch (e: any) {
-        return res.status(500).json({ error: 'فشل إرسال الرسالة: ' + e?.message });
+        console.error('[contact-user] in-app send failed:', e?.message);
       }
 
-      res.json({ success: true });
+      // (2) Email channel — wrap the plain text body in a simple branded HTML.
+      if (user?.email && typeof sendEmail === 'function') {
+        const greeting = user.firstName ? `مرحباً ${user.firstName}،` : 'مرحباً،';
+        const html = `
+          <div dir="rtl" style="font-family:Arial,sans-serif;padding:24px;background:#f8fafc;color:#0f172a;line-height:1.7;">
+            <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;">
+              <div style="background:#f97316;padding:24px;text-align:center;">
+                <h2 style="color:#fff;margin:0;font-size:20px;">AutoPro Libya · أوتوبرو ليبيا</h2>
+              </div>
+              <div style="padding:24px;">
+                <p style="margin:0 0 14px;font-weight:700;">${greeting}</p>
+                <h3 style="margin:0 0 12px;color:#0f172a;">${subject}</h3>
+                <p style="margin:0 0 16px;white-space:pre-wrap;">${String(body).replace(/</g, '&lt;')}</p>
+                <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
+                <p style="margin:0;font-size:12px;color:#64748b;">
+                  هذا البريد مرسل من فريق AutoPro Libya بخصوص طلب شحن المحفظة.
+                  للرد المباشر، يمكنك الرد على هذا البريد أو التواصل عبر واتساب.
+                </p>
+              </div>
+            </div>
+          </div>
+        `;
+        try {
+          await sendEmail({ to: user.email, subject, html });
+          delivery.email = true;
+          delivery.emailTo = user.email;
+        } catch (e: any) {
+          delivery.emailError = e?.message || String(e);
+          console.error(`[contact-user] email to ${user.email} failed:`, e?.message);
+        }
+      }
+
+      if (user?.phone) {
+        delivery.phone = String(user.phone);
+      }
+
+      res.json({ success: true, delivery, plainMessage: body, subject });
     } catch (e: any) {
       res.status(500).json({ error: e?.message || String(e) });
     }
