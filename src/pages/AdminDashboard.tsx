@@ -1392,6 +1392,14 @@ const PaymentRequestsPanel: React.FC = () => {
   // opened the topup request. Uses the existing
   // /api/admin/payment-verifications/:id/contact-user endpoint that powers
   // the floating panel — same backend, different surface.
+  // [contact-multichannel] Normalize a phone for wa.me — digits only, drop
+  // the leading +. Libya numbers starting with 09 get the 218 prefix.
+  const toWaLink = (phone: string, text: string): string => {
+    let digits = String(phone).replace(/[^\d]/g, '');
+    if (digits.startsWith('0')) digits = '218' + digits.slice(1);
+    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+  };
+
   const handleSendMessage = async (prId: string) => {
     if (messageTemplate === 'custom' && !messageCustom.trim()) {
       showAlert('الرجاء إدخال نص الرسالة', 'error');
@@ -1412,7 +1420,20 @@ const PaymentRequestsPanel: React.FC = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showAlert('✅ تم إرسال الرسالة', 'success');
+        // [contact-multichannel] Surface what actually went out so the admin
+        // knows the customer received it on at least one channel. Auto-open
+        // WhatsApp with the same body so the operator can press Send.
+        const d = data?.delivery || {};
+        const parts: string[] = [];
+        if (d.inApp) parts.push('إشعار داخلي');
+        if (d.email) parts.push(`إيميل (${d.emailTo})`);
+        if (!d.email && d.emailError) parts.push(`فشل الإيميل: ${d.emailError}`);
+        if (d.phone) {
+          const waText = `${data?.subject || ''}\n\n${data?.plainMessage || ''}`.trim();
+          window.open(toWaLink(d.phone, waText), '_blank', 'noopener,noreferrer');
+          parts.push('فتح واتساب');
+        }
+        showAlert(parts.length ? `✅ ${parts.join(' · ')}` : '✅ تم إرسال الرسالة', 'success');
         setMessageOpenId(null);
         setMessageCustom('');
         setMessageTemplate('request-receipt');
@@ -1628,10 +1649,33 @@ const PaymentRequestsPanel: React.FC = () => {
                               setMessageCustom('');
                             }}
                             className="text-xs font-black bg-blue-500 hover:bg-blue-400 text-white px-3 py-1.5 rounded-xl transition-all whitespace-nowrap"
-                            title="إرسال رسالة أو تعليمات الدفع"
+                            title="إرسال رسالة (إيميل + إشعار داخلي) — يفتح واتساب تلقائياً بعد الإرسال"
                           >
                             💬 مراسلة
                           </button>
+                          {pr.phone && (
+                            <a
+                              href={toWaLink(
+                                pr.phone,
+                                `مرحباً ${pr.firstName || ''}،\n\nبخصوص طلب شحن محفظتك بمبلغ $${Number(pr.amount).toLocaleString('en-US')} على AutoPro Libya — يرجى التواصل معنا لإكمال الإجراء.\n\nشكراً.`,
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-black bg-green-500 hover:bg-green-400 text-white px-3 py-1.5 rounded-xl transition-all whitespace-nowrap"
+                              title={`فتح واتساب ${pr.phone}`}
+                            >
+                              💚 واتساب
+                            </a>
+                          )}
+                          {pr.email && (
+                            <a
+                              href={`mailto:${pr.email}?subject=${encodeURIComponent('بخصوص طلب شحن محفظتك في AutoPro Libya')}&body=${encodeURIComponent(`مرحباً ${pr.firstName || ''}،\n\nبخصوص طلب شحن محفظتك بمبلغ $${Number(pr.amount).toLocaleString('en-US')} — يرجى التواصل معنا لإكمال الإجراء.\n\nشكراً،\nفريق AutoPro Libya`)}`}
+                              className="text-xs font-black bg-sky-500 hover:bg-sky-400 text-white px-3 py-1.5 rounded-xl transition-all whitespace-nowrap"
+                              title={`إرسال إيميل ${pr.email}`}
+                            >
+                              📧 إيميل
+                            </a>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-slate-400 font-bold">{pr.adminNote || 'تمت المعالجة'}</span>
