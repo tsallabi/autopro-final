@@ -908,16 +908,34 @@ export function registerAdminRoutes(ctx: AppContext) {
     // Also `COALESCE(u.role, '') != 'admin'` — bare `u.role != 'admin'`
     // evaluates to NULL (≈ false) for users with NULL role, which would
     // silently drop them from the list.
+    //
+    // [kyc-rejected-tab] Optional ?filter= query param:
+    //   pending   → kycStatus IN ('pending', NULL, '')   (default)
+    //   rejected  → kycStatus = 'rejected'               (separate tab)
+    //   all       → everything except approved+active    (legacy behavior)
     try {
+      const filter = String(req.query?.filter || 'pending').toLowerCase();
+
+      let where: string;
+      if (filter === 'rejected') {
+        where = `COALESCE(u.kycStatus, 'pending') = 'rejected'`;
+      } else if (filter === 'all') {
+        where = `(COALESCE(u.kycStatus, 'pending') != 'approved'
+                  OR COALESCE(u.status, '') = 'pending_approval')`;
+      } else {
+        // default: pending only — actively excludes rejected users so the
+        // admin can focus on new submissions, with the rejected list as a
+        // separate tab for follow-up.
+        where = `(COALESCE(u.kycStatus, 'pending') NOT IN ('approved', 'rejected')
+                  OR COALESCE(u.status, '') = 'pending_approval')`;
+      }
+
       const users: any[] = db.prepare(`
         SELECT u.id, u.firstName, u.lastName, u.email, u.phone, u.role,
                u.kycStatus, u.status, u.joinDate,
                (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) AS docCount
           FROM users u
-         WHERE (
-                 COALESCE(u.kycStatus, 'pending') != 'approved'
-                 OR COALESCE(u.status, '') = 'pending_approval'
-               )
+         WHERE ${where}
            AND COALESCE(u.role, '') != 'admin'
          ORDER BY
            CASE WHEN (SELECT COUNT(*) FROM kyc_documents WHERE userId = u.id) > 0 THEN 0 ELSE 1 END,
@@ -933,6 +951,34 @@ export function registerAdminRoutes(ctx: AppContext) {
     } catch (e: any) {
       console.error('[kyc-pending] query failed:', e?.message);
       res.status(500).json({ error: "فشل جلب طلبات KYC" });
+    }
+  });
+
+  // [kyc-rejected-tab] Aggregated counts for the tab badges in the UI.
+  // Cheap query — one row, three COUNTs, no JOIN — runs as often as the
+  // panel re-renders.
+  app.get("/api/admin/kyc-counts", requireAdmin, (_req, res) => {
+    try {
+      const counts: any = db.prepare(`
+        SELECT
+          SUM(CASE WHEN COALESCE(kycStatus,'pending') NOT IN ('approved','rejected')
+                    OR COALESCE(status,'') = 'pending_approval'
+                   THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN COALESCE(kycStatus,'pending') = 'rejected'
+                   THEN 1 ELSE 0 END) AS rejected,
+          SUM(CASE WHEN COALESCE(kycStatus,'pending') = 'approved'
+                   THEN 1 ELSE 0 END) AS approved
+        FROM users
+        WHERE COALESCE(role,'') != 'admin'
+      `).get();
+      res.json({
+        pending: counts?.pending || 0,
+        rejected: counts?.rejected || 0,
+        approved: counts?.approved || 0,
+      });
+    } catch (e: any) {
+      console.error('[kyc-counts] failed:', e?.message);
+      res.status(500).json({ error: 'فشل جلب الإحصاءات' });
     }
   });
 

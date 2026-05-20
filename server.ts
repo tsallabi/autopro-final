@@ -8103,6 +8103,28 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // [kyc-rejected-tab] Re-open a previously-rejected KYC. Flips the user
+  // back to 'pending' and re-opens their previously-rejected documents so
+  // the admin can review again after the user resubmits. Different from
+  // delete — the user record and their history remain intact.
+  app.post("/api/admin/users/:userId/kyc-reopen", requireAdmin, (req, res) => {
+    const { userId } = req.params;
+    try {
+      const u: any = db.prepare("SELECT id, kycStatus FROM users WHERE id = ?").get(userId);
+      if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      if (u.kycStatus !== 'rejected') {
+        return res.status(400).json({ error: 'يمكن إعادة فتح طلبات مرفوضة فقط' });
+      }
+      const now = new Date().toISOString();
+      db.prepare("UPDATE users SET kycStatus = 'pending' WHERE id = ?").run(userId);
+      db.prepare("UPDATE kyc_documents SET status = 'pending', reviewedAt = ?, reviewNote = '' WHERE userId = ? AND status = 'rejected'").run(now, userId);
+      try { sendNotification(userId, '🔄 تم فتح طلب التوثيق مجدداً', 'يمكنك الآن إعادة رفع الوثائق المطلوبة لإكمال التوثيق.', 'info'); } catch (_) {}
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'KYC reopen failed' });
+    }
+  });
+
   // 6) POST /api/bids/:bidId/reject-counter — mark bid as rejected_counter
   app.post("/api/bids/:bidId/reject-counter", requireAuth, (req, res) => {
     const { bidId } = req.params;

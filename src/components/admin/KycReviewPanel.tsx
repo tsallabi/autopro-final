@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, UserCheck, UserX, Clock, MapPin, Phone, Mail, Building, FileText, Download, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldCheck, UserCheck, UserX, Clock, Phone, Mail, Building, FileText, Download, AlertCircle, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { authFetch } from '../../context/StoreContext';
 
 interface KycReviewPanelProps {
@@ -8,18 +8,26 @@ interface KycReviewPanelProps {
   showAlert: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+type Tab = 'pending' | 'rejected' | 'all';
+
+// [kyc-rejected-tab] Normalize Libya phone numbers for wa.me — strip
+// non-digits, prepend 218 if the user typed local 09… format.
+const toWaLink = (phone: string, text: string): string => {
+  let digits = String(phone).replace(/[^\d]/g, '');
+  if (digits.startsWith('0')) digits = '218' + digits.slice(1);
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+};
+
 export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ kycUsers, setKycUsers, showAlert }) => {
   const [loading, setLoading] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('pending');
+  const [counts, setCounts] = useState<{ pending: number; rejected: number; approved: number }>({ pending: 0, rejected: 0, approved: 0 });
 
   useEffect(() => {
     setLoading(true);
-    // authFetch (not raw fetch) so the admin's JWT travels with the
-    // request — /api/admin/kyc-pending requires admin role. Previously
-    // the panel silently showed "no pending" because the unauthenticated
-    // call returned 401 and the catch swallowed the error.
-    authFetch('/api/admin/kyc-pending')
+    authFetch(`/api/admin/kyc-pending?filter=${tab}`)
       .then(res => res.json())
       .then(data => {
         setKycUsers(Array.isArray(data) ? data : []);
@@ -29,13 +37,22 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ kycUsers, setKyc
         console.error('[kyc-pending] load failed', e);
         setLoading(false);
       });
-  }, [refresh, setKycUsers]);
+    // Counts refresh in parallel — cheap aggregate query.
+    authFetch('/api/admin/kyc-counts')
+      .then(res => res.json())
+      .then(data => setCounts({
+        pending: data?.pending || 0,
+        rejected: data?.rejected || 0,
+        approved: data?.approved || 0,
+      }))
+      .catch(() => {});
+  }, [refresh, setKycUsers, tab]);
 
   const handleKycAction = async (userId: string, action: 'approve' | 'reject') => {
     const isApprove = action === 'approve';
     const message = isApprove
       ? 'اعتماد KYC لهذا المستخدم؟\n\nملاحظة: هذا يعتمد الهوية فقط — لا يفعّل المزايدة. لتفعيل المزايدة، استخدم الزر المنفصل في صفحة "إدارة المستخدمين".'
-      : 'رفض طلب التوثيق؟ سيتلقى المستخدم إشعاراً بالرفض.';
+      : 'رفض طلب التوثيق؟ سيتلقى المستخدم إشعاراً بالرفض ويظهر في تبويب "مرفوضة" لمتابعته.';
     if (!window.confirm(message)) return;
 
     try {
@@ -45,10 +62,29 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ kycUsers, setKyc
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showAlert(isApprove ? '✅ تم اعتماد KYC' : '❌ تم رفض الطلب', 'success');
+        showAlert(isApprove ? '✅ تم اعتماد KYC' : '❌ تم رفض الطلب — نُقل إلى تبويب "مرفوضة"', 'success');
         setRefresh(r => r + 1);
       } else {
         showAlert(data.error || 'فشلت العملية', 'error');
+      }
+    } catch (e) {
+      showAlert('خطأ في الاتصال بالخادم', 'error');
+    }
+  };
+
+  // [kyc-rejected-tab] Re-open a previously rejected KYC so the user can
+  // resubmit. Doesn't touch the user record itself — just flips status
+  // back to 'pending' and re-opens any rejected docs for re-review.
+  const handleReopen = async (userId: string) => {
+    if (!window.confirm('إعادة فتح طلب التوثيق؟\n\nسيرجع المستخدم إلى قائمة المعلقين ويمكنه إعادة رفع الوثائق.')) return;
+    try {
+      const res = await authFetch(`/api/admin/users/${userId}/kyc-reopen`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showAlert('🔄 تم إعادة فتح الطلب — نُقل إلى "بانتظار المراجعة"', 'success');
+        setRefresh(r => r + 1);
+      } else {
+        showAlert(data.error || 'فشل إعادة الفتح', 'error');
       }
     } catch (e) {
       showAlert('خطأ في الاتصال بالخادم', 'error');
@@ -75,20 +111,59 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ kycUsers, setKyc
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
-      <div className="flex justify-between items-center mb-10 flex-wrap gap-4">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <div>
           <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3">
             <ShieldCheck className="w-8 h-8 text-violet-500" />
             مراجعة طلبات التوثيق (KYC Center)
           </h2>
-          <p className="text-slate-500 font-bold text-sm mt-1">جميع المشتركين والتجار بانتظار توثيق الهوية (يظهرون هنا حتى بدون رفع وثائق)</p>
+          <p className="text-slate-500 font-bold text-sm mt-1">المرفوضون لا يُحذفون — يبقون في تبويب "مرفوضة" للمتابعة</p>
         </div>
-        <div className="flex gap-4">
-          <div className="bg-violet-50 text-violet-600 px-6 py-3 rounded-2xl font-black text-sm border border-violet-100 flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            بانتظار المراجعة: {kycUsers.length}
-          </div>
-        </div>
+      </div>
+
+      {/* [kyc-rejected-tab] Tab bar */}
+      <div className="flex items-center gap-2 mb-8 flex-wrap">
+        <button
+          onClick={() => setTab('pending')}
+          className={`px-5 py-2.5 rounded-2xl font-black text-sm border-2 transition-all flex items-center gap-2 ${
+            tab === 'pending'
+              ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-500/20'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          بانتظار المراجعة
+          <span className={`text-xs px-2 py-0.5 rounded-full ${tab === 'pending' ? 'bg-white/20' : 'bg-slate-100'}`}>
+            {counts.pending}
+          </span>
+        </button>
+        <button
+          onClick={() => setTab('rejected')}
+          className={`px-5 py-2.5 rounded-2xl font-black text-sm border-2 transition-all flex items-center gap-2 ${
+            tab === 'rejected'
+              ? 'bg-rose-600 text-white border-rose-600 shadow-lg shadow-rose-500/20'
+              : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'
+          }`}
+        >
+          <UserX className="w-4 h-4" />
+          مرفوضة (للمتابعة)
+          <span className={`text-xs px-2 py-0.5 rounded-full ${tab === 'rejected' ? 'bg-white/20' : 'bg-rose-100'}`}>
+            {counts.rejected}
+          </span>
+        </button>
+        <button
+          onClick={() => setTab('all')}
+          className={`px-5 py-2.5 rounded-2xl font-black text-sm border-2 transition-all flex items-center gap-2 ${
+            tab === 'all'
+              ? 'bg-slate-800 text-white border-slate-800'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          الكل (غير المعتمدين)
+          <span className={`text-xs px-2 py-0.5 rounded-full ${tab === 'all' ? 'bg-white/20' : 'bg-slate-100'}`}>
+            {counts.pending + counts.rejected}
+          </span>
+        </button>
       </div>
 
       {loading && (
@@ -129,6 +204,9 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ kycUsers, setKyc
                       {isSeller
                         ? <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded">تاجر</span>
                         : <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">مشتري</span>}
+                      {user.kycStatus === 'rejected' && (
+                        <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded">❌ مرفوض</span>
+                      )}
                       <span>{user.status || 'pending'}</span>
                     </div>
                   </div>
@@ -215,15 +293,62 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ kycUsers, setKyc
             </div>
 
             {/* Actions */}
-            <div className="p-6 mt-auto bg-slate-50/50 border-t border-slate-100 flex gap-3 flex-wrap">
-              <button onClick={() => handleKycAction(user.id, 'approve')} className="flex-1 min-w-[140px] bg-emerald-600 text-white font-black py-3 rounded-2xl shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
-                <UserCheck className="w-5 h-5" />
-                اعتماد KYC
-              </button>
-              <button onClick={() => handleKycAction(user.id, 'reject')} className="px-6 bg-white text-rose-600 font-black py-3 rounded-2xl border border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center gap-2">
-                <UserX className="w-5 h-5" />
-                رفض
-              </button>
+            <div className="p-6 mt-auto bg-slate-50/50 border-t border-slate-100 flex gap-2 flex-wrap">
+              {user.kycStatus === 'rejected' ? (
+                <>
+                  {/* [kyc-rejected-tab] Rejected users keep their record but
+                      get follow-up actions: re-open, approve directly after
+                      out-of-band verification, or contact via WhatsApp/email. */}
+                  <button
+                    onClick={() => handleReopen(user.id)}
+                    className="flex-1 min-w-[140px] bg-amber-500 hover:bg-amber-600 text-white font-black py-3 rounded-2xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
+                    title="إرجاع المستخدم إلى قائمة المعلقين ليُعيد رفع الوثائق"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                    إعادة فتح
+                  </button>
+                  <button onClick={() => handleKycAction(user.id, 'approve')} className="px-5 bg-white text-emerald-600 font-black py-3 rounded-2xl border border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2">
+                    <UserCheck className="w-5 h-5" />
+                    اعتماد
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => handleKycAction(user.id, 'approve')} className="flex-1 min-w-[140px] bg-emerald-600 text-white font-black py-3 rounded-2xl shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
+                    <UserCheck className="w-5 h-5" />
+                    اعتماد KYC
+                  </button>
+                  <button onClick={() => handleKycAction(user.id, 'reject')} className="px-5 bg-white text-rose-600 font-black py-3 rounded-2xl border border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center gap-2">
+                    <UserX className="w-5 h-5" />
+                    رفض
+                  </button>
+                </>
+              )}
+
+              {/* Always-available outreach buttons */}
+              {user.phone && (
+                <a
+                  href={toWaLink(
+                    user.phone,
+                    `مرحباً ${user.firstName || ''}،\n\nبخصوص توثيق حسابك على AutoPro Libya — نحتاج لإكمال بعض الإجراءات. يرجى التواصل معنا.\n\nشكراً.`,
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 bg-white text-green-600 font-black py-3 rounded-2xl border border-green-200 hover:bg-green-50 transition-all flex items-center justify-center"
+                  title={`واتساب ${user.phone}`}
+                >
+                  💚
+                </a>
+              )}
+              {user.email && (
+                <a
+                  href={`mailto:${user.email}?subject=${encodeURIComponent('بخصوص توثيق حسابك على AutoPro Libya')}&body=${encodeURIComponent(`مرحباً ${user.firstName || ''}،\n\nبخصوص توثيق حسابك (KYC) على AutoPro Libya — نحتاج لإكمال بعض الإجراءات. يرجى التواصل معنا أو إعادة رفع الوثائق المطلوبة.\n\nشكراً،\nفريق AutoPro Libya`)}`}
+                  className="px-4 bg-white text-sky-600 font-black py-3 rounded-2xl border border-sky-200 hover:bg-sky-50 transition-all flex items-center justify-center"
+                  title={`إيميل ${user.email}`}
+                >
+                  📧
+                </a>
+              )}
             </div>
           </div>
           );
