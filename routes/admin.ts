@@ -6,6 +6,34 @@ import type { AppContext } from '../lib/types.ts';
 export function registerAdminRoutes(ctx: AppContext) {
   const { app, db, io, sendNotification, sendInternalMessage, sendEmail, walletCredit, walletDebit, completeInvoicePayment, JWT_SECRET, SITE_URL, SALT_ROUNDS, transporter } = ctx;
 
+  // [buying-power-multiplier] One-shot reconciliation at boot:
+  // every user with deposit > 0 should have buyingPower = deposit * 10.
+  // Fixes any rows that were left behind by the PUT-with-stale-buyingPower
+  // bug (admin set deposit=1000 but buyingPower stayed at 0, blocking
+  // bidding even after manual activation).
+  //
+  // Conservative: only touches rows where the mismatch is real — never
+  // raises a user who's currently exposed (has live leading bids that
+  // already lowered the available buyingPower).
+  try {
+    const fixed: any = db.prepare(`
+      UPDATE users
+         SET buyingPower = deposit * 10
+       WHERE COALESCE(deposit, 0) > 0
+         AND COALESCE(buyingPower, 0) < deposit * 10
+         AND NOT EXISTS (
+           SELECT 1 FROM cars
+            WHERE winnerId = users.id
+              AND status IN ('live', 'upcoming')
+         )
+    `).run();
+    if (fixed && fixed.changes > 0) {
+      console.log(`[buying-power-fix] reconciled ${fixed.changes} users to deposit * 10`);
+    }
+  } catch (e: any) {
+    console.error('[buying-power-fix] boot reconciliation failed:', e?.message);
+  }
+
   // ══════════════════════════════════════════════════════════════
   //  SETTINGS
   // ══════════════════════════════════════════════════════════════
@@ -512,6 +540,19 @@ export function registerAdminRoutes(ctx: AppContext) {
       db.prepare("UPDATE users SET biddingEnabled = ?, biddingEnabledAt = ?, biddingEnabledBy = ? WHERE id = ?")
         .run(flag, flag ? now : null, flag ? adminId : null, id);
 
+      // [buying-power-multiplier] Defense in depth: whenever we ACTIVATE
+      // bidding, make sure the 10x buying power is in place. This catches
+      // any user whose deposit was set via a path that didn't update
+      // buyingPower (legacy data, manual DB edits, the PUT-with-stale-
+      // buyingPower bug pre-fix).
+      if (flag) {
+        const dep = Number(user.deposit || 0);
+        const expectedBP = dep * 10;
+        if (dep > 0 && Number(user.buyingPower || 0) !== expectedBP) {
+          db.prepare("UPDATE users SET buyingPower = ? WHERE id = ?").run(expectedBP, id);
+        }
+      }
+
       if (flag) {
         try {
           sendInternalMessage('admin-1', id,
@@ -591,8 +632,22 @@ export function registerAdminRoutes(ctx: AppContext) {
         }
       }
 
-      // Auto-calculate buyingPower if deposit changed but buyingPower not specified
-      if (updates.deposit !== undefined && updates.buyingPower === undefined) {
+      // [buying-power-multiplier] If the admin changed `deposit`, ALWAYS
+      // recompute buyingPower = deposit * 10 and drop any buyingPower the
+      // client sent. The UI ships the entire selectedUser object (including
+      // the stale buyingPower from before the edit), so the old guard
+      // `updates.buyingPower === undefined` was never true and the rule
+      // silently broke: deposit=1000 left buyingPower=0 and the user
+      // couldn't bid.
+      if (updates.deposit !== undefined
+          && Number(updates.deposit) !== Number(current.deposit || 0)) {
+        // Strip any explicit buyingPower clause that the loop above added,
+        // then append the recomputed value.
+        const bpIdx = setClauses.findIndex(c => c.startsWith('buyingPower'));
+        if (bpIdx >= 0) {
+          setClauses.splice(bpIdx, 1);
+          values.splice(bpIdx, 1);
+        }
         setClauses.push('buyingPower = ?');
         values.push(Number(updates.deposit) * 10);
       }

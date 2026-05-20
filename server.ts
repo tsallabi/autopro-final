@@ -5649,8 +5649,17 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         }
       }
 
-      // Auto-calculate buyingPower if deposit changed but buyingPower not specified
-      if (updates.deposit !== undefined && updates.buyingPower === undefined) {
+      // [buying-power-multiplier] Same fix as routes/admin.ts: always
+      // recompute buyingPower from the new deposit. The admin UI sends the
+      // entire selectedUser object so buyingPower is never `undefined`,
+      // which made the old guard a no-op and silently broke the 10x rule.
+      if (updates.deposit !== undefined
+          && Number(updates.deposit) !== Number(current.deposit || 0)) {
+        const bpIdx = setClauses.findIndex(c => c.startsWith('buyingPower'));
+        if (bpIdx >= 0) {
+          setClauses.splice(bpIdx, 1);
+          values.splice(bpIdx, 1);
+        }
         setClauses.push('buyingPower = ?');
         values.push(Number(updates.deposit) * 10);
       }
