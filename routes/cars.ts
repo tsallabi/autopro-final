@@ -161,7 +161,7 @@ export function registerCarRoutes(ctx: AppContext) {
       make, model, year, vin, lotNumber, location,
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
-      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
+      buyItNow, buyNowPrice, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,
       acceptOffers, videoUrl, inspectionPdf,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
@@ -217,7 +217,7 @@ export function registerCarRoutes(ctx: AppContext) {
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
-        currentBid || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),
+        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || '', inspectionPdf || '', 'pending_approval',
         auctionEndDate || '', effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         safeCategory, safeSessionId
@@ -236,7 +236,7 @@ export function registerCarRoutes(ctx: AppContext) {
       make, model, year, vin, lotNumber, location,
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
-      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
+      buyItNow, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,
       acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
@@ -250,6 +250,21 @@ export function registerCarRoutes(ctx: AppContext) {
       const existing: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (!existing) return res.status(404).json({ error: "السيارة غير موجودة" });
 
+      // [price-fields] Resolve the opening price the admin typed in
+      // "أول سعر يبدأ به المزاد" (form field `startingBid`, also accepts
+      // `currentBid`/`startPrice`). The car row stores the opening price in
+      // `currentBid`. We only overwrite currentBid when the car hasn't gone
+      // live / received bids yet — for a live or finished car, currentBid is
+      // the real highest bid and must never be reset by an edit.
+      const openingPrice = startingBid ?? currentBid ?? startPrice;
+      const safeToSetOpening = (existing.status === 'upcoming'
+        || existing.status === 'pending_approval')
+        && Number(existing.currentBid || 0) === 0;
+      const newCurrentBid = (safeToSetOpening
+        && openingPrice !== undefined && openingPrice !== '')
+        ? Number(openingPrice) || 0
+        : existing.currentBid;
+
       db.prepare(`
         UPDATE cars SET
           make = ?, model = ?, year = ?, vin = ?, lotNumber = ?,
@@ -261,7 +276,7 @@ export function registerCarRoutes(ctx: AppContext) {
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
           drivetrain = ?, auctionEndDate = ?,
           engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?, isRecommended = ?,
-          isBuyNow = ?, buyItNow = ?
+          isBuyNow = ?, buyItNow = ?, currentBid = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -289,6 +304,7 @@ export function registerCarRoutes(ctx: AppContext) {
         isRecommended !== undefined ? (isRecommended ? 1 : 0) : existing.isRecommended ?? 0,
         isBuyNow !== undefined ? (isBuyNow ? 1 : 0) : existing.isBuyNow ?? 0,
         buyItNow ?? buyNowPrice ?? existing.buyItNow ?? null,
+        newCurrentBid,
         id
       );
 

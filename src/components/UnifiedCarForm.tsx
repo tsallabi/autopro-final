@@ -99,6 +99,15 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         category: '',
         sessionId: '',
         ...(initialData || {}),
+        // [price-fields] Map DB columns → form field names so EDIT pre-fills
+        // the opening price and buy-now correctly. The car row stores the
+        // opening price in `currentBid` and the instant-buy price in
+        // `buyItNow`, but this form's inputs are bound to `startingBid` and
+        // `buyNowPrice`. Without this remap, editing showed both fields
+        // empty and a save wiped the values. These overrides run AFTER the
+        // initialData spread so they win.
+        startingBid: initialData?.startingBid ?? initialData?.currentBid ?? '',
+        buyNowPrice: initialData?.buyNowPrice ?? initialData?.buyItNow ?? '',
     });
 
     // [auction-sessions] Load available scheduled sessions so the user can

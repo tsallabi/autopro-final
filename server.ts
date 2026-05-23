@@ -3697,7 +3697,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       make, model, year, vin, lotNumber, location,
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
-      buyItNow, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,
+      buyItNow, buyNowPrice, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,
       acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl, isRecommended, showroomName,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes
@@ -3730,7 +3730,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
-        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || 0, currency || 'USD', JSON.stringify(images || []),
+        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         engineAudioUrl || '', engineVideoUrl || '',
@@ -7318,7 +7318,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       make, model, year, vin, lotNumber, location,
       odometer, primaryDamage, titleType, engine, drive,
       transmission, status, auctionEndDate, images,
-      buyItNow, startPrice, currentBid, reservePrice, sellerId, currency,
+      buyItNow, startPrice, startingBid, currentBid, reservePrice, sellerId, currency,
       acceptOffers, videoUrl, inspectionPdf, engineAudioUrl, engineVideoUrl,
       trim, mileageUnit, engineSize, horsepower, drivetrain, fuelType,
       exteriorColor, interiorColor, secondaryDamage, keys, runsDrives, notes,
@@ -7332,6 +7332,18 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       const existing: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (!existing) return res.status(404).json({ error: "السيارة غير موجودة" });
 
+      // [price-fields] Same opening-price logic as routes/cars.ts: only set
+      // currentBid from the typed opening price for not-yet-live cars with
+      // no bids, so an edit never resets a live auction's highest bid.
+      const openingPrice = startingBid ?? currentBid ?? startPrice;
+      const safeToSetOpening = (existing.status === 'upcoming'
+        || existing.status === 'pending_approval')
+        && Number(existing.currentBid || 0) === 0;
+      const newCurrentBid = (safeToSetOpening
+        && openingPrice !== undefined && openingPrice !== '')
+        ? Number(openingPrice) || 0
+        : existing.currentBid;
+
       db.prepare(`
         UPDATE cars SET
           make = ?, model = ?, year = ?, vin = ?, lotNumber = ?,
@@ -7343,7 +7355,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           buyItNow = ?, trim = ?, mileageUnit = ?, engineSize = ?, horsepower = ?,
           drivetrain = ?, auctionEndDate = ?,
           engineAudioUrl = ?, engineVideoUrl = ?, showroomName = ?, isRecommended = ?,
-          isBuyNow = ?
+          isBuyNow = ?, currentBid = ?
         WHERE id = ?
       `).run(
         make ?? existing.make, model ?? existing.model, year ?? existing.year,
@@ -7370,6 +7382,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         showroomName ?? existing.showroomName ?? '',
         isRecommended !== undefined ? (isRecommended ? 1 : 0) : existing.isRecommended ?? 0,
         isBuyNow !== undefined ? (isBuyNow ? 1 : 0) : existing.isBuyNow ?? 0,
+        newCurrentBid,
         id
       );
 
