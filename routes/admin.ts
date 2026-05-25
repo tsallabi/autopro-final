@@ -1,6 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { requireAdmin, requireAuth } from '../lib/middleware.ts';
 import * as agentcollab from '../lib/agentcollab.ts';
+import { getKeys as getAgentCollabKeys, isEnabled as agentCollabEnabled } from '../lib/agentcollab-bootstrap.ts';
+import { runFullEntitySync } from '../lib/agentcollab-sync.ts';
+import { pushStatsSnapshot } from '../lib/agentcollab-stats.ts';
 import type { AppContext } from '../lib/types.ts';
 
 export function registerAdminRoutes(ctx: AppContext) {
@@ -2807,19 +2810,47 @@ export function registerAdminRoutes(ctx: AppContext) {
   // ── AgentCollab integration status + manual ping ──────────────────────
   // GET → reports whether env vars are set; POST → fires a test event.
   app.get("/api/admin/agentcollab/status", requireAdmin, (_req, res) => {
+    // [phase-5] Report the EFFECTIVE keys (from the bootstrap cache when
+    // bootstrap succeeded, else the legacy env vars) so the panel reflects
+    // reality instead of just whether the raw env vars are present.
+    const keys = getAgentCollabKeys();
+    const slug = process.env.AGENTCOLLAB_SLUG || process.env.AGENTCOLLAB_SITE_SLUG || 'site';
     res.json({
-      enabled: String(process.env.AGENTCOLLAB_ENABLED || '').toLowerCase() === 'true',
-      hasWebhookUrl: !!process.env.AGENTCOLLAB_WEBHOOK_URL,
-      hasApiKey: !!process.env.AGENTCOLLAB_API_KEY,
-      hasHmacSecret: !!process.env.AGENTCOLLAB_HMAC_SECRET,
-      webhookHost: process.env.AGENTCOLLAB_WEBHOOK_URL
-        ? new URL(process.env.AGENTCOLLAB_WEBHOOK_URL).host
-        : null,
+      enabled: agentCollabEnabled(),
+      hasWebhookUrl: !!keys.webhook_url,
+      hasApiKey: !!keys.api_key,
+      hasHmacSecret: !!keys.hmac_secret,
+      hasOutboundToken: !!keys.outbound_token,
+      slug,
+      webhookHost: keys.webhook_url ? (() => { try { return new URL(keys.webhook_url).host; } catch { return null; } })() : null,
     });
   });
   app.post("/api/admin/agentcollab/ping", requireAdmin, (req: any, res) => {
     agentcollab.track('custom', { source: 'admin_test_ping', triggeredBy: req.user?.email || 'unknown' });
     res.json({ success: true, sent: 'custom event ("admin_test_ping") fired' });
+  });
+
+  // [sync-now] Force a full push of every entity (customers, employees,
+  // products, orders) + the stats snapshot to AgentCollab immediately,
+  // instead of waiting for the 30-minute scheduler. Returns the per-entity
+  // counts so the admin sees exactly what was sent. "Control from one place"
+  // starts here: this makes the AutoPro data appear in AgentCollab on demand.
+  app.post("/api/admin/agentcollab/sync-now", requireAdmin, async (_req, res) => {
+    if (!agentCollabEnabled()) {
+      return res.status(503).json({
+        error: 'AgentCollab غير مُفعّل — تأكد من AGENTCOLLAB_ENABLED=true ووجود المفاتيح (bootstrap أو env).',
+      });
+    }
+    try {
+      const counts = await runFullEntitySync(db);
+      try { await pushStatsSnapshot(db); } catch (e: any) {
+        console.warn('[sync-now] stats push failed:', e?.message);
+      }
+      res.json({ success: true, counts });
+    } catch (e: any) {
+      console.error('[sync-now] failed:', e?.message);
+      res.status(500).json({ error: 'فشلت المزامنة: ' + (e?.message || '') });
+    }
   });
 
   app.get("/api/admin/dashboard-overview", requireAdmin, (_req, res) => {

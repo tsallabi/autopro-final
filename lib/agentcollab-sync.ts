@@ -56,7 +56,10 @@ function baseUrl(): string {
 }
 
 function slug(): string {
-  return process.env.AGENTCOLLAB_SITE_SLUG || 'site';
+  // [slug-unify] Read AGENTCOLLAB_SLUG first (the Phase-5 bootstrap var)
+  // so stats, sync, and bootstrap all target the SAME site. Falls back to
+  // the older AGENTCOLLAB_SITE_SLUG, then 'site'.
+  return process.env.AGENTCOLLAB_SLUG || process.env.AGENTCOLLAB_SITE_SLUG || 'site';
 }
 
 /* ============================================================
@@ -311,10 +314,10 @@ async function postBatch(entityType: EntityType, items: any[]): Promise<BatchRes
   }
 }
 
-async function syncEntity(entityType: EntityType, items: any[]): Promise<void> {
+async function syncEntity(entityType: EntityType, items: any[]): Promise<number> {
   if (!items.length) {
     console.log(`[agentcollab-sync] ${entityType}: nothing to push`);
-    return;
+    return 0;
   }
   let totalInserted = 0;
   let totalUpdated = 0;
@@ -329,22 +332,28 @@ async function syncEntity(entityType: EntityType, items: any[]): Promise<void> {
     }
   }
   console.log(`[agentcollab-sync] ${entityType}: ${items.length} pushed (${totalInserted} inserted, ${totalUpdated} updated, ${totalSkipped} skipped)`);
+  return items.length;
 }
 
 /**
  * Run one full sync cycle — all four entities, sequentially so we don't
- * burst-send four large batches simultaneously.
+ * burst-send four large batches simultaneously. Returns a per-entity count
+ * of items pushed so callers (e.g. the admin "sync now" button) can report
+ * exactly what was sent.
  */
-export async function runFullEntitySync(db: any): Promise<void> {
-  if (!isEnabled()) return;
+export async function runFullEntitySync(db: any): Promise<{ customers: number; employees: number; products: number; orders: number }> {
+  const result = { customers: 0, employees: 0, products: 0, orders: 0 };
+  if (!isEnabled()) return result;
   try {
-    await syncEntity('customers', buildCustomers(db));
-    await syncEntity('employees', buildEmployees(db));
-    await syncEntity('products',  buildProducts(db));
-    await syncEntity('orders',    buildOrders(db));
+    result.customers = await syncEntity('customers', buildCustomers(db));
+    result.employees = await syncEntity('employees', buildEmployees(db));
+    result.products  = await syncEntity('products',  buildProducts(db));
+    result.orders    = await syncEntity('orders',    buildOrders(db));
+    return result;
   } catch (e: any) {
     console.warn('[agentcollab-sync] full sync cycle failed:', e?.message);
   }
+  return result;
 }
 
 let scheduled = false;

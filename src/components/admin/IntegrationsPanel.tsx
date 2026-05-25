@@ -23,6 +23,8 @@ interface AgentCollabStatus {
   hasWebhookUrl: boolean;
   hasApiKey: boolean;
   hasHmacSecret: boolean;
+  hasOutboundToken?: boolean;
+  slug?: string;
   webhookHost: string | null;
 }
 
@@ -43,6 +45,8 @@ export default function IntegrationsPanel() {
   const [agentcollab, setAgentcollab] = useState<AgentCollabStatus | null>(null);
   const [pinging, setPinging] = useState(false);
   const [pingResult, setPingResult] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -71,6 +75,26 @@ export default function IntegrationsPanel() {
     } finally {
       setPinging(false);
       setTimeout(() => setPingResult(null), 6000);
+    }
+  }
+
+  async function syncNow() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await authFetch('/api/admin/agentcollab/sync-now', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const c = data.counts || {};
+        setSyncResult(`✅ تمت المزامنة — عملاء: ${c.customers ?? 0} · موظفون: ${c.employees ?? 0} · منتجات: ${c.products ?? 0} · طلبات: ${c.orders ?? 0}`);
+      } else {
+        setSyncResult('❌ ' + (data.error || 'فشلت المزامنة'));
+      }
+    } catch (e: any) {
+      setSyncResult('❌ ' + (e?.message || 'خطأ في الاتصال'));
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncResult(null), 12000);
     }
   }
 
@@ -143,12 +167,36 @@ export default function IntegrationsPanel() {
           <StatusDot ok={!!agentcollab?.hasWebhookUrl} label={agentcollab?.hasWebhookUrl ? 'WEBHOOK_URL مُعيَّن' : 'WEBHOOK_URL مفقود'} />
           <StatusDot ok={!!agentcollab?.hasApiKey} label={agentcollab?.hasApiKey ? 'API_KEY مُعيَّن' : 'API_KEY مفقود'} />
           <StatusDot ok={!!agentcollab?.hasHmacSecret} label={agentcollab?.hasHmacSecret ? 'HMAC_SECRET مُعيَّن' : 'HMAC_SECRET مفقود'} />
-          {agentcollab?.webhookHost && (
-            <div className="text-[11px] text-slate-500 font-mono pt-2 border-t border-slate-200">
-              host: <span className="text-slate-700 font-bold">{agentcollab.webhookHost}</span>
-            </div>
+          {agentcollab?.hasOutboundToken !== undefined && (
+            <StatusDot ok={!!agentcollab?.hasOutboundToken} label={agentcollab?.hasOutboundToken ? 'OUTBOUND_TOKEN مُعيَّن (تحكم ثنائي)' : 'OUTBOUND_TOKEN مفقود'} />
           )}
+          <div className="text-[11px] text-slate-500 font-mono pt-2 border-t border-slate-200 space-y-1">
+            {agentcollab?.slug && (
+              <div>الموقع (slug): <span className="text-slate-700 font-bold">{agentcollab.slug}</span></div>
+            )}
+            {agentcollab?.webhookHost && (
+              <div>host: <span className="text-slate-700 font-bold">{agentcollab.webhookHost}</span></div>
+            )}
+          </div>
         </div>
+
+        {/* [sync-now] Force-push everything to AgentCollab on demand */}
+        <button
+          onClick={syncNow}
+          disabled={syncing || !allAcOk}
+          className={`w-full font-black py-3 rounded-2xl transition-all mb-3 ${
+            allAcOk
+              ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          } disabled:opacity-50`}
+        >
+          {syncing ? '...جاري مزامنة كل البيانات' : '🔄 مزامنة كل البيانات الآن (عملاء + منتجات + طلبات + موظفون)'}
+        </button>
+        {syncResult && (
+          <p className={`text-xs font-bold mb-3 text-center ${syncResult.startsWith('✅') ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {syncResult}
+          </p>
+        )}
 
         <button
           onClick={pingAgentCollab}
