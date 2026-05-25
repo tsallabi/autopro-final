@@ -45,7 +45,9 @@ function baseUrl(): string {
 }
 
 function slug(): string {
-  return process.env.AGENTCOLLAB_SITE_SLUG || 'site';
+  // [slug-unify] Same precedence as sync + bootstrap so all three target
+  // the same AgentCollab site.
+  return process.env.AGENTCOLLAB_SLUG || process.env.AGENTCOLLAB_SITE_SLUG || 'site';
 }
 
 function scalar(db: any, sql: string, params: any[] = []): number {
