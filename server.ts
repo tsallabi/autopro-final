@@ -1286,6 +1286,23 @@ try { db.exec("ALTER TABLE auction_sessions ADD COLUMN transitionGraceSeconds IN
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_status_start ON auction_sessions(status, scheduledStart)`); } catch {}
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cars_session ON cars(sessionId, status)`); } catch {}
 
+// ======= BLOCKED IDENTITIES (banned / deleted users) =======
+// When an admin deletes or bans a user we record their email + phone here
+// so they can't simply re-register with the same details. Login and
+// registration both consult this table.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS blocked_identities (
+    id TEXT PRIMARY KEY,
+    email TEXT,
+    phone TEXT,
+    reason TEXT,
+    blockedBy TEXT,
+    blockedAt TEXT NOT NULL
+  )
+`);
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_blocked_email ON blocked_identities(email)`); } catch {}
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_blocked_phone ON blocked_identities(phone)`); } catch {}
+
 // ======= SAVED SEARCHES (Marketing Alerts) =======
 db.exec(`
   CREATE TABLE IF NOT EXISTS saved_searches (
@@ -3379,6 +3396,18 @@ async function startServer() {
       if (!password || password.length < 6) {
         return res.status(400).json({ error: "كلمة المرور مطلوبة (6 أحرف على الأقل)" });
       }
+
+      // [user-ban] Reject re-registration from a blocked email or phone.
+      try {
+        const blocked: any = db.prepare(
+          `SELECT 1 FROM blocked_identities
+            WHERE (email != '' AND email = ?) OR (phone != '' AND phone = ?) LIMIT 1`
+        ).get((email || '').toLowerCase(), phone || '');
+        if (blocked) {
+          return res.status(403).json({ error: "لا يمكن التسجيل بهذه البيانات. تواصل مع الإدارة." });
+        }
+      } catch (_) { /* table may not exist on very old DBs — fail open */ }
+
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
       db.prepare(`
@@ -3640,6 +3669,21 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         console.log(`Login failed: user not found for ${email}`);
         return res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
       }
+
+      // [user-ban] Block banned accounts and anyone on the blocklist
+      // (email or phone) from logging back in.
+      if (String(user.status || '').toLowerCase() === 'banned') {
+        return res.status(403).json({ error: "تم حظر هذا الحساب. للاستفسار تواصل مع الإدارة." });
+      }
+      try {
+        const blocked: any = db.prepare(
+          `SELECT 1 FROM blocked_identities
+            WHERE (email != '' AND email = ?) OR (phone != '' AND phone = ?) LIMIT 1`
+        ).get((user.email || '').toLowerCase(), user.phone || '');
+        if (blocked) {
+          return res.status(403).json({ error: "تم حظر هذا الحساب. للاستفسار تواصل مع الإدارة." });
+        }
+      } catch (_) { /* table may not exist on very old DBs — fail open */ }
 
       if (user.isEmailVerified === 0) {
         return res.status(403).json({ error: "يرجى تأكيد بريدك الإلكتروني أولاً عبر الرابط المرسل إليك" });
@@ -5616,13 +5660,35 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json({ received: true });
   });
 
-  app.delete("/api/users/:id", requireAdmin, (req, res) => {
+  app.delete("/api/users/:id", requireAdmin, (req: any, res) => {
     const { id } = req.params;
+    const adminId = req.user?.id || 'admin';
+    // [user-delete] FK-safe delete + blocklist. (routes/admin.ts holds the
+    // primary copy that wins registration; this mirror keeps behavior
+    // identical if route order ever changes.)
     try {
-      db.prepare("DELETE FROM users WHERE id = ?").run(id);
+      const user: any = db.prepare("SELECT id, email, phone, role FROM users WHERE id = ?").get(id);
+      if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      if (String(user.role || '').toLowerCase() === 'admin') {
+        return res.status(400).json({ error: 'لا يمكن حذف حساب إداري' });
+      }
+      try {
+        db.prepare(`INSERT INTO blocked_identities (id, email, phone, reason, blockedBy, blockedAt)
+                    VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(`blk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+               (user.email || '').toLowerCase(), user.phone || '', 'admin delete', adminId, new Date().toISOString());
+      } catch {}
+      db.pragma('foreign_keys = OFF');
+      try {
+        try { db.prepare("UPDATE cars SET sellerId = NULL WHERE sellerId = ?").run(id); } catch {}
+        try { db.prepare("UPDATE cars SET winnerId = NULL WHERE winnerId = ?").run(id); } catch {}
+        db.prepare("DELETE FROM users WHERE id = ?").run(id);
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
       res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to delete user" });
+    } catch (err: any) {
+      res.status(500).json({ error: "فشل في حذف المستخدم: " + (err?.message || '') });
     }
   });
 
