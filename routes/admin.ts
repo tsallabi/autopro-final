@@ -481,6 +481,16 @@ export function registerAdminRoutes(ctx: AppContext) {
 
   app.get("/api/users", requireAdmin, (req, res) => {
     try {
+      // [hide-rejected] By default the user-management table excludes
+      // rejected (kycStatus='rejected') and banned users — those belong in
+      // the dedicated "مرفوضة" tab of the KYC Center, not the main roster.
+      // Pass ?includeRejected=1 to get everyone (used by exports / audits).
+      const includeRejected = String((req.query as any)?.includeRejected || '') === '1';
+      const where = includeRejected
+        ? ''
+        : `WHERE COALESCE(kycStatus, '') != 'rejected'
+             AND COALESCE(status, '') NOT IN ('banned', 'rejected')`;
+
       // [bidding-toggle] Include biddingEnabled + lastLogin so the admin
       // table can render the bidding toggle column and the lifecycle badges
       // (registered → KYC approved → bidding enabled).
@@ -490,6 +500,7 @@ export function registerAdminRoutes(ctx: AppContext) {
                country, address1, address2, joinDate, lastLogin,
                biddingEnabled, biddingEnabledAt, biddingEnabledBy
           FROM users
+         ${where}
          ORDER BY joinDate DESC
       `).all();
       res.json(users);
@@ -602,13 +613,80 @@ export function registerAdminRoutes(ctx: AppContext) {
     }
   });
 
-  app.delete("/api/users/:id", requireAdmin, (req, res) => {
+  app.delete("/api/users/:id", requireAdmin, (req: any, res) => {
     const { id } = req.params;
+    const adminId = req.user?.id || 'admin';
     try {
-      db.prepare("DELETE FROM users WHERE id = ?").run(id);
+      const user: any = db.prepare("SELECT id, email, phone, role FROM users WHERE id = ?").get(id);
+      if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      if (String(user.role || '').toLowerCase() === 'admin') {
+        return res.status(400).json({ error: 'لا يمكن حذف حساب إداري' });
+      }
+
+      // [user-delete] Blocklist the email + phone FIRST so the person can't
+      // simply re-register with the same details after deletion.
+      const now = new Date().toISOString();
+      try {
+        db.prepare(`INSERT INTO blocked_identities (id, email, phone, reason, blockedBy, blockedAt)
+                    VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(`blk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+               (user.email || '').toLowerCase(), user.phone || '',
+               'admin delete', adminId, now);
+      } catch (e: any) {
+        console.error('[user-delete] blocklist insert failed:', e?.message);
+      }
+
+      // [user-delete] FK-safe removal. The users table is referenced by many
+      // tables (bids, cars.sellerId/winnerId, transactions, …). A bare DELETE
+      // fails on those constraints — which is exactly the "فشل في حذف
+      // المستخدم" error. Toggle FK enforcement off for this single delete
+      // (better-sqlite3 is one connection, and we're not inside an open
+      // transaction here, so the PRAGMA takes effect). Null out the car
+      // ownership references first so auction history rows don't point at a
+      // ghost id.
+      db.pragma('foreign_keys = OFF');
+      try {
+        try { db.prepare("UPDATE cars SET sellerId = NULL WHERE sellerId = ?").run(id); } catch {}
+        try { db.prepare("UPDATE cars SET winnerId = NULL WHERE winnerId = ?").run(id); } catch {}
+        db.prepare("DELETE FROM users WHERE id = ?").run(id);
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
+
+      try { io.emit('user_deleted', { id }); } catch {}
       res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to delete user" });
+    } catch (err: any) {
+      console.error('[user-delete] failed:', err?.message);
+      res.status(500).json({ error: "فشل في حذف المستخدم: " + (err?.message || '') });
+    }
+  });
+
+  // [user-ban] Soft alternative to delete — keeps the account row (and its
+  // auction history) but blocks the person from logging in or re-registering.
+  app.post("/api/users/:id/ban", requireAdmin, (req: any, res) => {
+    const { id } = req.params;
+    const adminId = req.user?.id || 'admin';
+    const reason = String(req.body?.reason || 'admin ban');
+    try {
+      const user: any = db.prepare("SELECT id, email, phone, role FROM users WHERE id = ?").get(id);
+      if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+      if (String(user.role || '').toLowerCase() === 'admin') {
+        return res.status(400).json({ error: 'لا يمكن حظر حساب إداري' });
+      }
+      const now = new Date().toISOString();
+      db.prepare("UPDATE users SET status = 'banned' WHERE id = ?").run(id);
+      try {
+        db.prepare(`INSERT INTO blocked_identities (id, email, phone, reason, blockedBy, blockedAt)
+                    VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(`blk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+               (user.email || '').toLowerCase(), user.phone || '', reason, adminId, now);
+      } catch (e: any) {
+        console.error('[user-ban] blocklist insert failed:', e?.message);
+      }
+      try { io.to(`user_${id}`).emit('account_banned', { userId: id }); } catch {}
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: 'فشل حظر المستخدم: ' + (err?.message || '') });
     }
   });
 

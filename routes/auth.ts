@@ -26,6 +26,18 @@ export function registerAuthRoutes(ctx: AppContext) {
       if (!password || password.length < 6) {
         return res.status(400).json({ error: "كلمة المرور مطلوبة (6 أحرف على الأقل)" });
       }
+
+      // [user-ban] Reject re-registration from a blocked email or phone.
+      try {
+        const blocked: any = db.prepare(
+          `SELECT 1 FROM blocked_identities
+            WHERE (email != '' AND email = ?) OR (phone != '' AND phone = ?) LIMIT 1`
+        ).get((email || '').toLowerCase(), phone || '');
+        if (blocked) {
+          return res.status(403).json({ error: "لا يمكن التسجيل بهذه البيانات. تواصل مع الإدارة." });
+        }
+      } catch (_) { /* table may not exist on very old DBs — fail open */ }
+
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
       db.prepare(`
@@ -418,6 +430,21 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         console.log(`Login failed: user not found for ${email}`);
         return res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
       }
+
+      // [user-ban] Block banned accounts and anyone on the blocklist
+      // (email or phone) from logging back in.
+      if (String(user.status || '').toLowerCase() === 'banned') {
+        return res.status(403).json({ error: "تم حظر هذا الحساب. للاستفسار تواصل مع الإدارة." });
+      }
+      try {
+        const blocked: any = db.prepare(
+          `SELECT 1 FROM blocked_identities
+            WHERE (email != '' AND email = ?) OR (phone != '' AND phone = ?) LIMIT 1`
+        ).get((user.email || '').toLowerCase(), user.phone || '');
+        if (blocked) {
+          return res.status(403).json({ error: "تم حظر هذا الحساب. للاستفسار تواصل مع الإدارة." });
+        }
+      } catch (_) { /* table may not exist on very old DBs — fail open */ }
 
       if (user.isEmailVerified === 0) {
         return res.status(403).json({ error: "يرجى تأكيد بريدك الإلكتروني أولاً عبر الرابط المرسل إليك" });
