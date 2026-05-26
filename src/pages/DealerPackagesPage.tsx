@@ -231,7 +231,7 @@ export const DealerPackagesPage = () => {
                     <button
                       onClick={() => {
                         if (pkg.id === 'premium') {
-                          window.open('https://wa.me/218911234567?text=أرغب في الاشتراك في باقة المتميزون', '_blank');
+                          window.open('https://wa.me/13129105416?text=أرغب في الاشتراك في باقة المتميزون', '_blank');
                         } else {
                           navigate('/auth?mode=register');
                         }
@@ -376,7 +376,7 @@ export const DealerPackagesPage = () => {
               <ArrowRight className="w-5 h-5 rtl:rotate-180" />
             </button>
             <button
-              onClick={() => window.open('https://wa.me/218911234567', '_blank')}
+              onClick={() => window.open('https://wa.me/13129105416', '_blank')}
               className="bg-white/5 border border-white/10 text-white px-10 py-4 rounded-2xl font-bold text-lg hover:bg-white/10 transition-all flex items-center justify-center gap-2"
             >
               <MessageCircle className="w-5 h-5" />

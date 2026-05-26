@@ -111,7 +111,7 @@ export const BranchesPage = () => {
                     <h2 className="text-2xl font-black mb-4">هل تحتاج لمساعدة فورية ؟</h2>
                     <p className="text-slate-400 mb-8 max-w-lg">فريق الدعم الفني متاح عبر الواتساب للرد على جميع استفساراتكم بخصوص المزايدة والشحن والجمارك.</p>
                     <a
-                        href="https://wa.me/218911234567"
+                        href="https://wa.me/13129105416"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-block bg-orange-500 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20"
