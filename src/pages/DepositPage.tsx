@@ -17,9 +17,10 @@ type Currency = 'USD' | 'LYD';
 type Step = 'amount' | 'method' | 'pay' | 'success';
 type PayMethod = 'mypay' | 'contact' | 'sadad' | 'tadawul' | 'card' | 'bank_lyd' | 'bank_usd' | 'wise';
 
-// [deposit-mypay-only] Official support WhatsApp shown in the "اتصل بنا"
-// option (same line used by the bidding-activation modal).
-const SUPPORT_WHATSAPP = '+218913524466';
+// [deposit-mypay-only] Official AutoPro Libya auctions WhatsApp shown in the
+// "اتصل بنا" option. The 00 dialing prefix the owner gave (0013129105416)
+// is written here in +country form so wa.me gets clean digits.
+const SUPPORT_WHATSAPP = '+13129105416';
 
 interface PayMethodInfo {
   id: PayMethod;
