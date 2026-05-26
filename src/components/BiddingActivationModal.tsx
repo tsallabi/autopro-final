@@ -55,7 +55,8 @@ const REASON_LABELS: Record<string, { title: string; body: string; cta: string }
   },
 };
 
-const SUPPORT_WHATSAPP = '+218913524466';
+// [whatsapp-unify] Single official AutoPro Libya auctions support line.
+const SUPPORT_WHATSAPP = '+13129105416';
 const SUPPORT_EMAIL = 'info@autopro.ac';
 
 export default function BiddingActivationModal() {
