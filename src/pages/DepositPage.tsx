@@ -15,7 +15,11 @@ const STRIPE_PK: string = _env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 
 type Currency = 'USD' | 'LYD';
 type Step = 'amount' | 'method' | 'pay' | 'success';
-type PayMethod = 'sadad' | 'tadawul' | 'card' | 'bank_lyd' | 'bank_usd' | 'wise';
+type PayMethod = 'mypay' | 'contact' | 'sadad' | 'tadawul' | 'card' | 'bank_lyd' | 'bank_usd' | 'wise';
+
+// [deposit-mypay-only] Official support WhatsApp shown in the "اتصل بنا"
+// option (same line used by the bidding-activation modal).
+const SUPPORT_WHATSAPP = '+218913524466';
 
 interface PayMethodInfo {
   id: PayMethod;
@@ -40,7 +44,7 @@ export const DepositPage: React.FC = () => {
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [useCustom, setUseCustom] = useState(false);
-  const [payMethod, setPayMethod] = useState<PayMethod>('sadad');
+  const [payMethod, setPayMethod] = useState<PayMethod>('mypay');
   const [loading, setLoading] = useState(false);
   const [stripeAvailable, setStripeAvailable] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -102,48 +106,27 @@ export const DepositPage: React.FC = () => {
     </button>
   );
 
+  // [deposit-mypay-only] Deliberately limited to two options:
+  //   1. MyPay — instant electronic payment (Libyan dinar gateway)
+  //   2. اتصل بنا — talk to us on WhatsApp
+  // Bank transfer / Sadad / Wise / card were removed on purpose: nearly
+  // everyone picked "bank transfer" then never followed through, so the
+  // deposit was effectively a dead end. Forcing MyPay (instant credit) or a
+  // direct WhatsApp conversation fixes the drop-off.
   const PAY_METHODS: PayMethodInfo[] = [
     {
-      id: 'sadad', label: 'صداد (المدار)', labelEn: 'Sadad Al-Madar',
-      desc: 'ادفع عبر رقم هاتفك المدار مباشرة — سريع وآمن',
+      id: 'mypay', label: 'MyPay — دفع إلكتروني فوري', labelEn: 'MyPay (Instant)',
+      desc: 'ادفع الآن ببطاقتك المصرفية عبر MyPay — يُضاف العربون لحسابك خلال ثوانٍ',
+      icon: <CreditCard className="w-6 h-6" />,
+      badge: 'الأسرع — مُوصى به', badgeColor: 'bg-emerald-500/20 text-emerald-400',
+      currencies: ['LYD'], available: true,
+    },
+    {
+      id: 'contact', label: 'اتصل بنا', labelEn: 'Contact Us',
+      desc: 'تواصل مع فريقنا عبر واتساب لإتمام دفع العربون بأي طريقة تناسبك',
       icon: <Smartphone className="w-6 h-6" />,
-      badge: 'الأكثر شيوعاً', badgeColor: 'bg-green-500/20 text-green-400',
-      currencies: ['LYD'], available: true,
-    },
-    {
-      id: 'tadawul', label: 'تداول', labelEn: 'Tadawul',
-      desc: 'بطاقة تداول أو Moamalat — شبكة نومو الليبية',
-      icon: <CreditCard className="w-6 h-6" />,
-      badge: 'بطاقات ليبية', badgeColor: 'bg-blue-500/20 text-blue-400',
-      currencies: ['LYD'], available: true,
-    },
-    {
-      id: 'bank_lyd', label: 'تحويل بنكي (LYD)', labelEn: 'Bank Wire LYD',
-      desc: 'تحويل من أي مصرف ليبي — يُراجَع خلال 24 ساعة',
-      icon: <Building2 className="w-6 h-6" />,
-      badge: 'متاح دائماً', badgeColor: 'bg-gray-500/20 text-gray-400',
-      currencies: ['LYD'], available: true,
-    },
-    {
-      id: 'wise', label: 'Wise (تحويل دولي)', labelEn: 'Wise Transfer',
-      desc: 'تحويل دولي بأقل رسوم — مناسب للمغتربين',
-      icon: <Globe className="w-6 h-6" />,
-      badge: 'خارج ليبيا', badgeColor: 'bg-purple-500/20 text-purple-400',
-      currencies: ['USD'], available: true,
-    },
-    {
-      id: 'card', label: 'بطاقة Visa / Mastercard', labelEn: 'Credit Card',
-      desc: 'دفع دولي فوري عبر Stripe',
-      icon: <CreditCard className="w-6 h-6" />,
-      badge: stripeAvailable ? 'متاح' : 'قريباً', badgeColor: stripeAvailable ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400',
-      currencies: ['USD'], available: true,
-    },
-    {
-      id: 'plutu', label: 'بطاقة بنكية / Plutu', labelEn: 'Plutu',
-      desc: 'دفع إلكتروني آمن عبر Plutu',
-      icon: <CreditCard className="w-6 h-6" />,
-      badge: 'متاح', badgeColor: 'bg-green-500/20 text-green-400',
-      currencies: ['USD', 'LYD'], available: true,
+      badge: 'دعم مباشر', badgeColor: 'bg-green-500/20 text-green-400',
+      currencies: ['LYD', 'USD'], available: true,
     },
   ];
 
@@ -155,6 +138,38 @@ export const DepositPage: React.FC = () => {
     setSadadStep('phone');
     setPaymentError('');
     setStep('pay');
+  };
+
+  // [deposit-mypay-only] Kick off a MyPay checkout for the deposit amount and
+  // redirect the browser to the gateway. MyPay quotes in LYD, which is the
+  // currency for Libyan users (the only audience that sees this option).
+  const handleMyPayCheckout = async () => {
+    if (!currentUser) { setPaymentError('يجب تسجيل الدخول أولاً'); return; }
+    setLoading(true); setPaymentError('');
+    try {
+      const res = await authFetch('/api/payments/mypay/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, amountLYD: finalAmount }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+      setPaymentError(data?.error || 'تعذّر فتح بوابة الدفع MyPay. جرّب "اتصل بنا".');
+    } catch (e: any) {
+      setPaymentError(e?.message || 'فشل الاتصال ببوابة الدفع.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // [deposit-mypay-only] Open WhatsApp to our support line, pre-filled with the
+  // amount + reference so the agent has context.
+  const openSupportWhatsApp = () => {
+    const digits = SUPPORT_WHATSAPP.replace(/\D/g, '');
+    const msg = `مرحباً، أريد دفع عربون بقيمة ${formatCurrency(finalAmount)} على AutoPro Libya.\nرقم العميل: ${currentUser?.id || ''}\nرقم المرجع: ${bankRef}`;
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
   };
 
   // ── Sadad simulation (in real world: call Sadad API) ──
@@ -488,6 +503,49 @@ export const DepositPage: React.FC = () => {
               <span className="text-gray-400">المبلغ</span>
               <span className="text-orange-400 font-bold text-2xl">{formatCurrency(finalAmount)}</span>
             </div>
+
+            {/* ── MyPay (instant electronic) ── */}
+            {payMethod === 'mypay' && (
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-6 space-y-5">
+                <div className="flex items-center gap-3">
+                  <CreditCard className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-white font-semibold">الدفع الإلكتروني الفوري عبر MyPay</h3>
+                </div>
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm text-emerald-300 flex gap-3">
+                  <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>سيتم تحويلك لبوابة MyPay الآمنة لإتمام الدفع. يُضاف العربون لحسابك تلقائياً خلال ثوانٍ بعد نجاح العملية — بدون انتظار مراجعة.</span>
+                </div>
+                {paymentError && <p className="text-red-400 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{paymentError}</p>}
+                <button onClick={handleMyPayCheckout} disabled={loading}
+                  className="w-full py-3.5 bg-gradient-to-l from-emerald-500 to-emerald-600 hover:from-emerald-400 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
+                  {loading ? <><Loader2 className="w-5 h-5 animate-spin" />جاري فتح البوابة...</> : <><Lock className="w-4 h-4" />ادفع {formatCurrency(finalAmount)} الآن</>}
+                </button>
+                <button onClick={() => setStep('method')} className="w-full py-2.5 text-gray-400 hover:text-gray-200 text-sm font-semibold">رجوع</button>
+              </div>
+            )}
+
+            {/* ── Contact Us (WhatsApp) ── */}
+            {payMethod === 'contact' && (
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-6 space-y-5">
+                <div className="flex items-center gap-3">
+                  <Smartphone className="w-5 h-5 text-green-400" />
+                  <h3 className="text-white font-semibold">تواصل معنا لإتمام الدفع</h3>
+                </div>
+                <div className="bg-gray-900/60 rounded-xl p-4 space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-400">المبلغ:</span><span className="text-orange-400 font-bold">{formatCurrency(finalAmount)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-400">رقم المرجع:</span><span className="text-white font-mono">{bankRef}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-gray-400">واتساب الدعم:</span>
+                    <span className="text-white font-mono flex items-center gap-2" dir="ltr">{SUPPORT_WHATSAPP}<CopyBtn text={SUPPORT_WHATSAPP} field="wa" /></span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 leading-relaxed">سيساعدك فريقنا على إتمام دفع العربون بأي وسيلة تناسبك. اذكر رقم المرجع أعلاه عند التواصل.</p>
+                <button onClick={openSupportWhatsApp}
+                  className="w-full py-3.5 bg-gradient-to-l from-green-500 to-green-600 hover:from-green-400 text-white font-bold rounded-xl flex items-center justify-center gap-2">
+                  <Smartphone className="w-4 h-4" />تواصل عبر واتساب الآن
+                </button>
+                <button onClick={() => setStep('method')} className="w-full py-2.5 text-gray-400 hover:text-gray-200 text-sm font-semibold">رجوع</button>
+              </div>
+            )}
 
             {/* ── SADAD ── */}
             {payMethod === 'sadad' && (
