@@ -663,9 +663,14 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
           if (lastFinalized?.lastEnd) {
             const lastEndMs = new Date(lastFinalized.lastEnd).getTime();
             const elapsed = Date.now() - lastEndMs;
-            if (elapsed < TRANSITION_GRACE_MS) {
-              // Still inside the transition window — let the user see the
-              // "next car" screen before flipping it to a live auction.
+            // [stuck-fix] Only hold during a REAL, recent grace window.
+            // `elapsed >= 0` is critical: if a car was closed early (buy-now
+            // / admin / anti-snipe quirk) its auctionEndDate can be in the
+            // FUTURE, making elapsed negative — the old `elapsed < GRACE`
+            // check was then permanently true and the rotation hung on the
+            // "next car" screen forever. A future end date means the car is
+            // already done, so advance immediately.
+            if (elapsed >= 0 && elapsed < TRANSITION_GRACE_MS) {
               continue;
             }
           }

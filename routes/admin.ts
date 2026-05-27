@@ -613,7 +613,13 @@ export function registerAdminRoutes(ctx: AppContext) {
     }
   });
 
-  app.delete("/api/users/:id", requireAdmin, (req: any, res) => {
+  // [user-delete] Shared handler registered on BOTH paths because the admin
+  // UI calls DELETE /api/admin/users/:id while other callers use
+  // DELETE /api/users/:id. Previously only /api/users/:id existed, so the
+  // dashboard's delete button hit a non-existent route → 404 → the generic
+  // "فشل في حذف المستخدم" toast. That's the real reason deletes "never
+  // worked" despite earlier fixes.
+  const deleteUserHandler = (req: any, res: any) => {
     const { id } = req.params;
     const adminId = req.user?.id || 'admin';
     try {
@@ -638,9 +644,8 @@ export function registerAdminRoutes(ctx: AppContext) {
 
       // [user-delete] FK-safe removal. The users table is referenced by many
       // tables (bids, cars.sellerId/winnerId, transactions, …). A bare DELETE
-      // fails on those constraints — which is exactly the "فشل في حذف
-      // المستخدم" error. Toggle FK enforcement off for this single delete
-      // (better-sqlite3 is one connection, and we're not inside an open
+      // fails on those constraints. Toggle FK enforcement off for this single
+      // delete (better-sqlite3 is one connection, and we're not inside an open
       // transaction here, so the PRAGMA takes effect). Null out the car
       // ownership references first so auction history rows don't point at a
       // ghost id.
@@ -659,7 +664,9 @@ export function registerAdminRoutes(ctx: AppContext) {
       console.error('[user-delete] failed:', err?.message);
       res.status(500).json({ error: "فشل في حذف المستخدم: " + (err?.message || '') });
     }
-  });
+  };
+  app.delete("/api/users/:id", requireAdmin, deleteUserHandler);
+  app.delete("/api/admin/users/:id", requireAdmin, deleteUserHandler);
 
   // [user-ban] Soft alternative to delete — keeps the account row (and its
   // auction history) but blocks the person from logging in or re-registering.
@@ -1056,14 +1063,23 @@ export function registerAdminRoutes(ctx: AppContext) {
       if (filter === 'rejected') {
         where = `COALESCE(u.kycStatus, 'pending') = 'rejected'`;
       } else if (filter === 'all') {
-        where = `(COALESCE(u.kycStatus, 'pending') != 'approved'
-                  OR COALESCE(u.status, '') = 'pending_approval')`;
+        // Everyone not yet approved — but still NEVER show rejected here;
+        // rejected has its own tab. (A rejected user keeps
+        // status='pending_approval', so without the explicit exclusion the
+        // OR clause below would drag them back in.)
+        where = `(COALESCE(u.kycStatus, 'pending') != 'rejected')
+                 AND (COALESCE(u.kycStatus, 'pending') != 'approved'
+                      OR COALESCE(u.status, '') = 'pending_approval')`;
       } else {
-        // default: pending only — actively excludes rejected users so the
-        // admin can focus on new submissions, with the rejected list as a
-        // separate tab for follow-up.
-        where = `(COALESCE(u.kycStatus, 'pending') NOT IN ('approved', 'rejected')
-                  OR COALESCE(u.status, '') = 'pending_approval')`;
+        // default: pending only. MUST exclude rejected unconditionally —
+        // the previous filter used only an OR on status='pending_approval',
+        // and since rejecting a KYC sets kycStatus='rejected' WITHOUT
+        // changing status (it stays 'pending_approval'), rejected users
+        // leaked back into the "بانتظار المراجعة" tab. The leading
+        // `kycStatus != 'rejected'` AND-clause is the fix.
+        where = `(COALESCE(u.kycStatus, 'pending') != 'rejected')
+                 AND (COALESCE(u.kycStatus, 'pending') NOT IN ('approved')
+                      OR COALESCE(u.status, '') = 'pending_approval')`;
       }
 
       const users: any[] = db.prepare(`
