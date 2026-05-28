@@ -2385,7 +2385,61 @@ async function startServer() {
   // Start the heartbeat timer for live auctions
   setInterval(tickAuctions, 1000);
 
-  
+  // ── Global anti-stall watchdog ────────────────────────────────────────
+  // GUARANTEE: the live-auction room never gets permanently stuck on the
+  // "next car coming up" standby screen. This runs every 3 s, completely
+  // independent of the session scheduler (which may be disabled via
+  // AUCTION_SESSIONS_ENABLED=false or hit an edge case). If no car is live
+  // anywhere for more than ~9 s, it activates the next eligible upcoming car:
+  //   • legacy cars (no session), whose start time has arrived, OR
+  //   • cars in a session that is already 'live'
+  // The UPDATE is atomic (WHERE status='upcoming'), so even if the session
+  // scheduler fires at the same instant only one wins — no double-activation.
+  let lastLiveSeenAt = Date.now();
+  const WATCHDOG_STALL_MS = 9000;
+  setInterval(() => {
+    try {
+      if (isTransitioning) return;
+      const now = new Date().toISOString();
+      const liveCount = (db.prepare(
+        "SELECT COUNT(*) AS c FROM cars WHERE status IN ('live','ultimo')"
+      ).get() as any)?.c || 0;
+      if (liveCount > 0) { lastLiveSeenAt = Date.now(); return; }
+      if (Date.now() - lastLiveSeenAt < WATCHDOG_STALL_MS) return;
+
+      const next: any = db.prepare(`
+        SELECT c.* FROM cars c
+        LEFT JOIN auction_sessions s ON c.sessionId = s.id
+        WHERE c.status = 'upcoming'
+          AND (c.auctionStartTime IS NULL OR c.auctionStartTime = '' OR c.auctionStartTime <= ?)
+          AND (
+            c.sessionId IS NULL OR c.sessionId = ''
+            OR s.status = 'live'
+          )
+        ORDER BY COALESCE(c.auctionStartTime, '9999-12-31T23:59:59Z') ASC, c.id ASC
+        LIMIT 1
+      `).get(now);
+      if (!next) return;
+
+      const durMin = Number(process.env.AUCTION_DURATION_MIN) || 5;
+      const newEnd = new Date(Date.now() + durMin * 60 * 1000).toISOString();
+      const r = db.prepare(
+        "UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ? AND status = 'upcoming'"
+      ).run(newEnd, next.id);
+      if (r.changes > 0) {
+        lastLiveSeenAt = Date.now();
+        try {
+          io.emit('car_updated', { id: next.id, status: 'live', auctionEndDate: newEnd });
+          io.emit('auction_started', { carId: next.id });
+        } catch {}
+        console.warn(`[watchdog] auction was stalled — force-activated next car ${next.id} until ${newEnd}`);
+      }
+    } catch (e: any) {
+      console.error('[watchdog] tick failed:', e?.message);
+    }
+  }, 3000);
+
+
 
 
   app.get("/api/debug/seed-simulation", requireAdmin, (req, res) => {
