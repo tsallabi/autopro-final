@@ -56,9 +56,22 @@ export const MobileBottomNav: React.FC = () => {
     return (
         <nav
             dir="rtl"
-            className="fixed bottom-0 left-0 right-0 z-[9999] md:hidden bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 pb-safe"
+            className="md:hidden"
+            style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 9999,
+                background: 'rgba(15, 23, 42, 0.97)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                borderTop: '1px solid #1e293b',
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                display: 'block',
+            }}
         >
-            <div className="flex items-center justify-around h-16">
+            <div className="flex items-center justify-around h-16" style={{ height: '64px' }}>
                 {tabs.map(tab => {
                     const active = isActive(tab);
                     const Icon = tab.icon;

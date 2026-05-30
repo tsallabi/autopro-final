@@ -121,7 +121,7 @@ export default function SupportChatWidget() {
         aria-label="تواصل مع الدعم"
         style={{
           position: 'fixed',
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
           right: 24,
           zIndex: 9990,
           background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
@@ -151,7 +151,7 @@ export default function SupportChatWidget() {
       aria-modal="true"
       style={{
         position: 'fixed',
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
         right: 24,
         zIndex: 9991,
         width: 360,

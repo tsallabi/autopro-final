@@ -76,7 +76,7 @@ export default function AdminAssistantPanel() {
         aria-label="المساعد الإداري الذكي"
         style={{
           position: 'fixed',
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
           left: 24,
           zIndex: 9990,
           background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
@@ -98,7 +98,7 @@ export default function AdminAssistantPanel() {
           dir="rtl"
           style={{
             position: 'fixed',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 148px)',
             left: 24,
             zIndex: 9991,
             width: 'min(400px, calc(100vw - 32px))',

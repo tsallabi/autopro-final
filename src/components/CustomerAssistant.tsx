@@ -73,7 +73,7 @@ export const CustomerAssistant = () => {
         aria-label="المساعد الذكي"
         style={{
           position: 'fixed',
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 156px)',
           right: 24,
           zIndex: 9990,
           background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
@@ -95,7 +95,7 @@ export const CustomerAssistant = () => {
           dir="rtl"
           style={{
             position: 'fixed',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 168px)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 228px)',
             right: 24,
             zIndex: 9991,
             width: 'min(360px, calc(100vw - 32px))',
