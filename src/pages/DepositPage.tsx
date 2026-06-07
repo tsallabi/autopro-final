@@ -46,7 +46,7 @@ export const DepositPage: React.FC = () => {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [bankInfo, setBankInfo] = useState<{
     bank: string; accountName: string; accountNumber: string;
-    iban: string; whatsapp: string; note: string;
+    iban: string; whatsapp: string; note: string; mypayLink?: string;
   } | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [customAmount, setCustomAmount] = useState<string>('');
@@ -168,6 +168,14 @@ export const DepositPage: React.FC = () => {
   // currency for Libyan users (the only audience that sees this option).
   const handleMyPayCheckout = async () => {
     if (!currentUser) { setPaymentError('يجب تسجيل الدخول أولاً'); return; }
+    // [mypay-static-link] If admin set a fixed MyPay payment-link URL in
+    // system_settings (mypay_deposit_link), open it directly in a new tab.
+    // This is the fastest path: no server round-trip, works even if the
+    // /api/payments/mypay/checkout integration isn't configured.
+    if (bankInfo?.mypayLink) {
+      window.open(bankInfo.mypayLink, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setLoading(true); setPaymentError('');
     try {
       const res = await authFetch('/api/payments/mypay/checkout', {

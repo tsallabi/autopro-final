@@ -123,6 +123,7 @@ export function registerPublicStatsRoutes(ctx: AppContext) {
         iban: get('bank_iban', ''),
         whatsapp: get('bank_confirm_whatsapp', '+13129105416'),
         note: get('bank_note', 'أرسل صورة إيصال التحويل لرقم الواتساب بعد الدفع لتفعيل حسابك فوراً.'),
+        mypayLink: get('mypay_deposit_link', 'https://mypay.ly/merchant/payment-link/share/110'),
       });
     } catch (e: any) {
       res.status(500).json({ error: e?.message });
