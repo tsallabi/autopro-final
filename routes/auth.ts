@@ -227,6 +227,72 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  // ─── Resend Verification Email ────────────────────────────────────────────
+  // Lets a user who didn't get the original verification email request a new one.
+  // Rate-limited to one send per minute per email to prevent abuse.
+  const resendCooldown = new Map<string, number>(); // email → last send timestamp
+  app.post("/api/auth/resend-verification", async (req, res) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'البريد الإلكتروني مطلوب' });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+
+    const user: any = db.prepare("SELECT id, firstName, isEmailVerified FROM users WHERE LOWER(email) = ?").get(cleanEmail);
+    // Always return the same generic success so we don't leak which emails exist.
+    const genericOk = { ok: true, message: 'إذا كان البريد مسجلاً وغير موثق، أرسلنا رابطاً جديداً. تحقّق من صندوق الوارد ومجلد الـ Spam.' };
+
+    if (!user || user.isEmailVerified === 1) {
+      return res.json(genericOk);
+    }
+
+    const now = Date.now();
+    const last = resendCooldown.get(cleanEmail) || 0;
+    if (now - last < 60_000) {
+      const wait = Math.ceil((60_000 - (now - last)) / 1000);
+      return res.status(429).json({ error: `يرجى الانتظار ${wait} ثانية قبل إعادة المحاولة.` });
+    }
+    resendCooldown.set(cleanEmail, now);
+
+    const token = crypto.randomBytes(20).toString('hex');
+    const expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    db.prepare(`INSERT OR REPLACE INTO verification_codes(email, code, expiresAt) VALUES(?, ?, ?)`)
+      .run(cleanEmail, token, expiresAt);
+    const verifyLink = `${SITE_URL}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
+    const firstName = user.firstName || '';
+
+    res.json(genericOk);
+
+    setImmediate(async () => {
+      try {
+        await sendEmail({
+          to: cleanEmail,
+          subject: 'رابط توثيق جديد - ليبيا أوتو برو',
+          html: `
+            <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; background: #f8fafc; border-radius: 16px; color: #0f172a;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="color: #ea580c; font-size: 28px; margin: 0;">AUTOPRO AUCTIONS</h1>
+                <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">ليبيا أوتو برو للمزادات</p>
+              </div>
+              <h2 style="color: #1e293b;">${firstName ? 'أهلاً ' + firstName + ' 👋' : 'مرحباً 👋'}</h2>
+              <p style="line-height: 1.7; color: #475569;">طلبت رابط توثيق جديداً لحسابك على <strong>AutoPro Libya</strong>.</p>
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 16px;">✅ توثيق البريد الإلكتروني</a>
+              </div>
+              <p style="font-size: 13px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px;">
+                الرابط صالح لمدة 24 ساعة. إذا لم تطلب هذا الرابط يمكنك تجاهل الرسالة.<br/>
+                <a href="${verifyLink}" style="color: #ea580c; font-size: 11px; word-break: break-all;">${verifyLink}</a>
+              </p>
+            </div>
+          `,
+        });
+        console.log(`[EMAIL] Resent verification to ${cleanEmail}`);
+      } catch (err) {
+        console.error(`[EMAIL ERROR] Failed to resend verification to ${cleanEmail}:`, err);
+      }
+    });
+  });
+
   // ─── Google OAuth ───────────────────────────────────────────────────────────
   app.post("/api/auth/google", async (req, res) => {
     const { credential } = req.body; // ID token from Google Identity Services
