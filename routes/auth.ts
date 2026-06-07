@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { requireAuth } from '../lib/middleware.ts';
 import type { AppContext } from '../lib/types.ts';
 import * as agentcollab from '../lib/agentcollab.ts';
+import { applyReferralOnRegister } from '../lib/referrals.ts';
 
 export function registerAuthRoutes(ctx: AppContext) {
   const { app, db, sendEmail, sendNotification, sendInternalMessage, JWT_SECRET, SITE_URL, SALT_ROUNDS } = ctx;
@@ -15,7 +16,8 @@ export function registerAuthRoutes(ctx: AppContext) {
       firstName, lastName, email, phone, password, role,
       deposit, commission, manager, office,
       companyName, country, address1, address2,
-      nationalId, commercialRegister, showroomLicense, iban
+      nationalId, commercialRegister, showroomLicense, iban,
+      referralCode,
     } = req.body;
     const id = `user-${Date.now()}`;
     const joinDate = new Date().toISOString();
@@ -56,17 +58,28 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         nationalId || '', commercialRegister || '', showroomLicense || '', iban || ''
       );
 
+      // [referral] If the user signed up via ?ref=CODE, link them to the referrer
+      // so the bonus auto-activates on their first deposit (see mypay route).
+      try {
+        if (referralCode) {
+          const r = applyReferralOnRegister(db, id, referralCode);
+          if (r.success) console.log(`[referrals] linked ${id} ← ${r.referrerId} via code ${referralCode}`);
+        }
+      } catch (e: any) {
+        console.error('[referrals] applyReferralOnRegister failed:', e?.message);
+      }
+
       // Send welcome notification using template
       sendNotification(id, '🎉 مرحباً بك في أوتو برو!', 'شكراً لتسجيلك في المنصة. حسابك قيد المراجعة حالياً.', 'success', 'registration_success');
 
       // Send welcome message to the new user from system (admin-1)
       sendInternalMessage('admin-1', id,
         '🎉 مرحباً بك في AutoPro Libya!',
-        `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة AutoPro Libya للمزادات. نحن سعداء بانضمامك!\n\nحسابك الآن قيد المراجعة من فريق الإدارة. سيتم إشعارك فور الموافقة.\n\n📋 الخطوات القادمة:\n1. ✅ انتظر موافقة المدير على حسابك\n2. 💰 ادفع العربون لتفعيل قوتك الشرائية:\n   👉 ${SITE_URL}/deposit\n   • خارج ليبيا: الحد الأدنى $500 دولار\n   • داخل ليبيا: الحد الأدنى 1,000 دينار ليبي\n3. 🏎️ ابدأ المزايدة على السيارات!\n\n💡 معلومة مهمة:\nالقوة الشرائية = العربون × 10\nمثال: إيداع $500 = قوة شرائية $5,000\n\nفريق AutoPro Libya 🚗`
+        `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة AutoPro Libya للمزادات. نحن سعداء بانضمامك!\n\nحسابك الآن قيد المراجعة من فريق الإدارة. سيتم إشعارك فور الموافقة.\n\n📋 الخطوات القادمة:\n1. ✅ انتظر موافقة المدير على حسابك\n2. 💰 ادفع العربون البسيط لتفعيل قوتك الشرائية:\n   👉 ${SITE_URL}/deposit\n   • داخل ليبيا: 200 دينار فقط — ادفع عبر MyPay أو حوّل بنكياً مباشرة\n   • خارج ليبيا: $50 دولار فقط\n3. 🏎️ ابدأ المزايدة على السيارات!\n\n💡 معلومة مهمة:\nالقوة الشرائية = العربون × 10\nمثال: إيداع 200 د.ل = قوة شرائية 2,000 د.ل (تقدر تزايد على سيارات أعلى بكثير)\n\nفريق AutoPro Libya 🚗`
       );
       // Also send deposit link as a direct notification
       sendNotification(id, '💰 خطوة مهمة: ادفع العربون',
-        `لتفعيل قوتك الشرائية والمزايدة، ادفع العربون (الحد الأدنى خارج ليبيا $500 أو 1,000 د.ل داخل ليبيا).`,
+        `لتفعيل قوتك الشرائية والمزايدة، ادفع عربوناً بسيطاً (داخل ليبيا 200 د.ل / خارج ليبيا $50 فقط). MyPay أو تحويل بنكي.`,
         'info', '/deposit');
 
       // Generate Verification Token
@@ -117,8 +130,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   <h3 style="color: #c2410c; margin: 0 0 12px;">💰 الخطوة التالية: ادفع العربون</h3>
                   <p style="color: #475569; margin: 0 0 8px; font-size: 14px;">بعد تفعيل حسابك، ستحتاج إلى إيداع عربون للمزايدة:</p>
                   <ul style="color: #475569; font-size: 14px; margin: 0 0 16px; padding-right: 20px;">
-                    <li>خارج ليبيا: الحد الأدنى <strong>$500 دولار</strong></li>
-                    <li>داخل ليبيا: الحد الأدنى <strong>1,000 دينار ليبي</strong></li>
+                    <li>داخل ليبيا: <strong>200 دينار فقط</strong> (MyPay أو تحويل بنكي مباشر)</li>
+                    <li>خارج ليبيا: <strong>$50 دولار فقط</strong></li>
                   </ul>
                   <div style="text-align: center;">
                     <a href="${SITE_URL}/deposit" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">💳 صفحة دفع العربون</a>
@@ -139,9 +152,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         // === WELCOME NOTIFICATIONS FOR NEW USER ===
 
         // Read welcome message settings from DB (fallback to hardcoded defaults)
-        const defaultWelcomeContent = `أهلاً \${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: $500 أو 1,000 دينار ليبي\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع $1,000 = قوة شرائية $10,000\n• رابط الدفع: \${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: \${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: \${SITE_URL}/marketplace\n• المزادات المباشرة: \${SITE_URL}/live-auction\n• سوق العروض: \${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: \${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`;
+        const defaultWelcomeContent = `أهلاً \${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: 200 د.ل أو $50 فقط\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع 200 د.ل = قوة شرائية 2,000 د.ل\n• رابط الدفع: \${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: \${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: \${SITE_URL}/marketplace\n• المزادات المباشرة: \${SITE_URL}/live-auction\n• سوق العروض: \${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: \${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`;
         const defaultWelcomeSubject = '🎉 مرحباً بك في أوتو برو — دليلك الكامل للبدء';
-        const defaultDepositReminder = '💰 ادفع العربون الآن واحصل على قوة شرائية 10 أضعاف! الحد الأدنى $500 أو 1,000 د.ل';
+        const defaultDepositReminder = '💰 ادفع العربون الآن (200 د.ل فقط) واحصل على قوة شرائية 10 أضعاف!';
 
         const getWelcomeSetting = (key: string) => {
           try {
@@ -225,6 +238,72 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) {
       res.status(500).send("<h1 style='color:red; text-align:center; padding-top: 50px;'>Verification Failed</h1>");
     }
+  });
+
+  // ─── Resend Verification Email ────────────────────────────────────────────
+  // Lets a user who didn't get the original verification email request a new one.
+  // Rate-limited to one send per minute per email to prevent abuse.
+  const resendCooldown = new Map<string, number>(); // email → last send timestamp
+  app.post("/api/auth/resend-verification", async (req, res) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'البريد الإلكتروني مطلوب' });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+
+    const user: any = db.prepare("SELECT id, firstName, isEmailVerified FROM users WHERE LOWER(email) = ?").get(cleanEmail);
+    // Always return the same generic success so we don't leak which emails exist.
+    const genericOk = { ok: true, message: 'إذا كان البريد مسجلاً وغير موثق، أرسلنا رابطاً جديداً. تحقّق من صندوق الوارد ومجلد الـ Spam.' };
+
+    if (!user || user.isEmailVerified === 1) {
+      return res.json(genericOk);
+    }
+
+    const now = Date.now();
+    const last = resendCooldown.get(cleanEmail) || 0;
+    if (now - last < 60_000) {
+      const wait = Math.ceil((60_000 - (now - last)) / 1000);
+      return res.status(429).json({ error: `يرجى الانتظار ${wait} ثانية قبل إعادة المحاولة.` });
+    }
+    resendCooldown.set(cleanEmail, now);
+
+    const token = crypto.randomBytes(20).toString('hex');
+    const expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    db.prepare(`INSERT OR REPLACE INTO verification_codes(email, code, expiresAt) VALUES(?, ?, ?)`)
+      .run(cleanEmail, token, expiresAt);
+    const verifyLink = `${SITE_URL}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
+    const firstName = user.firstName || '';
+
+    res.json(genericOk);
+
+    setImmediate(async () => {
+      try {
+        await sendEmail({
+          to: cleanEmail,
+          subject: 'رابط توثيق جديد - ليبيا أوتو برو',
+          html: `
+            <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; background: #f8fafc; border-radius: 16px; color: #0f172a;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="color: #ea580c; font-size: 28px; margin: 0;">AUTOPRO AUCTIONS</h1>
+                <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">ليبيا أوتو برو للمزادات</p>
+              </div>
+              <h2 style="color: #1e293b;">${firstName ? 'أهلاً ' + firstName + ' 👋' : 'مرحباً 👋'}</h2>
+              <p style="line-height: 1.7; color: #475569;">طلبت رابط توثيق جديداً لحسابك على <strong>AutoPro Libya</strong>.</p>
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 16px;">✅ توثيق البريد الإلكتروني</a>
+              </div>
+              <p style="font-size: 13px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px;">
+                الرابط صالح لمدة 24 ساعة. إذا لم تطلب هذا الرابط يمكنك تجاهل الرسالة.<br/>
+                <a href="${verifyLink}" style="color: #ea580c; font-size: 11px; word-break: break-all;">${verifyLink}</a>
+              </p>
+            </div>
+          `,
+        });
+        console.log(`[EMAIL] Resent verification to ${cleanEmail}`);
+      } catch (err) {
+        console.error(`[EMAIL ERROR] Failed to resend verification to ${cleanEmail}:`, err);
+      }
+    });
   });
 
   // ─── Google OAuth ───────────────────────────────────────────────────────────

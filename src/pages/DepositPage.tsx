@@ -7,6 +7,7 @@ import {
   BadgeDollarSign, Banknote, Info, Loader2, Building2,
   Copy, Check, Phone, AlertCircle, Smartphone, QrCode
 } from 'lucide-react';
+import DepositInfoModal from '../components/DepositInfoModal';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _env = (import.meta as any).env || {};
@@ -34,14 +35,26 @@ interface PayMethodInfo {
   available: boolean;
 }
 
-const USD_AMOUNTS = [500, 1000, 2000, 5000];
-const LYD_AMOUNTS = [1000, 2500, 5000, 10000];
+const USD_AMOUNTS = [50, 200, 500, 1000];
+const LYD_AMOUNTS = [200, 500, 1000, 2500];
 
 export const DepositPage: React.FC = () => {
   const { currentUser, showAlert } = useStore();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<Step>('amount');
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  type BankAccount = {
+    bankId: string; bankName: string; accountName: string;
+    accountNumber: string; iban: string;
+  };
+  const [bankInfo, setBankInfo] = useState<{
+    bank: string; accountName: string; accountNumber: string;
+    iban: string; whatsapp: string; note: string; mypayLink?: string;
+    accounts?: BankAccount[];
+  } | null>(null);
+  // [bank-dropdown] which bank account the user picked.
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [useCustom, setUseCustom] = useState(false);
@@ -65,7 +78,7 @@ export const DepositPage: React.FC = () => {
   const isLibya = currentUser?.country === 'Libya' || currentUser?.country === 'ليبيا' || !currentUser?.country;
   const finalCurrency: Currency = isLibya ? 'LYD' : 'USD';
   const amounts = finalCurrency === 'LYD' ? LYD_AMOUNTS : USD_AMOUNTS;
-  const minAmount = finalCurrency === 'LYD' ? 1000 : 500;
+  const minAmount = finalCurrency === 'LYD' ? 200 : 50;
 
   const finalAmount = useCustom
     ? Math.max(minAmount, parseInt(customAmount) || minAmount)
@@ -81,6 +94,23 @@ export const DepositPage: React.FC = () => {
       .then(r => r.json())
       .then(d => setStripeAvailable(!!d.available))
       .catch(() => setStripeAvailable(false));
+  }, []);
+
+  // [conversion-boost] Pull bank info from /api/public/bank-info so admin can
+  // edit account number / IBAN / bank name via system_settings without redeploy.
+  useEffect(() => {
+    fetch('/api/public/bank-info')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        setBankInfo(d);
+        // Auto-pick first configured account, else first listed.
+        if (Array.isArray(d.accounts) && d.accounts.length) {
+          const configured = d.accounts.find((a: BankAccount) => a.accountNumber);
+          setSelectedBankId((configured || d.accounts[0]).bankId);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -123,6 +153,13 @@ export const DepositPage: React.FC = () => {
       currencies: ['LYD'], available: true,
     },
     {
+      id: 'bank_lyd', label: 'تحويل بنكي مباشر', labelEn: 'Bank Transfer',
+      desc: 'حوّل من حسابك مباشرة إلى حساب أوتو برو ليبيا. يُفعَّل حسابك بعد وصول المبلغ (خلال 24 ساعة)',
+      icon: <Building2 className="w-6 h-6" />,
+      badge: 'بدون عمولة', badgeColor: 'bg-blue-500/20 text-blue-400',
+      currencies: ['LYD'], available: true,
+    },
+    {
       id: 'contact', label: 'اتصل بنا', labelEn: 'Contact Us',
       desc: 'تواصل مع فريقنا عبر واتساب لإتمام دفع العربون بأي طريقة تناسبك',
       icon: <Smartphone className="w-6 h-6" />,
@@ -146,6 +183,14 @@ export const DepositPage: React.FC = () => {
   // currency for Libyan users (the only audience that sees this option).
   const handleMyPayCheckout = async () => {
     if (!currentUser) { setPaymentError('يجب تسجيل الدخول أولاً'); return; }
+    // [mypay-static-link] If admin set a fixed MyPay payment-link URL in
+    // system_settings (mypay_deposit_link), open it directly in a new tab.
+    // This is the fastest path: no server round-trip, works even if the
+    // /api/payments/mypay/checkout integration isn't configured.
+    if (bankInfo?.mypayLink) {
+      window.open(bankInfo.mypayLink, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setLoading(true); setPaymentError('');
     try {
       const res = await authFetch('/api/payments/mypay/checkout', {
@@ -340,10 +385,24 @@ export const DepositPage: React.FC = () => {
           <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
             <Wallet className="w-5 h-5 text-orange-400" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold text-white">دفع العربون</h1>
             <p className="text-sm text-gray-400">Earnest Money Deposit — AutoPro Libya</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowInfoModal(true)}
+            className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
+            title="كيف يعمل العربون؟"
+          >
+            <Info className="w-3.5 h-3.5" /> كيف يعمل؟
+          </button>
+        </div>
+
+        {/* Always-on reassurance strip */}
+        <div className="mt-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2 text-xs text-emerald-300">
+          <Shield className="w-4 h-4 flex-shrink-0" />
+          <span><strong>أموالك أموالك</strong> — قابل للاسترداد أي وقت، محفوظ في حساب بنكي منفصل، ضمان 7 أيام.</span>
         </div>
 
         {/* Progress */}
@@ -383,8 +442,8 @@ export const DepositPage: React.FC = () => {
             {/* Location */}
             <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 flex items-center gap-3">
               {isLibya
-                ? <><MapPin className="w-4 h-4 text-green-400 flex-shrink-0" /><span className="text-sm text-gray-300">دفع داخل ليبيا — <strong className="text-white">بالدينار الليبي (LYD)</strong> | الحد الأدنى: <strong className="text-orange-300">1,000 د.ل</strong></span></>
-                : <><Globe className="w-4 h-4 text-blue-400 flex-shrink-0" /><span className="text-sm text-gray-300">دفع من خارج ليبيا — <strong className="text-white">بالدولار (USD)</strong> | الحد الأدنى: <strong className="text-orange-300">$500</strong></span></>}
+                ? <><MapPin className="w-4 h-4 text-green-400 flex-shrink-0" /><span className="text-sm text-gray-300">دفع داخل ليبيا — <strong className="text-white">بالدينار الليبي (LYD)</strong> | الحد الأدنى: <strong className="text-orange-300">200 د.ل</strong></span></>
+                : <><Globe className="w-4 h-4 text-blue-400 flex-shrink-0" /><span className="text-sm text-gray-300">دفع من خارج ليبيا — <strong className="text-white">بالدولار (USD)</strong> | الحد الأدنى: <strong className="text-orange-300">$50</strong></span></>}
             </div>
 
             {/* Amounts */}
@@ -652,29 +711,81 @@ export const DepositPage: React.FC = () => {
             )}
 
             {/* ── BANK LYD ── */}
-            {payMethod === 'bank_lyd' && (
+            {payMethod === 'bank_lyd' && (() => {
+              // [bank-dropdown] Let the buyer pick which bank they want to
+              // transfer to — ideally one matching their own bank so no
+              // inter-bank fees / delays.
+              const accounts = bankInfo?.accounts || [];
+              const selected = accounts.find(a => a.bankId === selectedBankId) || accounts[0];
+              const isConfigured = !!(selected?.accountNumber);
+              return (
               <div className="space-y-4">
-                <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-5 space-y-3">
-                  <h3 className="text-white font-semibold flex items-center gap-2"><Building2 className="w-4 h-4 text-orange-400" />بيانات التحويل البنكي داخل ليبيا</h3>
-                  {[
-                    { l: 'البنك', v: 'مصرف الجمهورية — فرع طرابلس المركزي' },
-                    { l: 'اسم الحساب', v: 'طارق سالابي / AutoPro Libya' },
-                    { l: 'رقم الحساب', v: '113-002-0001234567' },
-                    { l: 'الرقم المرجعي (مهم)', v: bankRef },
-                  ].map(({ l, v }) => (
-                    <div key={l} className="flex justify-between items-center py-2 border-b border-gray-700/40 last:border-0">
-                      <span className="text-gray-400 text-sm">{l}</span>
-                      <div className="flex items-center gap-1">
-                        <span className={`font-mono text-sm ${l.includes('مرجعي') ? 'text-yellow-300 font-bold' : 'text-white'}`}>{v}</span>
-                        <CopyBtn text={v} field={l} />
-                      </div>
+                <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-5 space-y-4">
+                  <h3 className="text-white font-semibold flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-orange-400" />
+                    اختر البنك الذي تحوّل منه
+                  </h3>
+
+                  {/* Bank selector dropdown */}
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1.5 font-bold">البنك</label>
+                    <select
+                      value={selectedBankId}
+                      onChange={(e) => setSelectedBankId(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-bold focus:outline-none focus:border-orange-500"
+                    >
+                      {accounts.length === 0 && <option value="">— لم تُعدّ بعد —</option>}
+                      {accounts.map(a => (
+                        <option key={a.bankId} value={a.bankId}>
+                          {a.bankName} {a.accountNumber ? '✓' : '⚠️ لم يُعدّ بعد'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Selected bank account details */}
+                  {selected && (
+                    <div className="space-y-2 pt-2 border-t border-gray-700/40">
+                      {[
+                        { l: 'اسم الحساب', v: selected.accountName || 'AutoPro Libya — أوتو برو ليبيا' },
+                        { l: 'رقم الحساب', v: isConfigured ? selected.accountNumber : '— لم يُعدّ بعد · تواصل مع الإدارة —' },
+                        ...(selected.iban ? [{ l: 'IBAN', v: selected.iban }] : []),
+                        { l: 'الرقم المرجعي (مهم)', v: bankRef },
+                      ].map(({ l, v }) => (
+                        <div key={l} className="flex justify-between items-center py-2 border-b border-gray-700/40 last:border-0">
+                          <span className="text-gray-400 text-sm">{l}</span>
+                          <div className="flex items-center gap-1">
+                            <span className={`font-mono text-sm ${l.includes('مرجعي') ? 'text-yellow-300 font-bold' : 'text-white'}`}>{v}</span>
+                            <CopyBtn text={v} field={l} />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {!isConfigured && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex gap-2 text-amber-300 text-xs">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>
+                        حساب هذا البنك لم يُعدّ بعد على المنصّة.
+                        اختر بنكاً آخر أو تواصل مع الإدارة عبر واتساب لإتمام التحويل.
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex gap-3">
                   <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-blue-300">بعد إتمام التحويل، اضغط "تأكيد التحويل" وسيُفعَّل حسابك فور وصول المبلغ (خلال 24 ساعة).</p>
+                  <p className="text-xs text-blue-300">{bankInfo?.note || 'بعد إتمام التحويل، اضغط "تأكيد التحويل" وسيُفعَّل حسابك فور وصول المبلغ (خلال 24 ساعة).'}</p>
                 </div>
+                {bankInfo?.whatsapp && (
+                  <a
+                    href={`https://wa.me/${bankInfo.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`السلام عليكم، حوّلت العربون بالرقم المرجعي ${bankRef} — أرسلت لكم صورة الإيصال`)}`}
+                    target="_blank" rel="noreferrer"
+                    className="block text-center bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 py-3 rounded-xl font-bold text-sm transition"
+                  >
+                    📱 أرسل صورة الإيصال عبر واتساب — تفعيل أسرع
+                  </a>
+                )}
                 <div className="flex gap-3">
                   <button onClick={() => setStep('method')} className="flex-1 py-3.5 border border-gray-600 text-gray-300 font-semibold rounded-xl">رجوع</button>
                   <button onClick={handleBankTransfer} disabled={loading}
@@ -683,7 +794,8 @@ export const DepositPage: React.FC = () => {
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ── WISE (USD) ── */}
             {payMethod === 'wise' && (
@@ -840,6 +952,8 @@ export const DepositPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <DepositInfoModal open={showInfoModal} onClose={() => setShowInfoModal(false)} />
     </div>
   );
 };
