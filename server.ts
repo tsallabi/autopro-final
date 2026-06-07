@@ -16,6 +16,7 @@ import { registerBannerRoutes } from './routes/banners.ts';
 import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
 import { registerReferralRoutes } from './routes/referrals.ts';
 import { registerPublicStatsRoutes } from './routes/public-stats.ts';
+import { registerTransitRoutes } from './routes/transit-cars.ts';
 import { registerMyPayRoutes } from './routes/mypay.ts';
 import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
 import { registerSeoRoutes } from './routes/seo.ts';
@@ -4764,6 +4765,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
   try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
   try { registerPublicStatsRoutes(ctx as any); console.log('[BOOT] ✓ public-stats routes'); } catch (e: any) { console.error('[BOOT] public-stats routes failed:', e?.message); }
+  try { registerTransitRoutes(ctx as any); console.log('[BOOT] ✓ transit-cars routes'); } catch (e: any) { console.error('[BOOT] transit-cars routes failed:', e?.message); }
   try { registerMyPayRoutes(ctx as any); console.log('[BOOT] ✓ mypay routes'); } catch (e: any) { console.error('[BOOT] mypay routes failed:', e?.message); }
   try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
   try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
