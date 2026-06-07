@@ -105,10 +105,27 @@ export function registerPublicStatsRoutes(ctx: AppContext) {
   });
 
   // Bank info for the deposit page. Stored in system_settings so admin can
-  // update it from the dashboard without a deploy. Defaults are placeholders.
+  // update it from the dashboard without a deploy. Returns a list of bank
+  // accounts (one per Libyan bank) — the user picks which bank they want
+  // to transfer to (ideally matching their own bank → no inter-bank fees).
+  //
+  // Per-bank settings keys (all optional — empty = "not configured"):
+  //   bank_account_<bankId>          — IBAN / account number
+  //   bank_account_name_<bankId>     — beneficiary name (defaults to global bank_account_name)
+  //
+  // The hardcoded list of supported banks lives here so admin can't break it
+  // by typo; to add a 6th bank, edit this file + redeploy.
+  const SUPPORTED_BANKS = [
+    { id: 'jumhouriya', name: 'مصرف الجمهورية' },
+    { id: 'tijara',     name: 'مصرف التجارة و التنمية' },
+    { id: 'shamal',     name: 'مصرف شمال أفريقيا' },
+    { id: 'alnouran',   name: 'مصرف النوران' },
+    { id: 'atib',       name: 'مصرف اتيب' },
+  ];
+
   app.get('/api/public/bank-info', (_req: any, res: any) => {
     try {
-      const get = (key: string, fallback: string) => {
+      const get = (key: string, fallback = ''): string => {
         try {
           const r: any = db.prepare("SELECT value FROM system_settings WHERE key = ?").get(key);
           return r?.value || fallback;
@@ -116,13 +133,30 @@ export function registerPublicStatsRoutes(ctx: AppContext) {
           return fallback;
         }
       };
+
+      const globalAccountName = get('bank_account_name', 'AutoPro Libya — أوتو برو ليبيا');
+
+      const accounts = SUPPORTED_BANKS.map(b => ({
+        bankId: b.id,
+        bankName: b.name,
+        accountName: get(`bank_account_name_${b.id}`, globalAccountName),
+        accountNumber: get(`bank_account_${b.id}`, ''),
+        iban: get(`bank_iban_${b.id}`, ''),
+      }));
+
+      // Backward compat: first configured account also exposed as the
+      // legacy {bank, accountName, accountNumber, iban} fields so any old
+      // caller keeps working.
+      const firstConfigured = accounts.find(a => a.accountNumber) || accounts[0];
+
       res.json({
-        bank: get('bank_name', 'مصرف الجمهورية — فرع طرابلس المركزي'),
-        accountName: get('bank_account_name', 'AutoPro Libya — أوتو برو ليبيا'),
-        accountNumber: get('bank_account_number', '113-002-0001234567'),
-        iban: get('bank_iban', ''),
+        accounts,
+        bank: firstConfigured.bankName,
+        accountName: firstConfigured.accountName,
+        accountNumber: firstConfigured.accountNumber || get('bank_account_number', ''),
+        iban: firstConfigured.iban,
         whatsapp: get('bank_confirm_whatsapp', '+13129105416'),
-        note: get('bank_note', 'أرسل صورة إيصال التحويل لرقم الواتساب بعد الدفع لتفعيل حسابك فوراً.'),
+        note: get('bank_note', 'اختر البنك الذي تحوّل منه، انسخ رقم الحساب، ثم أرسل صورة الإيصال على واتساب لتفعيل حسابك فوراً.'),
         mypayLink: get('mypay_deposit_link', 'https://mypay.ly/merchant/payment-link/share/110'),
       });
     } catch (e: any) {

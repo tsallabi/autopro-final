@@ -44,10 +44,17 @@ export const DepositPage: React.FC = () => {
 
   const [step, setStep] = useState<Step>('amount');
   const [showInfoModal, setShowInfoModal] = useState(false);
+  type BankAccount = {
+    bankId: string; bankName: string; accountName: string;
+    accountNumber: string; iban: string;
+  };
   const [bankInfo, setBankInfo] = useState<{
     bank: string; accountName: string; accountNumber: string;
     iban: string; whatsapp: string; note: string; mypayLink?: string;
+    accounts?: BankAccount[];
   } | null>(null);
+  // [bank-dropdown] which bank account the user picked.
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [useCustom, setUseCustom] = useState(false);
@@ -94,7 +101,15 @@ export const DepositPage: React.FC = () => {
   useEffect(() => {
     fetch('/api/public/bank-info')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setBankInfo(d); })
+      .then(d => {
+        if (!d) return;
+        setBankInfo(d);
+        // Auto-pick first configured account, else first listed.
+        if (Array.isArray(d.accounts) && d.accounts.length) {
+          const configured = d.accounts.find((a: BankAccount) => a.accountNumber);
+          setSelectedBankId((configured || d.accounts[0]).bankId);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -696,25 +711,67 @@ export const DepositPage: React.FC = () => {
             )}
 
             {/* ── BANK LYD ── */}
-            {payMethod === 'bank_lyd' && (
+            {payMethod === 'bank_lyd' && (() => {
+              // [bank-dropdown] Let the buyer pick which bank they want to
+              // transfer to — ideally one matching their own bank so no
+              // inter-bank fees / delays.
+              const accounts = bankInfo?.accounts || [];
+              const selected = accounts.find(a => a.bankId === selectedBankId) || accounts[0];
+              const isConfigured = !!(selected?.accountNumber);
+              return (
               <div className="space-y-4">
-                <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-5 space-y-3">
-                  <h3 className="text-white font-semibold flex items-center gap-2"><Building2 className="w-4 h-4 text-orange-400" />بيانات التحويل البنكي داخل ليبيا</h3>
-                  {[
-                    { l: 'البنك', v: bankInfo?.bank || 'مصرف الجمهورية — فرع طرابلس المركزي' },
-                    { l: 'اسم الحساب', v: bankInfo?.accountName || 'AutoPro Libya — أوتو برو ليبيا' },
-                    { l: 'رقم الحساب', v: bankInfo?.accountNumber || '— يحدد المدير عبر إعدادات النظام —' },
-                    ...(bankInfo?.iban ? [{ l: 'IBAN', v: bankInfo.iban }] : []),
-                    { l: 'الرقم المرجعي (مهم)', v: bankRef },
-                  ].map(({ l, v }) => (
-                    <div key={l} className="flex justify-between items-center py-2 border-b border-gray-700/40 last:border-0">
-                      <span className="text-gray-400 text-sm">{l}</span>
-                      <div className="flex items-center gap-1">
-                        <span className={`font-mono text-sm ${l.includes('مرجعي') ? 'text-yellow-300 font-bold' : 'text-white'}`}>{v}</span>
-                        <CopyBtn text={v} field={l} />
-                      </div>
+                <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-5 space-y-4">
+                  <h3 className="text-white font-semibold flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-orange-400" />
+                    اختر البنك الذي تحوّل منه
+                  </h3>
+
+                  {/* Bank selector dropdown */}
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1.5 font-bold">البنك</label>
+                    <select
+                      value={selectedBankId}
+                      onChange={(e) => setSelectedBankId(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-bold focus:outline-none focus:border-orange-500"
+                    >
+                      {accounts.length === 0 && <option value="">— لم تُعدّ بعد —</option>}
+                      {accounts.map(a => (
+                        <option key={a.bankId} value={a.bankId}>
+                          {a.bankName} {a.accountNumber ? '✓' : '⚠️ لم يُعدّ بعد'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Selected bank account details */}
+                  {selected && (
+                    <div className="space-y-2 pt-2 border-t border-gray-700/40">
+                      {[
+                        { l: 'اسم الحساب', v: selected.accountName || 'AutoPro Libya — أوتو برو ليبيا' },
+                        { l: 'رقم الحساب', v: isConfigured ? selected.accountNumber : '— لم يُعدّ بعد · تواصل مع الإدارة —' },
+                        ...(selected.iban ? [{ l: 'IBAN', v: selected.iban }] : []),
+                        { l: 'الرقم المرجعي (مهم)', v: bankRef },
+                      ].map(({ l, v }) => (
+                        <div key={l} className="flex justify-between items-center py-2 border-b border-gray-700/40 last:border-0">
+                          <span className="text-gray-400 text-sm">{l}</span>
+                          <div className="flex items-center gap-1">
+                            <span className={`font-mono text-sm ${l.includes('مرجعي') ? 'text-yellow-300 font-bold' : 'text-white'}`}>{v}</span>
+                            <CopyBtn text={v} field={l} />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {!isConfigured && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex gap-2 text-amber-300 text-xs">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>
+                        حساب هذا البنك لم يُعدّ بعد على المنصّة.
+                        اختر بنكاً آخر أو تواصل مع الإدارة عبر واتساب لإتمام التحويل.
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex gap-3">
                   <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
@@ -737,7 +794,8 @@ export const DepositPage: React.FC = () => {
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ── WISE (USD) ── */}
             {payMethod === 'wise' && (
