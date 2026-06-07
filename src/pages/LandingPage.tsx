@@ -10,6 +10,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { AgencyRecruitment } from '../components/AgencyRecruitment';
 import DealOfDayBanner from '../components/DealOfDayBanner';
+import DeliveredCarsShowcase from '../components/DeliveredCarsShowcase';
 
 export const LandingPage = () => {
     const navigate = useNavigate();
@@ -347,6 +348,9 @@ export const LandingPage = () => {
 
             {/* AGENCY RECRUITMENT */}
             <AgencyRecruitment />
+
+            {/* 5b. SOCIAL PROOF — recently delivered cars */}
+            <DeliveredCarsShowcase limit={8} />
 
             {/* 6. CALL TO ACTION FOOTER (Image 1 Bottom style) */}
             < section className="pb-32 container mx-auto px-6" >

@@ -212,9 +212,13 @@ export const AuthPage = () => {
         setError('');
         try {
             const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+            // [referral] Pick up ?ref=CODE from the URL — the backend wires it
+            // through applyReferralOnRegister so the referrer gets credited
+            // when this user makes their first deposit.
+            const referralCode = searchParams.get('ref') || undefined;
             const body = isLogin
                 ? { email: form.email, password: form.password }
-                : { ...form, role: accountType };
+                : { ...form, role: accountType, referralCode };
             const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const data = await res.json();
             if (res.ok) {
