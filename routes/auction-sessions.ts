@@ -861,7 +861,7 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
              SET status = 'upcoming',
                  auctionEndDate = NULL,
                  sessionId = NULL,
-                 currentBid = 0,
+                 currentBid = COALESCE(startingBid, 0),
                  winnerId = NULL
            WHERE status = 'closed'
              AND (winnerId IS NULL OR winnerId = '')
