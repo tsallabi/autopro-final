@@ -270,6 +270,7 @@ db.exec(`
     titleType TEXT,
     location TEXT,
     currentBid REAL DEFAULT 0,
+    startingBid REAL DEFAULT 0,
     reservePrice REAL DEFAULT 0,
     buyItNow REAL,
     currency TEXT DEFAULT 'USD',
@@ -1260,6 +1261,23 @@ try {
 try { db.exec("ALTER TABLE cars ADD COLUMN createdAt TEXT"); } catch (_) { }
 // Backfill existing rows where createdAt is NULL so the hourly cron still behaves sanely
 try { db.prepare("UPDATE cars SET createdAt = COALESCE(createdAt, datetime('now'))").run(); } catch (_) { }
+
+// [starting-bid-preservation] The starting bid the seller/admin sets must
+// SURVIVE every state transition. Before this fix, the column didn't exist
+// on some deployments and code paths that did `UPDATE cars SET currentBid=0`
+// permanently wiped the floor price. Now:
+//   1) startingBid column exists (idempotent ALTER for old DBs)
+//   2) New cars insert it explicitly (see POST /api/cars)
+//   3) Every reset of currentBid uses COALESCE(startingBid, 0)
+//   4) One-time backfill: copy currentBid → startingBid where the latter is
+//      still 0 but currentBid > 0 (rescues already-entered cars).
+try { db.exec("ALTER TABLE cars ADD COLUMN startingBid REAL DEFAULT 0"); } catch (_) { }
+try {
+  const r: any = db.prepare(
+    "UPDATE cars SET startingBid = currentBid WHERE (startingBid IS NULL OR startingBid = 0) AND currentBid > 0"
+  ).run();
+  if (r?.changes) console.log(`[BOOT] backfilled startingBid for ${r.changes} cars`);
+} catch (_) { }
 
 // [auction-sessions] Category + session assignment for the multi-session
 // live auction system. Existing cars stay with NULL values and behave
@@ -2590,7 +2608,7 @@ async function startServer() {
     // 3. Expired Offer Market → back to upcoming (unscheduled) for re-auction
     const expiredOffers: any[] = db.prepare("SELECT id, sellerId, make, model, year FROM cars WHERE status = 'offer_market' AND offerMarketEndTime < ?").all(now);
     expiredOffers.forEach((car: any) => {
-      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = 0, winnerId = NULL WHERE id = ?").run(car.id);
+      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?").run(car.id);
       io.emit("car_updated", { id: car.id, status: 'upcoming' });
       if (car.sellerId) {
         sendNotification(car.sellerId, '🔄 سيارتك عادت للجدولة', `${car.make} ${car.model} — انتهى سوق العروض بدون بيع. ستتم إعادة جدولتها.`, 'info');
@@ -3816,21 +3834,24 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     const id = Date.now().toString();
     try {
+      // [starting-bid-preservation] Store the opening price in BOTH currentBid
+      // and startingBid so the floor survives every later state transition.
+      const openingPrice = Number(currentBid) || Number(startingBid) || Number(startPrice) || 0;
       db.prepare(`
         INSERT INTO cars(
           id, lotNumber, vin, make, model, trim, year, odometer, engine, engineSize, horsepower,
           transmission, drive, drivetrain, fuelType, exteriorColor, interiorColor,
-          primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
+          primaryDamage, secondaryDamage, titleType, location, currentBid, startingBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
           auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
           engineAudioUrl, engineVideoUrl, showroomName, isRecommended
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
-        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
+        openingPrice, openingPrice, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         engineAudioUrl || '', engineVideoUrl || '',
@@ -4001,7 +4022,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         return res.status(403).json({ error: "ليس لديك صلاحية لرفض هذا العرض" });
       }
 
-      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = 0, winnerId = NULL WHERE id = ?").run(carId);
+      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?").run(carId);
       db.prepare("DELETE FROM bids WHERE carId = ? AND type = 'offer'").run(carId);
       
       const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
@@ -4070,7 +4091,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         io.emit("car_updated", { id: carId, status: 'closed', winnerId: userId, currentBid: car.sellerCounterPrice });
         res.json({ success: true, message: "تم قبول العرض المضاد وإتمام البيع" });
       } else if (action === 'reject') {
-        db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = 0, winnerId = NULL WHERE id = ?").run(carId);
+        db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?").run(carId);
         db.prepare("DELETE FROM bids WHERE carId = ? AND type = 'offer'").run(carId);
         
         const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
@@ -5522,7 +5543,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         UPDATE cars SET
       status = 'upcoming',
         auctionEndDate = ?,
-        currentBid = 0,
+        currentBid = COALESCE(startingBid, 0),
         winnerId = NULL,
         offerMarketEndTime = NULL,
         ultimoEndTime = NULL
@@ -7676,7 +7697,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
 
       const { newAuctionEnd } = req.body;
-      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = 0, winnerId = NULL WHERE id = ?")
+      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?")
         .run(newAuctionEnd || '', id);
       io.emit("car_updated", { id, status: 'upcoming' });
       res.json({ success: true, message: "تمت إعادة جدولة السيارة" });

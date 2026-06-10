@@ -286,7 +286,7 @@ export function registerTransitRoutes(ctx: AppContext) {
       db.prepare(
         `UPDATE cars
             SET status = ?, auctionStartTime = ?, auctionEndDate = ?,
-                currentBid = 0, winnerId = NULL
+                currentBid = COALESCE(startingBid, 0), winnerId = NULL
           WHERE id = ?`
       ).run(nextStatus, startISO, endISO, carId);
 
