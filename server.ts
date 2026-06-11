@@ -15,6 +15,8 @@ import { registerLibyaProRoutes } from './routes/libyapro.ts';
 import { registerBannerRoutes } from './routes/banners.ts';
 import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
 import { registerReferralRoutes } from './routes/referrals.ts';
+import { registerPublicStatsRoutes } from './routes/public-stats.ts';
+import { registerTransitRoutes } from './routes/transit-cars.ts';
 import { registerMyPayRoutes } from './routes/mypay.ts';
 import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
 import { registerSeoRoutes } from './routes/seo.ts';
@@ -268,6 +270,7 @@ db.exec(`
     titleType TEXT,
     location TEXT,
     currentBid REAL DEFAULT 0,
+    startingBid REAL DEFAULT 0,
     reservePrice REAL DEFAULT 0,
     buyItNow REAL,
     currency TEXT DEFAULT 'USD',
@@ -1258,6 +1261,23 @@ try {
 try { db.exec("ALTER TABLE cars ADD COLUMN createdAt TEXT"); } catch (_) { }
 // Backfill existing rows where createdAt is NULL so the hourly cron still behaves sanely
 try { db.prepare("UPDATE cars SET createdAt = COALESCE(createdAt, datetime('now'))").run(); } catch (_) { }
+
+// [starting-bid-preservation] The starting bid the seller/admin sets must
+// SURVIVE every state transition. Before this fix, the column didn't exist
+// on some deployments and code paths that did `UPDATE cars SET currentBid=0`
+// permanently wiped the floor price. Now:
+//   1) startingBid column exists (idempotent ALTER for old DBs)
+//   2) New cars insert it explicitly (see POST /api/cars)
+//   3) Every reset of currentBid uses COALESCE(startingBid, 0)
+//   4) One-time backfill: copy currentBid → startingBid where the latter is
+//      still 0 but currentBid > 0 (rescues already-entered cars).
+try { db.exec("ALTER TABLE cars ADD COLUMN startingBid REAL DEFAULT 0"); } catch (_) { }
+try {
+  const r: any = db.prepare(
+    "UPDATE cars SET startingBid = currentBid WHERE (startingBid IS NULL OR startingBid = 0) AND currentBid > 0"
+  ).run();
+  if (r?.changes) console.log(`[BOOT] backfilled startingBid for ${r.changes} cars`);
+} catch (_) { }
 
 // [auction-sessions] Category + session assignment for the multi-session
 // live auction system. Existing cars stay with NULL values and behave
@@ -2588,7 +2608,7 @@ async function startServer() {
     // 3. Expired Offer Market → back to upcoming (unscheduled) for re-auction
     const expiredOffers: any[] = db.prepare("SELECT id, sellerId, make, model, year FROM cars WHERE status = 'offer_market' AND offerMarketEndTime < ?").all(now);
     expiredOffers.forEach((car: any) => {
-      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = 0, winnerId = NULL WHERE id = ?").run(car.id);
+      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?").run(car.id);
       io.emit("car_updated", { id: car.id, status: 'upcoming' });
       if (car.sellerId) {
         sendNotification(car.sellerId, '🔄 سيارتك عادت للجدولة', `${car.make} ${car.model} — انتهى سوق العروض بدون بيع. ستتم إعادة جدولتها.`, 'info');
@@ -3110,8 +3130,8 @@ async function startServer() {
     try {
       const { amount, currency, type } = req.body;
       if (!amount || amount <= 0) return res.status(400).json({ error: "مبلغ غير صالح" });
-      if (currency === 'USD' && amount < 500) return res.status(400).json({ error: "الحد الأدنى للعربون خارج ليبيا هو $500" });
-      if (currency === 'LYD' && amount < 1000) return res.status(400).json({ error: "الحد الأدنى للعربون داخل ليبيا هو 1,000 دينار ليبي" });
+      if (currency === 'USD' && amount < 50) return res.status(400).json({ error: "الحد الأدنى للعربون خارج ليبيا هو $50" });
+      if (currency === 'LYD' && amount < 200) return res.status(400).json({ error: "الحد الأدنى للعربون داخل ليبيا هو 200 دينار ليبي" });
 
       if (!stripeClient) {
         return res.json({ clientSecret: 'demo_secret_' + Date.now(), demo: true });
@@ -3486,11 +3506,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Send welcome message to the new user from system (admin-1)
       sendInternalMessage('admin-1', id,
         '🎉 مرحباً بك في AutoPro Libya!',
-        `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة AutoPro Libya للمزادات. نحن سعداء بانضمامك!\n\nحسابك الآن قيد المراجعة من فريق الإدارة. سيتم إشعارك فور الموافقة.\n\n📋 الخطوات القادمة:\n1. ✅ انتظر موافقة المدير على حسابك\n2. 💰 ادفع العربون لتفعيل قوتك الشرائية:\n   👉 ${SITE_URL}/deposit\n   • خارج ليبيا: الحد الأدنى $500 دولار\n   • داخل ليبيا: الحد الأدنى 1,000 دينار ليبي\n3. 🏎️ ابدأ المزايدة على السيارات!\n\n💡 معلومة مهمة:\nالقوة الشرائية = العربون × 10\nمثال: إيداع $500 = قوة شرائية $5,000\n\nفريق AutoPro Libya 🚗`
+        `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة AutoPro Libya للمزادات. نحن سعداء بانضمامك!\n\nحسابك الآن قيد المراجعة من فريق الإدارة. سيتم إشعارك فور الموافقة.\n\n📋 الخطوات القادمة:\n1. ✅ انتظر موافقة المدير على حسابك\n2. 💰 ادفع العربون البسيط لتفعيل قوتك الشرائية:\n   👉 ${SITE_URL}/deposit\n   • داخل ليبيا: 200 دينار فقط (MyPay أو تحويل بنكي مباشر)\n   • خارج ليبيا: $50 دولار فقط\n3. 🏎️ ابدأ المزايدة على السيارات!\n\n💡 معلومة مهمة:\nالقوة الشرائية = العربون × 10\nمثال: إيداع 200 د.ل = قوة شرائية 2,000 د.ل\n\nفريق AutoPro Libya 🚗`
       );
       // Also send deposit link as a direct notification
       sendNotification(id, '💰 خطوة مهمة: ادفع العربون',
-        `لتفعيل قوتك الشرائية والمزايدة، ادفع العربون (الحد الأدنى خارج ليبيا $500 أو 1,000 د.ل داخل ليبيا).`,
+        `لتفعيل قوتك الشرائية والمزايدة، ادفع عربوناً بسيطاً (داخل ليبيا 200 د.ل / خارج ليبيا $50 فقط). MyPay أو تحويل بنكي.`,
         'info', '/deposit');
 
       // Generate Verification Token
@@ -3529,8 +3549,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   <h3 style="color: #c2410c; margin: 0 0 12px;">💰 الخطوة التالية: ادفع العربون</h3>
                   <p style="color: #475569; margin: 0 0 8px; font-size: 14px;">بعد تفعيل حسابك، ستحتاج إلى إيداع عربون للمزايدة:</p>
                   <ul style="color: #475569; font-size: 14px; margin: 0 0 16px; padding-right: 20px;">
-                    <li>خارج ليبيا: الحد الأدنى <strong>$500 دولار</strong></li>
-                    <li>داخل ليبيا: الحد الأدنى <strong>1,000 دينار ليبي</strong></li>
+                    <li>داخل ليبيا: <strong>200 دينار فقط</strong> (MyPay أو تحويل بنكي مباشر)</li>
+                    <li>خارج ليبيا: <strong>$50 دولار فقط</strong></li>
                   </ul>
                   <div style="text-align: center;">
                     <a href="${SITE_URL}/deposit" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">💳 صفحة دفع العربون</a>
@@ -3551,7 +3571,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         // === WELCOME NOTIFICATIONS FOR NEW USER ===
 
         // Read welcome message settings from DB (fallback to hardcoded defaults)
-        const defaultWelcomeContent = `أهلاً \${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: $500 أو 1,000 دينار ليبي\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع $1,000 = قوة شرائية $10,000\n• رابط الدفع: \${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: \${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: \${SITE_URL}/marketplace\n• المزادات المباشرة: \${SITE_URL}/live-auction\n• سوق العروض: \${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: \${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`;
+        const defaultWelcomeContent = `أهلاً \${firstName}! 👋\n\nمرحباً بك في منصة أوتو برو — أكبر منصة مزادات سيارات في ليبيا.\n\n═══════════════════════════\n📋 كيف تبدأ المزايدة؟\n═══════════════════════════\n\nالخطوة 1️⃣ — ادفع العربون\n• الحد الأدنى: 200 د.ل أو $50 فقط\n• القوة الشرائية = 10 أضعاف العربون\n• مثال: إيداع 200 د.ل = قوة شرائية 2,000 د.ل\n• رابط الدفع: \${SITE_URL}/deposit\n\nالخطوة 2️⃣ — وثّق هويتك (KYC)\n• ارفع صورة الهوية أو جواز السفر\n• التوثيق يرفع حدود المزايدة\n• رابط التوثيق: \${SITE_URL}/dashboard/user?view=kyc\n\nالخطوة 3️⃣ — تصفّح السيارات\n• سوق السيارات: \${SITE_URL}/marketplace\n• المزادات المباشرة: \${SITE_URL}/live-auction\n• سوق العروض: \${SITE_URL}/marketplace?tab=offers\n\nالخطوة 4️⃣ — زايد واربح!\n• انقر "زايد" في المزاد المباشر\n• أو قدّم عرض في سوق العروض\n• النظام يمدد الوقت 15 ثانية عند كل مزايدة\n\n═══════════════════════════\n💰 طرق الدفع المتاحة\n═══════════════════════════\n• صداد (المدار) — الأسرع\n• بطاقات بنكية محلية (تداول/نومو)\n• تحويل بنكي (أي مصرف ليبي)\n• Plutu — دفع إلكتروني آمن\n• الدفع النقدي — في مكاتبنا\n\n═══════════════════════════\n📍 مكاتبنا\n═══════════════════════════\n• طرابلس (المقر الرئيسي)\n• بنغازي\n• مصراتة\n• الولايات المتحدة (اللوجستيات)\n\n═══════════════════════════\n🏷️ لماذا أوتو برو؟\n═══════════════════════════\n• وفّر 30-50% مقارنة بالسوق المحلي\n• عمولة 3% فقط — الأقل في السوق\n• شحن مباشر من أمريكا وأوروبا\n• تتبع شحنتك في الوقت الحقيقي\n• ضمان استرداد العربون عند عدم الفوز\n\n═══════════════════════════\n\nابدأ الآن: \${SITE_URL}/deposit\n\nفريق أوتو برو 🧡`;
         const defaultWelcomeSubject = '🎉 مرحباً بك في أوتو برو — دليلك الكامل للبدء';
         const defaultDepositReminder = '💰 ادفع العربون الآن واحصل على قوة شرائية 10 أضعاف! الحد الأدنى $500 أو 1,000 د.ل';
 
@@ -3814,21 +3834,24 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     const id = Date.now().toString();
     try {
+      // [starting-bid-preservation] Store the opening price in BOTH currentBid
+      // and startingBid so the floor survives every later state transition.
+      const openingPrice = Number(currentBid) || Number(startingBid) || Number(startPrice) || 0;
       db.prepare(`
         INSERT INTO cars(
           id, lotNumber, vin, make, model, trim, year, odometer, engine, engineSize, horsepower,
           transmission, drive, drivetrain, fuelType, exteriorColor, interiorColor,
-          primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
+          primaryDamage, secondaryDamage, titleType, location, currentBid, startingBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
           auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
           engineAudioUrl, engineVideoUrl, showroomName, isRecommended
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
-        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
+        openingPrice, openingPrice, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         engineAudioUrl || '', engineVideoUrl || '',
@@ -3999,7 +4022,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         return res.status(403).json({ error: "ليس لديك صلاحية لرفض هذا العرض" });
       }
 
-      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = 0, winnerId = NULL WHERE id = ?").run(carId);
+      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?").run(carId);
       db.prepare("DELETE FROM bids WHERE carId = ? AND type = 'offer'").run(carId);
       
       const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
@@ -4068,7 +4091,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         io.emit("car_updated", { id: carId, status: 'closed', winnerId: userId, currentBid: car.sellerCounterPrice });
         res.json({ success: true, message: "تم قبول العرض المضاد وإتمام البيع" });
       } else if (action === 'reject') {
-        db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = 0, winnerId = NULL WHERE id = ?").run(carId);
+        db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL, auctionStartTime = NULL, auctionEndDate = NULL, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?").run(carId);
         db.prepare("DELETE FROM bids WHERE carId = ? AND type = 'offer'").run(carId);
         
         const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
@@ -4762,6 +4785,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
   try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
   try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
+  try { registerPublicStatsRoutes(ctx as any); console.log('[BOOT] ✓ public-stats routes'); } catch (e: any) { console.error('[BOOT] public-stats routes failed:', e?.message); }
+  try { registerTransitRoutes(ctx as any); console.log('[BOOT] ✓ transit-cars routes'); } catch (e: any) { console.error('[BOOT] transit-cars routes failed:', e?.message); }
   try { registerMyPayRoutes(ctx as any); console.log('[BOOT] ✓ mypay routes'); } catch (e: any) { console.error('[BOOT] mypay routes failed:', e?.message); }
   try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
   try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
@@ -5518,7 +5543,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         UPDATE cars SET
       status = 'upcoming',
         auctionEndDate = ?,
-        currentBid = 0,
+        currentBid = COALESCE(startingBid, 0),
         winnerId = NULL,
         offerMarketEndTime = NULL,
         ultimoEndTime = NULL
@@ -7672,7 +7697,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
 
       const { newAuctionEnd } = req.body;
-      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = 0, winnerId = NULL WHERE id = ?")
+      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?")
         .run(newAuctionEnd || '', id);
       io.emit("car_updated", { id, status: 'upcoming' });
       res.json({ success: true, message: "تمت إعادة جدولة السيارة" });

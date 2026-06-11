@@ -9,13 +9,14 @@ import {
   MoreVertical, UploadCloud, Globe, ShoppingCart, Check, Reply, Hash,
   Link as LinkIcon, Calculator, Info, BookOpen, TrendingUp, Handshake, Map, Camera,
   AlertCircle, Wallet as WalletIcon, FileCheck, User, BarChart3, ChevronRight, ChevronDown, Car, Home, DollarSign,
-  RefreshCw, Send
+  RefreshCw, Send, Gift
 } from 'lucide-react';
 import { useStore, authFetch } from '../context/StoreContext';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { SHIPMENT_STATUS_LABELS } from '../types';
 import { KycPanel } from '../components/KycPanel';
+import ReferralCard from '../components/ReferralCard';
 import KycDocumentsUploader from '../components/KycDocumentsUploader';
 import { useTranslation } from 'react-i18next';
 import { useClickOutside } from '../hooks/useClickOutside';
@@ -1423,6 +1424,7 @@ export const UserDashboard = () => {
             { id: 'services', label: 'تقارير السوق', icon: BookOpen },
             { id: 'inspections', label: 'فحص السيارات', icon: Shield },
             { id: 'kyc', label: `توثيق الهوية (KYC) ${effectiveUser.kycStatus === 'approved' ? '✅' : effectiveUser.kycStatus === 'pending' ? '⏳' : '⚠️'}`, icon: FileCheck },
+            { id: 'invite', label: 'ادعُ صديقاً واربح', icon: Gift },
             { id: 'messages', label: `الرسائل ${unreadCounts.messages > 0 ? `(${unreadCounts.messages})` : ''}`, icon: Mail },
             { id: 'profile', label: 'الملف الشخصي', icon: User },
           ].map(item => (
@@ -2718,6 +2720,15 @@ export const UserDashboard = () => {
 
               </div>
             </div>
+          </div>
+        )}
+
+        {view === 'invite' && (
+          <div className="p-6 md:p-8 max-w-3xl">
+            <h2 className="text-3xl font-black text-slate-900 flex items-center gap-3 mb-6">
+              <Gift className="w-7 h-7 text-orange-500" /> ادعُ أصدقاءك واربحوا معاً
+            </h2>
+            <ReferralCard />
           </div>
         )}
 

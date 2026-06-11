@@ -203,21 +203,24 @@ export function registerCarRoutes(ctx: AppContext) {
 
     const id = Date.now().toString();
     try {
+      // [starting-bid-preservation] Store opening price in BOTH columns so
+      // every later reset of currentBid can fall back to startingBid.
+      const openingPrice = Number(currentBid) || Number(startingBid) || Number(startPrice) || 0;
       db.prepare(`
         INSERT INTO cars(
           id, lotNumber, vin, make, model, trim, year, odometer, engine, engineSize, horsepower,
           transmission, drive, drivetrain, fuelType, exteriorColor, interiorColor,
-          primaryDamage, secondaryDamage, titleType, location, currentBid, reservePrice,
+          primaryDamage, secondaryDamage, titleType, location, currentBid, startingBid, reservePrice,
           buyItNow, currency, images, videoUrl, inspectionPdf, status,
           auctionEndDate, sellerId, keys, runsDrives, notes, mileageUnit, acceptOffers,
           category, sessionId
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
         primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
-        currentBid || startingBid || startPrice || 0, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
+        openingPrice, openingPrice, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || '', inspectionPdf || '', 'pending_approval',
         auctionEndDate || '', effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         safeCategory, safeSessionId
@@ -357,7 +360,7 @@ export function registerCarRoutes(ctx: AppContext) {
         UPDATE cars SET
       status = 'upcoming',
         auctionEndDate = ?,
-        currentBid = 0,
+        currentBid = COALESCE(startingBid, 0),
         winnerId = NULL,
         offerMarketEndTime = NULL,
         ultimoEndTime = NULL
@@ -379,7 +382,7 @@ export function registerCarRoutes(ctx: AppContext) {
       if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
 
       const { newAuctionEnd } = req.body;
-      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = 0, winnerId = NULL WHERE id = ?")
+      db.prepare("UPDATE cars SET status = 'upcoming', auctionEndDate = ?, currentBid = COALESCE(startingBid, 0), winnerId = NULL WHERE id = ?")
         .run(newAuctionEnd || '', id);
       io.emit("car_updated", { id, status: 'upcoming' });
       res.json({ success: true, message: "تمت إعادة جدولة السيارة" });

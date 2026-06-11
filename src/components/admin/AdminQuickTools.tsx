@@ -17,12 +17,12 @@
  * StoreContext, the same pattern other admin calls use.
  */
 import React, { useState } from 'react';
-import { Wrench, X, AlertTriangle, UserX, UserCheck, Calendar, Database, Megaphone, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Wrench, X, AlertTriangle, UserX, UserCheck, Calendar, Database, Megaphone, ChevronDown, ChevronUp, Loader2, Ship, ArrowRightLeft } from 'lucide-react';
 import { useStore, authFetch } from '../../context/StoreContext';
 
 type ActionResult = { ok: boolean; message: string } | null;
 
-type SectionKey = 'cancel-sale' | 'approve-schedule' | 'announce' | 'suspend' | 'unsuspend' | 'backup';
+type SectionKey = 'cancel-sale' | 'approve-schedule' | 'announce' | 'suspend' | 'unsuspend' | 'backup' | 'transit-add' | 'transit-move';
 
 const Section: React.FC<{
   title: string;
@@ -418,6 +418,149 @@ const BackupNowSection: React.FC = () => {
   );
 };
 
+// ── ADD TRANSIT CAR ──────────────────────────────────────────────────
+const AddTransitCarSection: React.FC = () => {
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState<string>('');
+  const [lot, setLot] = useState('');
+  const [vin, setVin] = useState('');
+  const [eta, setEta] = useState('');
+  const [vessel, setVessel] = useState('');
+  const [origin, setOrigin] = useState('Newark, NJ');
+  const [destination, setDestination] = useState('ميناء طرابلس');
+  const [imageUrl, setImageUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ActionResult>(null);
+
+  const submit = async () => {
+    if (!make.trim() || !model.trim() || !year.trim()) {
+      return setResult({ ok: false, message: 'الماركة والموديل والسنة مطلوبة' });
+    }
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await authFetch('/api/admin/cars/transit', {
+        method: 'POST',
+        body: JSON.stringify({
+          make: make.trim(), model: model.trim(), year: Number(year),
+          lot: lot.trim(), vin: vin.trim(),
+          transitEta: eta || null,
+          transitVessel: vessel.trim(),
+          transitOrigin: origin.trim(),
+          transitDestination: destination.trim(),
+          images: imageUrl.trim() ? [imageUrl.trim()] : [],
+        }),
+      });
+      const data: any = await res.json();
+      if (res.ok) {
+        setResult({ ok: true, message: `✅ أُضيفت السيارة كـ "في الطريق". الـID: ${data?.car?.id}` });
+        setMake(''); setModel(''); setYear(''); setLot(''); setVin('');
+        setEta(''); setVessel(''); setImageUrl('');
+      } else {
+        setResult({ ok: false, message: '❌ ' + (data?.error || 'فشل') });
+      }
+    } catch (e: any) {
+      setResult({ ok: false, message: '❌ خطأ شبكة: ' + (e?.message || e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="text-xs text-slate-400 leading-relaxed">
+        تُضاف السيارة بحالة <strong className="text-blue-300">in_transit</strong> ولا تدخل دورة المزاد حتى تنقر "نقل إلى المزاد" بعد وصولها.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="الماركة"><input className={inputCls} value={make} onChange={e => setMake(e.target.value)} placeholder="Toyota" /></Field>
+        <Field label="الموديل"><input className={inputCls} value={model} onChange={e => setModel(e.target.value)} placeholder="Camry" /></Field>
+        <Field label="السنة"><input className={inputCls} type="number" value={year} onChange={e => setYear(e.target.value)} placeholder="2022" /></Field>
+        <Field label="رقم Lot"><input className={inputCls} value={lot} onChange={e => setLot(e.target.value)} placeholder="59511571" /></Field>
+      </div>
+      <Field label="VIN"><input className={inputCls} value={vin} onChange={e => setVin(e.target.value)} placeholder="KNDMC..." /></Field>
+      <Field label="رابط صورة السيارة" hint="رابط مباشر لأول صورة">
+        <input className={inputCls} value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://..." />
+      </Field>
+      <Field label="ETA — تاريخ الوصول المتوقّع">
+        <input type="date" className={inputCls} value={eta} onChange={e => setEta(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="من (الميناء/المدينة)"><input className={inputCls} value={origin} onChange={e => setOrigin(e.target.value)} /></Field>
+        <Field label="إلى"><input className={inputCls} value={destination} onChange={e => setDestination(e.target.value)} /></Field>
+      </div>
+      <Field label="اسم السفينة (اختياري)"><input className={inputCls} value={vessel} onChange={e => setVessel(e.target.value)} placeholder="MSC ANNA" /></Field>
+      <button onClick={submit} disabled={busy} className={btnInfo}>
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ship className="w-4 h-4" />}
+        إضافة سيارة قادمة في الطريق
+      </button>
+      <ResultLine result={result} />
+    </>
+  );
+};
+
+// ── MOVE TRANSIT CAR TO AUCTION ──────────────────────────────────────
+const MoveTransitSection: React.FC = () => {
+  const [carId, setCarId] = useState('');
+  const [start, setStart] = useState('');
+  const [duration, setDuration] = useState<string>('30');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ActionResult>(null);
+
+  const submit = async () => {
+    if (!carId.trim()) return setResult({ ok: false, message: 'أدخل رقم السيارة' });
+    if (!confirm('سيتم نقل السيارة من "في الطريق" إلى دورة المزاد وإبلاغ كل المهتمين. متابعة؟')) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const body: any = {};
+      if (start) {
+        body.auctionStartTime = new Date(start).toISOString();
+        body.durationMinutes = Number(duration) || 30;
+      }
+      const res = await authFetch(`/api/admin/cars/${encodeURIComponent(carId.trim())}/move-to-auction`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const data: any = await res.json();
+      if (res.ok) {
+        setResult({
+          ok: true,
+          message: `✅ ${data?.message || 'نُقلت'} الحالة الجديدة: ${data?.car?.status}. أُبلِغ ${data?.notifiedCount || 0} مهتم.`,
+        });
+      } else {
+        setResult({ ok: false, message: '❌ ' + (data?.error || 'فشل') });
+      }
+    } catch (e: any) {
+      setResult({ ok: false, message: '❌ خطأ شبكة: ' + (e?.message || e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="text-xs text-slate-400 leading-relaxed">
+        عند وصول السيارة فعلياً، استخدم هذا لنقلها من "في الطريق" إلى دورة المزاد. سيُرسل إشعار + إيميل لكل من سجّل اهتمامه.
+      </p>
+      <Field label="رقم السيارة (carId)">
+        <input className={inputCls} value={carId} onChange={e => setCarId(e.target.value)} placeholder="car-tx-..." />
+      </Field>
+      <Field label="موعد بدء المزاد (اختياري)" hint="اتركه فارغاً ⇒ ستذهب لـ 'pending' بانتظار اعتماد لاحق">
+        <input type="datetime-local" className={inputCls} value={start} onChange={e => setStart(e.target.value)} />
+      </Field>
+      {start && (
+        <Field label="المدة بالدقائق"><input type="number" min={1} className={inputCls} value={duration} onChange={e => setDuration(e.target.value)} /></Field>
+      )}
+      <button onClick={submit} disabled={busy} className={btnPrimary}>
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
+        نقل السيارة إلى دورة المزاد
+      </button>
+      <ResultLine result={result} />
+    </>
+  );
+};
+
 // ── MAIN COMPONENT ────────────────────────────────────────────────────
 export const AdminQuickTools: React.FC = () => {
   const { currentUser } = useStore();
@@ -503,6 +646,24 @@ export const AdminQuickTools: React.FC = () => {
                 onToggle={() => toggle('unsuspend')}
               >
                 <UnsuspendUserSection />
+              </Section>
+
+              <Section
+                title="🚢 إضافة سيارة قادمة في الطريق"
+                icon={<Ship className="w-4 h-4 text-blue-400" />}
+                open={openSection === 'transit-add'}
+                onToggle={() => toggle('transit-add')}
+              >
+                <AddTransitCarSection />
+              </Section>
+
+              <Section
+                title="نقل سيارة قادمة إلى دورة المزاد"
+                icon={<ArrowRightLeft className="w-4 h-4 text-orange-400" />}
+                open={openSection === 'transit-move'}
+                onToggle={() => toggle('transit-move')}
+              >
+                <MoveTransitSection />
               </Section>
 
               <Section

@@ -9,8 +9,10 @@ import {
   Calendar, Gauge, Info, Gavel, User, Menu, Settings,
   Car as CarIcon, Mail, Laptop, Truck, BookOpen,
   Calculator as CalcIcon, Wallet, LayoutDashboard, Plus, Handshake,
-  Droplets, Settings2, ShieldCheck, AlertTriangle, Star, Volume2, VolumeX
+  Droplets, Settings2, ShieldCheck, AlertTriangle, Star, Volume2, VolumeX,
+  Ship,
 } from 'lucide-react';
+import TransitCarCard, { TransitCar } from '../components/TransitCarCard';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { useTranslation } from 'react-i18next';
@@ -128,6 +130,10 @@ export const Home = () => {
   const [isDesktopMoreOpen, setIsDesktopMoreOpen] = useState(false);
   const [isMyAuctionsOpen, setIsMyAuctionsOpen] = useState(true);
 
+  // [transit-tab] In-transit cars (status='in_transit') are fetched separately
+  // so we get the rich shipment fields (ETA, vessel, interestCount).
+  const [transitCars, setTransitCars] = useState<TransitCar[]>([]);
+
   // Advanced Filter States
   const [activeFilterPopover, setActiveFilterPopover] = useState<string | null>(null);
   const [filterMake, setFilterMake] = useState<string>('');
@@ -180,6 +186,17 @@ export const Home = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => { audioPlayerRef.current?.pause(); };
+  }, []);
+
+  // [transit-tab] Fetch in-transit cars on mount + when tab switches to them
+  // (so the count badge is fresh). Falls back to empty list silently.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/cars/transit')
+      .then(r => r.ok ? r.json() : { items: [] })
+      .then(d => { if (!cancelled) setTransitCars(Array.isArray(d?.items) ? d.items : []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Reset pagination when filters/search change
@@ -1147,6 +1164,7 @@ export const Home = () => {
               { id: 'offer_market', label: t('home.tabs.offersMarket'), count: (cars || []).filter(c => c.status === 'offer_market').length },
               { id: 'buy_now', label: 'اشتري الآن', count: (cars || []).filter(c => (c as any).isBuyNow && c.buyItNow && c.buyItNow > 0 && c.status !== 'closed').length },
               { id: 'closed', label: t('home.tabs.soldCars'), count: (cars || []).filter(c => c.status === 'closed').length },
+              { id: 'transit', label: '🚢 قادمة في الطريق', count: transitCars.length },
               { id: 'watchlist', label: t('home.tabs.favorites'), count: (watchlist || []).length },
             ].map((tab) => (
               <button
@@ -1205,7 +1223,51 @@ export const Home = () => {
             );
           })()}
 
-          {filteredCars.length === 0 ? (
+          {/* [transit-tab] Dedicated rendering branch — bypasses the legacy
+              car-card grid because transit cars carry different fields
+              (ETA, vessel, interestCount) and a different CTA. */}
+          {activeTab === 'transit' ? (
+            <div className="mt-12">
+              <div className="bg-gradient-to-l from-blue-50 to-orange-50 border-2 border-blue-100 rounded-3xl p-6 mb-8 flex items-start gap-4">
+                <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center shrink-0">
+                  <Ship className="w-7 h-7" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-black text-slate-900 mb-1">
+                    سيارات قادمة من أمريكا في الطريق إليكم 🚢
+                  </h3>
+                  <p className="text-sm text-slate-600 font-bold leading-relaxed">
+                    هذه السيارات اشتريناها فعلاً من المزادات الأمريكية وهي حالياً في الترانزيت.
+                    احجز مقعدك الآن لتحصل على <strong className="text-orange-600">أولوية المزايدة</strong> فور وصولها — قبل الجمهور!
+                  </p>
+                </div>
+              </div>
+              {transitCars.length === 0 ? (
+                <div className="bg-white rounded-[2rem] p-16 text-center border-2 border-dashed border-blue-200">
+                  <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-5">
+                    <Ship className="w-10 h-10 text-blue-300" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-2">لا توجد شحنات معلنة حالياً</h3>
+                  <p className="text-slate-500 font-bold">ترقّب الإعلان عن السيارات القادمة قريباً.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {transitCars.map(tc => (
+                    <TransitCarCard
+                      key={tc.id}
+                      car={tc}
+                      onInterestChange={() => {
+                        fetch('/api/cars/transit')
+                          .then(r => r.json())
+                          .then(d => setTransitCars(d?.items || []))
+                          .catch(() => {});
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : filteredCars.length === 0 ? (
             <div className="bg-white rounded-[3rem] p-20 text-center border-2 border-dashed border-slate-200 mt-8">
               <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
                 <Search className="w-12 h-12" />

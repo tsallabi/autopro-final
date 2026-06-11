@@ -56,6 +56,37 @@ export const AuthPage = () => {
     const [forgotMsg, setForgotMsg] = useState('');
     const [forgotError, setForgotError] = useState('');
 
+    /* ── resend verification email ── */
+    const [resendLoading, setResendLoading] = useState(false);
+    const [resendMsg, setResendMsg] = useState('');
+    const needsVerification = !!error && error.includes('تأكيد بريدك');
+
+    const handleResendVerification = async () => {
+        if (!form.email) {
+            setResendMsg('أدخل بريدك الإلكتروني أولاً');
+            return;
+        }
+        setResendLoading(true);
+        setResendMsg('');
+        try {
+            const res = await fetch('/api/auth/resend-verification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: form.email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setResendMsg(data.message || '✅ تم الإرسال. تحقّق من صندوق الوارد ومجلد الـ Spam.');
+            } else {
+                setResendMsg('⚠️ ' + (data.error || 'تعذّر إعادة الإرسال'));
+            }
+        } catch {
+            setResendMsg('⚠️ فشل الاتصال بالخادم');
+        } finally {
+            setResendLoading(false);
+        }
+    };
+
     /* ── form data ── */
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showConfirmPass, setShowConfirmPass] = useState(false);
@@ -212,9 +243,13 @@ export const AuthPage = () => {
         setError('');
         try {
             const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+            // [referral] Pick up ?ref=CODE from the URL — the backend wires it
+            // through applyReferralOnRegister so the referrer gets credited
+            // when this user makes their first deposit.
+            const referralCode = searchParams.get('ref') || undefined;
             const body = isLogin
                 ? { email: form.email, password: form.password }
-                : { ...form, role: accountType };
+                : { ...form, role: accountType, referralCode };
             const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const data = await res.json();
             if (res.ok) {
@@ -663,6 +698,33 @@ export const AuthPage = () => {
                     <div className="bg-red-50 border border-red-100 text-red-600 p-3.5 rounded-2xl mb-5 text-sm font-bold flex items-center gap-3">
                         <Shield className="w-4 h-4 shrink-0" /> {error}
                         <button aria-label="إغلاق" title="إغلاق" onClick={() => setError('')} className="mr-auto"><X className="w-4 h-4" /></button>
+                    </div>
+                )}
+
+                {/* Verification recovery — appears only when login failed due to unverified email */}
+                {needsVerification && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl mb-5 text-sm space-y-2">
+                        <div className="font-bold flex items-center gap-2">
+                            <Mail className="w-4 h-4" /> لم يصلك رابط التوثيق؟
+                        </div>
+                        <p className="text-amber-800 text-xs leading-relaxed">
+                            • تحقّق من مجلد الـ <strong>Spam / المهمل / Promotions</strong> في بريدك.<br/>
+                            • إذا لم تجده، اضغط الزر لإرسال رابط جديد.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleResendVerification}
+                            disabled={resendLoading}
+                            className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white py-2.5 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2"
+                        >
+                            <Mail className="w-4 h-4" />
+                            {resendLoading ? '...جارٍ الإرسال' : 'إرسال رابط توثيق جديد'}
+                        </button>
+                        {resendMsg && (
+                            <div className="text-xs font-bold text-amber-900 bg-amber-100 border border-amber-200 rounded-lg p-2 mt-2">
+                                {resendMsg}
+                            </div>
+                        )}
                     </div>
                 )}
 

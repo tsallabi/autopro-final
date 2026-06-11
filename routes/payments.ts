@@ -248,8 +248,8 @@ export function registerPaymentRoutes(ctx: AppContext) {
     try {
       const { amount, currency, type } = req.body;
       if (!amount || amount <= 0) return res.status(400).json({ error: "مبلغ غير صالح" });
-      if (currency === 'USD' && amount < 500) return res.status(400).json({ error: "الحد الأدنى للعربون خارج ليبيا هو $500" });
-      if (currency === 'LYD' && amount < 1000) return res.status(400).json({ error: "الحد الأدنى للعربون داخل ليبيا هو 1,000 دينار ليبي" });
+      if (currency === 'USD' && amount < 50) return res.status(400).json({ error: "الحد الأدنى للعربون خارج ليبيا هو $50" });
+      if (currency === 'LYD' && amount < 200) return res.status(400).json({ error: "الحد الأدنى للعربون داخل ليبيا هو 200 دينار ليبي" });
 
       if (!stripeClient) {
         return res.json({ clientSecret: 'demo_secret_' + Date.now(), demo: true });
