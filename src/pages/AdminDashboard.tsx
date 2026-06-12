@@ -6796,8 +6796,38 @@ export const AdminDashboard = () => {
                         </td>
                         <td className="p-4 font-bold text-slate-900 font-mono">${(car.currentBid || 0).toLocaleString()}</td>
                         <td className="p-4 text-sm font-bold text-slate-600">
-                           <div className="text-orange-600 font-black truncate max-w-[120px]" title={car.sellerName || car.sellerId}>{car.sellerName || car.sellerId || 'إدارة المنصة'}</div>
-                           <div className="text-[10px] text-slate-400 font-mono mt-1">{new Date(car.createdAt || Date.now()).toLocaleDateString('ar-EG')}</div>
+                           {/* [seller-info] Rich seller card: name + role badge + phone for one-click contact + verified mark. */}
+                           <div className="flex flex-col gap-1 min-w-[180px]">
+                             <div className="flex items-center gap-2">
+                               <span className="text-slate-900 font-black truncate max-w-[150px]" title={(car as any).sellerName || car.sellerId}>
+                                 {(car as any).sellerName || car.sellerId || 'إدارة المنصة'}
+                               </span>
+                               {(car as any).sellerVerified && (
+                                 <span className="text-emerald-500 text-xs" title="هوية موثّقة">✓</span>
+                               )}
+                             </div>
+                             <div className="flex items-center gap-1.5">
+                               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                 (car as any).sellerRoleLabel === 'تاجر'
+                                   ? 'bg-blue-100 text-blue-700'
+                                   : (car as any).sellerRoleLabel === 'مشتري'
+                                     ? 'bg-amber-100 text-amber-700'
+                                     : 'bg-slate-200 text-slate-700'
+                               }`}>
+                                 {(car as any).sellerRoleLabel || (car.sellerId ? 'مستخدم' : 'إدارة')}
+                               </span>
+                               {(car as any).sellerPhone && (
+                                 <a href={`tel:${(car as any).sellerPhone}`}
+                                    className="text-[10px] text-slate-500 font-mono hover:text-orange-600"
+                                    title="اتصال">
+                                   {(car as any).sellerPhone}
+                                 </a>
+                               )}
+                             </div>
+                             <div className="text-[10px] text-slate-400 font-mono">
+                               {new Date(car.createdAt || Date.now()).toLocaleDateString('ar-EG')}
+                             </div>
+                           </div>
                         </td>
                         <td className="p-4">
                           <span className={`px-2 py-1 rounded text-xs font-bold ${car.status === 'live' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>

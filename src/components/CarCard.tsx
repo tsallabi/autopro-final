@@ -224,11 +224,24 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
           <span className="font-medium">{car.location}</span>
           <span className="mx-2 text-slate-300">•</span>
           <span className="font-bold flex items-center gap-1.5 text-slate-600">
-            {showroomName}
-            {isVerified ? (
-              <span title="معرض موثق" className="flex items-center"><ShieldCheck className="w-3.5 h-3.5 text-blue-500" /></span>
+            {(car as any).sellerName || showroomName}
+            {/* [seller-info] Small role badge next to the seller name so admin
+                + buyers know if it's a dealer, regular buyer, or platform. */}
+            {(car as any).sellerRoleLabel && (
+              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                (car as any).sellerRoleLabel === 'تاجر'
+                  ? 'bg-blue-100 text-blue-700'
+                  : (car as any).sellerRoleLabel === 'مشتري'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-slate-200 text-slate-700'
+              }`}>
+                {(car as any).sellerRoleLabel}
+              </span>
+            )}
+            {isVerified || (car as any).sellerVerified ? (
+              <span title="هوية موثّقة" className="flex items-center"><ShieldCheck className="w-3.5 h-3.5 text-blue-500" /></span>
             ) : (
-              <span title="معرض غير موثق" className="flex items-center"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>
+              <span title="غير موثّق" className="flex items-center"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>
             )}
           </span>
         </div>
