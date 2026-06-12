@@ -3624,9 +3624,19 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           );
         });
       });
-    } catch (e) {
-      console.error(e);
-      res.status(400).json({ error: "البريد الإلكتروني مسجل مسبقاً أو بيانات غير صالحة" });
+    } catch (e: any) {
+      // [register-clearer-errors] Distinguish the actual failure so the user
+      // sees what to fix instead of a vague "or invalid data". Most failures
+      // hit the UNIQUE(email) constraint when re-registering.
+      console.error('[REGISTER ERROR]', e?.message, e);
+      const msg = String(e?.message || '');
+      if (msg.includes('UNIQUE') && msg.includes('email')) {
+        return res.status(409).json({ error: "هذا البريد الإلكتروني مسجّل مسبقاً. سجّل دخول أو استخدم بريداً آخر." });
+      }
+      if (msg.includes('NOT NULL')) {
+        return res.status(400).json({ error: "بيانات ناقصة — تأكد من ملء كل الحقول المطلوبة." });
+      }
+      res.status(400).json({ error: "فشل التسجيل: " + (e?.message || 'بيانات غير صالحة') });
     }
   });
 
@@ -3732,6 +3742,21 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       console.error('[GOOGLE AUTH ERROR]', err?.message);
       res.status(401).json({ error: 'فشل التحقق من حساب Google: ' + (err?.message || 'خطأ غير معروف') });
     }
+  });
+
+  // [auth-providers-status] Tell the frontend at runtime which auth methods
+  // are configured. Lets the SPA hide Google/Facebook buttons when the
+  // server env vars aren't set — better than showing dead buttons. Also
+  // returns the Google client_id so the SPA doesn't have to bake
+  // VITE_GOOGLE_CLIENT_ID into the build (Ahmad keeps deploying without
+  // setting it, which broke Google login on production).
+  app.get("/api/auth/providers", (_req, res) => {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+    const fbAppId = process.env.FACEBOOK_APP_ID || '';
+    res.json({
+      google: { enabled: !!googleClientId, clientId: googleClientId },
+      facebook: { enabled: !!fbAppId, appId: fbAppId },
+    });
   });
 
   app.post("/api/auth/login", async (req, res) => {
