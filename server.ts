@@ -3831,8 +3831,40 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   // Car Routes
   app.get("/api/cars", (req, res) => {
-    const cars: any[] = db.prepare("SELECT * FROM cars").all();
-    res.json(cars.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
+    // [seller-info] Enrich every car with the lister's identity so admin and
+    // marketplace UI can show "أضافها: تاجر فلان" without an extra round-trip.
+    // LEFT JOIN preserves cars added by the platform itself (no sellerId).
+    const cars: any[] = db.prepare(`
+      SELECT c.*,
+             u.firstName AS sellerFirstName,
+             u.lastName  AS sellerLastName,
+             u.role      AS sellerRole,
+             u.phone     AS sellerPhone,
+             u.email     AS sellerEmail,
+             u.companyName AS sellerCompanyName,
+             u.kycStatus AS sellerKycStatus
+        FROM cars c
+        LEFT JOIN users u ON u.id = c.sellerId
+    `).all();
+    res.json(cars.map((car: any) => {
+      const hasSeller = !!car.sellerId;
+      const fullName = [car.sellerFirstName, car.sellerLastName].filter(Boolean).join(' ').trim();
+      const sellerName = car.sellerCompanyName || fullName || (hasSeller ? 'مستخدم' : 'إدارة المنصة');
+      const sellerRoleLabel = !hasSeller
+        ? 'إدارة'
+        : car.sellerRole === 'admin'
+          ? 'إدارة'
+          : car.sellerRole === 'seller'
+            ? 'تاجر'
+            : 'مشتري';
+      return {
+        ...car,
+        images: JSON.parse(car.images || '[]'),
+        sellerName,
+        sellerRoleLabel,
+        sellerVerified: car.sellerKycStatus === 'approved' || car.sellerRole === 'admin' || !hasSeller,
+      };
+    }));
   });
 
   app.post("/api/cars", requireAuth, (req, res) => {
