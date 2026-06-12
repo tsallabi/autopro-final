@@ -98,6 +98,10 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         // no session" — the legacy continuous scheduler picks the car up.
         category: '',
         sessionId: '',
+        // [currency] Default to USD for foreign auctions. Admin can flip to
+        // LYD on cars priced in Libyan dinar (local fleet, returned cars).
+        // Stored in cars.currency column.
+        currency: 'USD',
         ...(initialData || {}),
         // [price-fields] Map DB columns → form field names so EDIT pre-fills
         // the opening price and buy-now correctly. The car row stores the
@@ -528,18 +532,54 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                     <ComboSelect label="هل العداد حقيقي؟" value={formData.actualOdometer} options={['حقيقي', 'غير حقيقي']} onChange={(v: string) => handleFieldChange('actualOdometer', v)} />
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-black text-orange-500 mb-2">أول سعر يبدأ به المزاد ($)</label>
-                                    <input title="سعر بداية المزاد" aria-label="سعر بداية المزاد" placeholder="1000" type="number" value={formData.startingBid} onChange={e => handleFieldChange('startingBid', e.target.value)} className={iptClass} />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-black text-orange-500 mb-2">أقل سعر يتم قبوله Reserve ($) *</label>
-                                    <input title="السعر الاحتياطي" aria-label="السعر الاحتياطي" placeholder="5000" type="number" value={formData.reservePrice} onChange={e => handleFieldChange('reservePrice', e.target.value)} className={iptClass} required />
+                                {/* [currency-selector] Pick currency once — all 3 price fields below use it. */}
+                                <div className="col-span-2 bg-gradient-to-l from-orange-500/10 to-transparent border border-orange-500/30 p-4 rounded-xl">
+                                    <label className="block text-xs font-black text-orange-400 mb-2">💰 عملة الأسعار</label>
+                                    <div className="flex gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleFieldChange('currency', 'USD')}
+                                            className={`flex-1 py-3 rounded-lg font-black text-sm transition ${formData.currency === 'USD'
+                                                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                                : 'bg-slate-800 text-slate-400 border border-slate-700'}`}
+                                        >
+                                            💵 دولار أمريكي ($)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleFieldChange('currency', 'LYD')}
+                                            className={`flex-1 py-3 rounded-lg font-black text-sm transition ${formData.currency === 'LYD'
+                                                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                                : 'bg-slate-800 text-slate-400 border border-slate-700'}`}
+                                        >
+                                            🇱🇾 دينار ليبي (د.ل)
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 font-bold mt-2">
+                                        {formData.currency === 'LYD'
+                                            ? 'كل الأسعار أدناه بالدينار الليبي — تُعرض على الزبون كما هي'
+                                            : 'كل الأسعار أدناه بالدولار — تُحوّل تلقائياً عند العرض على الزبون الليبي'}
+                                    </p>
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-black text-orange-500 mb-2">سعر البيع الفوري (Buy Now) ($) اختياري</label>
-                                    <input title="سعر البيع الفوري" aria-label="سعر البيع الفوري" placeholder="مثال: 8000" type="number" value={formData.buyNowPrice || ''} onChange={e => handleFieldChange('buyNowPrice', e.target.value)} className={iptClass} />
+                                    <label className="block text-xs font-black text-orange-500 mb-2">
+                                        أول سعر يبدأ به المزاد ({formData.currency === 'LYD' ? 'د.ل' : '$'})
+                                    </label>
+                                    <input title="سعر بداية المزاد" aria-label="سعر بداية المزاد" placeholder={formData.currency === 'LYD' ? '5000' : '1000'} type="number" value={formData.startingBid} onChange={e => handleFieldChange('startingBid', e.target.value)} className={iptClass} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black text-orange-500 mb-2">
+                                        أقل سعر يتم قبوله Reserve ({formData.currency === 'LYD' ? 'د.ل' : '$'}) *
+                                    </label>
+                                    <input title="السعر الاحتياطي" aria-label="السعر الاحتياطي" placeholder={formData.currency === 'LYD' ? '25000' : '5000'} type="number" value={formData.reservePrice} onChange={e => handleFieldChange('reservePrice', e.target.value)} className={iptClass} required />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-black text-orange-500 mb-2">
+                                        سعر البيع الفوري (Buy Now) ({formData.currency === 'LYD' ? 'د.ل' : '$'}) اختياري
+                                    </label>
+                                    <input title="سعر البيع الفوري" aria-label="سعر البيع الفوري" placeholder={formData.currency === 'LYD' ? 'مثال: 40000' : 'مثال: 8000'} type="number" value={formData.buyNowPrice || ''} onChange={e => handleFieldChange('buyNowPrice', e.target.value)} className={iptClass} />
                                 </div>
                                 <ComboSelect label="نسبة العرض المقبولة" value={formData.acceptedOfferPercentage} options={ACCEPTED_OFFER_OPTIONS} onChange={(v: string) => handleFieldChange('acceptedOfferPercentage', v)} />
 
