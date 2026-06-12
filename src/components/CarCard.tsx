@@ -297,12 +297,31 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
             <span className="text-slate-400 block text-xs mb-1">
               {car.status === 'offer_market' ? t('home.carCard.lastBidDesc') : t('home.carCard.currentBidDesc')}
             </span>
-            <div className={`text-2xl font-bold font-mono ${car.status === 'offer_market' ? 'text-blue-600' : 'text-slate-900'}`}>
-              ${(car.currentBid || car.startingBid || 0).toLocaleString('en-US')}
-            </div>
-            <div className="text-sm font-bold text-slate-400 font-mono mt-0.5">
-              {Math.round((car.currentBid || car.startingBid || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل
-            </div>
+            {/* [car-currency-display] Honor car.currency — admin can list cars
+                in either USD (foreign auctions, default) or LYD (local fleet).
+                When the listing is LYD, show LYD as the primary price and USD
+                conversion as the secondary line; reverse for USD listings. */}
+            {(() => {
+              const value = car.currentBid || car.startingBid || 0;
+              const rate = exchangeRate || 7;
+              const isLyd = (car as any).currency === 'LYD';
+              const primary = isLyd
+                ? `${value.toLocaleString('en-US')} د.ل`
+                : `$${value.toLocaleString('en-US')}`;
+              const secondary = isLyd
+                ? `$${Math.round(value / rate).toLocaleString('en-US')}`
+                : `${Math.round(value * rate).toLocaleString('en-US')} د.ل`;
+              return (
+                <>
+                  <div className={`text-2xl font-bold font-mono ${car.status === 'offer_market' ? 'text-blue-600' : 'text-slate-900'}`}>
+                    {primary}
+                  </div>
+                  <div className="text-sm font-bold text-slate-400 font-mono mt-0.5">
+                    ≈ {secondary}
+                  </div>
+                </>
+              );
+            })()}
           </div>
           <button aria-label={car.status === 'live' ? t('home.carCard.bidNow') : car.status === 'offer_market' ? t('home.carCard.makeOffer') : t('home.carCard.viewDetails')} title={car.status === 'live' ? t('home.carCard.bidNow') : car.status === 'offer_market' ? t('home.carCard.makeOffer') : t('home.carCard.viewDetails')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${car.status === 'live'
             ? 'bg-red-50 text-red-600 hover:bg-red-100'
