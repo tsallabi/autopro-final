@@ -89,9 +89,9 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         vin: '', make: '', model: '', year: new Date().getFullYear(), trim: '',
         odometer: '', actualOdometer: 'yes', engine: '', cylinders: '',
         transmission: TRANSMISSIONS[0], drive: DRIVETRAINS[0], fuelType: FUEL_TYPES[0],
-        auctionLane: '', showroomName: '', startingBid: '', reservePrice: '',
+        auctionLane: '', showroomName: '', reservePrice: '',
         saleStatus: SALE_STATUSES[0], locationDetails: '', exchangeRate: '1', minPrice: '',
-        specialNote: '', buyNowPrice: '', acceptedOfferPercentage: ACCEPTED_OFFER_OPTIONS[0],
+        specialNote: '', acceptedOfferPercentage: ACCEPTED_OFFER_OPTIONS[0],
         bodyType: BODY_TYPES[0], interiorColor: '', exteriorColor: '', auctionLights: AUCTION_LIGHTS[0], conditionReportType: CONDITION_REPORT_TYPES[0],
         youtubeVideoUrl: '', isRecommended: false, primaryDamage: 'بدون ضرر', location: '', titleType: 'الولايات المتحدة us',
         // [auction-sessions] New optional fields. '' means "no category /
