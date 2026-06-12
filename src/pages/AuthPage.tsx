@@ -106,10 +106,31 @@ export const AuthPage = () => {
         }
     }, [currentUser, navigate]);
 
+    // [auth-providers-runtime] Fetch which providers the server has configured
+    // (GET /api/auth/providers). Lets us hide Google/Facebook buttons when not
+    // set up, and use the runtime client_id without baking VITE_* into the
+    // build — Ahmad keeps deploying without those vars and the build-time
+    // approach silently broke Google login on production.
+    const [providers, setProviders] = useState<{
+        google: { enabled: boolean; clientId: string };
+        facebook: { enabled: boolean; appId: string };
+    } | null>(null);
+
+    useEffect(() => {
+      fetch('/api/auth/providers')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setProviders(d); })
+        .catch(() => {});
+    }, []);
+
     // Load Google Identity Services
     const googleBtnRef = React.useRef<HTMLDivElement>(null);
     useEffect(() => {
-      const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      // Runtime client ID from /api/auth/providers (preferred), fallback to
+      // build-time env var for backward compat.
+      const GOOGLE_CLIENT_ID = providers?.google?.clientId
+        || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID
+        || '';
       if (!GOOGLE_CLIENT_ID) return; // not configured
       const scriptId = 'google-gsi-script';
       if (!document.getElementById(scriptId)) {
@@ -123,11 +144,13 @@ export const AuthPage = () => {
       } else if (window.google) {
         initGoogle(GOOGLE_CLIENT_ID);
       }
-    }, []);
+    }, [providers]);
 
     // Load Facebook SDK
     useEffect(() => {
-      const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID;
+      const FB_APP_ID = providers?.facebook?.appId
+        || (import.meta as any).env?.VITE_FACEBOOK_APP_ID
+        || '';
       if (!FB_APP_ID) return;
       if (document.getElementById('fb-sdk-script')) return;
       window.fbAsyncInit = function () {
@@ -143,7 +166,9 @@ export const AuthPage = () => {
     }, []);
 
     const handleFacebookLogin = () => {
-      const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID;
+      const FB_APP_ID = providers?.facebook?.appId
+        || (import.meta as any).env?.VITE_FACEBOOK_APP_ID
+        || '';
       if (!FB_APP_ID || !window.FB) {
         setError('تسجيل الدخول بـ Facebook غير مفعّل حالياً — يرجى استخدام Google أو البريد الإلكتروني.');
         return;
@@ -211,13 +236,17 @@ export const AuthPage = () => {
     };
 
     const handleGoogleClick = () => {
-      const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      const GOOGLE_CLIENT_ID = providers?.google?.clientId
+        || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID
+        || '';
       if (!GOOGLE_CLIENT_ID) {
-        setError('تسجيل الدخول بـ Google غير مفعّل حالياً — يرجى التسجيل بالبريد الإلكتروني.');
+        setError('تسجيل الدخول بـ Google غير مفعّل على الخادم — يرجى التسجيل بالبريد الإلكتروني، أو اطلب من الإدارة ضبط GOOGLE_CLIENT_ID.');
         return;
       }
       if (window.google) {
         window.google.accounts.id.prompt();
+      } else {
+        setError('تعذّر تحميل مكتبة Google — تأكد من اتصالك بالإنترنت ثم أعد المحاولة.');
       }
     };
 
@@ -748,13 +777,15 @@ export const AuthPage = () => {
                     </div>
                 </form>
 
-                {/* Divider + social */}
+                {/* Divider + social — hide entirely if no provider is enabled */}
+                {(providers === null || providers.google.enabled || providers.facebook.enabled) && (
                 <>
                     <div className="relative my-8">
                         <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100" /></div>
                         <div className="relative flex justify-center text-[10px] uppercase font-black text-slate-300"><span className="bg-white px-4">أو عبر</span></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={`grid gap-3 ${providers && providers.google.enabled && providers.facebook.enabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        {(providers === null || providers.google.enabled) && (
                         <button
                             type="button"
                             title="استمر مع Google"
@@ -771,6 +802,8 @@ export const AuthPage = () => {
                             </svg>
                             Google
                         </button>
+                        )}
+                        {(providers === null || providers.facebook.enabled) && (
                         <button
                             type="button"
                             title="استمر مع Facebook"
@@ -783,8 +816,10 @@ export const AuthPage = () => {
                             </svg>
                             Facebook
                         </button>
+                        )}
                     </div>
                 </>
+                )}
 
                 <p className="mt-auto pt-10 text-center text-[10px] text-slate-300 font-black uppercase tracking-widest">
                     © {new Date().getFullYear()} AUTO PRO AUCTIONS •{' '}
