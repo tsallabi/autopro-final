@@ -16,7 +16,7 @@ const STRIPE_PK: string = _env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 
 type Currency = 'USD' | 'LYD';
 type Step = 'amount' | 'method' | 'pay' | 'success';
-type PayMethod = 'mypay' | 'contact' | 'sadad' | 'tadawul' | 'card' | 'bank_lyd' | 'bank_usd' | 'wise';
+type PayMethod = 'mypay' | 'cash_office' | 'contact' | 'sadad' | 'tadawul' | 'card' | 'bank_lyd' | 'bank_usd' | 'wise';
 
 // [deposit-mypay-only] Official AutoPro Libya auctions WhatsApp shown in the
 // "اتصل بنا" option. The 00 dialing prefix the owner gave (0013129105416)
@@ -144,6 +144,9 @@ export const DepositPage: React.FC = () => {
   // everyone picked "bank transfer" then never followed through, so the
   // deposit was effectively a dead end. Forcing MyPay (instant credit) or a
   // direct WhatsApp conversation fixes the drop-off.
+  // [deposit-methods] Per owner request (Jun 2026): hide bank-transfer,
+  // surface MyPay first, then "cash at our office" with the Khoms address,
+  // then WhatsApp as the catch-all "contact us" fallback.
   const PAY_METHODS: PayMethodInfo[] = [
     {
       id: 'mypay', label: 'MyPay — دفع إلكتروني فوري', labelEn: 'MyPay (Instant)',
@@ -153,11 +156,11 @@ export const DepositPage: React.FC = () => {
       currencies: ['LYD'], available: true,
     },
     {
-      id: 'bank_lyd', label: 'تحويل بنكي مباشر', labelEn: 'Bank Transfer',
-      desc: 'حوّل من حسابك مباشرة إلى حساب أوتو برو ليبيا. يُفعَّل حسابك بعد وصول المبلغ (خلال 24 ساعة)',
-      icon: <Building2 className="w-6 h-6" />,
-      badge: 'بدون عمولة', badgeColor: 'bg-blue-500/20 text-blue-400',
-      currencies: ['LYD'], available: true,
+      id: 'cash_office', label: 'كاش في مكتبنا', labelEn: 'Cash at Our Office',
+      desc: 'ادفع نقداً مباشرة في مكتبنا — الخمس، شارع الفرناج (المخازن سابقاً) بجوار غسيل سيارات 90',
+      icon: <Banknote className="w-6 h-6" />,
+      badge: 'بدون عمولة', badgeColor: 'bg-amber-500/20 text-amber-400',
+      currencies: ['LYD', 'USD'], available: true,
     },
     {
       id: 'contact', label: 'اتصل بنا', labelEn: 'Contact Us',
@@ -167,6 +170,15 @@ export const DepositPage: React.FC = () => {
       currencies: ['LYD', 'USD'], available: true,
     },
   ];
+
+  // [office] Hard-coded so it ships even on offline / first-render. Admin can
+  // override via system_settings if address moves (see bankInfo.note hook).
+  const OFFICE = {
+    company: 'مجموعة المزاد الدولي كارموتو ليبيا',
+    address: 'الخمس — شارع الفرناج (شارع المخازن سابقاً) بجوار غسيل سيارات 90',
+    whatsapps: ['+218925121206', '+218915121206'],
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('الخمس شارع الفرناج ليبيا'),
+  };
 
   const availableMethods = PAY_METHODS.filter(m => m.currencies.includes(finalCurrency));
 
@@ -580,6 +592,61 @@ export const DepositPage: React.FC = () => {
                   className="w-full py-3.5 bg-gradient-to-l from-emerald-500 to-emerald-600 hover:from-emerald-400 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
                   {loading ? <><Loader2 className="w-5 h-5 animate-spin" />جاري فتح البوابة...</> : <><Lock className="w-4 h-4" />ادفع {formatCurrency(finalAmount)} الآن</>}
                 </button>
+                <button onClick={() => setStep('method')} className="w-full py-2.5 text-gray-400 hover:text-gray-200 text-sm font-semibold">رجوع</button>
+              </div>
+            )}
+
+            {/* ── Cash at our office ── */}
+            {payMethod === 'cash_office' && (
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-6 space-y-5">
+                <div className="flex items-center gap-3">
+                  <Banknote className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-white font-semibold">ادفع نقداً في مكتبنا</h3>
+                </div>
+                <div className="bg-gray-900/60 rounded-xl p-4 space-y-3 text-sm">
+                  <div className="border-b border-gray-700/40 pb-3">
+                    <div className="text-gray-400 text-xs mb-1">الشركة</div>
+                    <div className="text-white font-bold text-base">{OFFICE.company}</div>
+                  </div>
+                  <div className="border-b border-gray-700/40 pb-3">
+                    <div className="text-gray-400 text-xs mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" /> العنوان</div>
+                    <div className="text-white leading-relaxed">{OFFICE.address}</div>
+                    <a href={OFFICE.mapsUrl} target="_blank" rel="noreferrer"
+                       className="inline-flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-300 underline">
+                      <MapPin className="w-3 h-3" /> افتح على خرائط Google
+                    </a>
+                  </div>
+                  <div>
+                    <div className="text-gray-400 text-xs mb-2 flex items-center gap-1"><Phone className="w-3 h-3" /> رقم الواتساب</div>
+                    <div className="flex flex-col gap-2">
+                      {OFFICE.whatsapps.map(num => {
+                        const local = num.replace('+218', '0');
+                        return (
+                          <div key={num} className="flex items-center justify-between gap-2 bg-gray-800/50 rounded-lg px-3 py-2">
+                            <span className="text-white font-mono text-sm" dir="ltr">{local}</span>
+                            <div className="flex items-center gap-1">
+                              <CopyBtn text={local} field={`wa-${num}`} />
+                              <a
+                                href={`https://wa.me/${num.replace(/\D/g, '')}?text=${encodeURIComponent(`السلام عليكم، أريد دفع عربون نقداً في مكتبكم. المبلغ: ${formatCurrency(finalAmount)} — رقم المرجع: ${bankRef}`)}`}
+                                target="_blank" rel="noreferrer"
+                                title="فتح واتساب"
+                                className="bg-green-500/15 hover:bg-green-500/25 text-green-400 px-2 py-1 rounded text-xs font-bold"
+                              >
+                                واتساب
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex justify-between pt-2"><span className="text-gray-400">المبلغ:</span><span className="text-orange-400 font-bold">{formatCurrency(finalAmount)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-400">رقم المرجع:</span><span className="text-white font-mono">{bankRef}</span></div>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex gap-2 text-amber-300 text-xs">
+                  <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>عند الوصول للمكتب اذكر رقم المرجع أعلاه، سيُسلّمك المحاسب إيصالاً ويُفعَّل عربونك مباشرة في حسابك.</span>
+                </div>
                 <button onClick={() => setStep('method')} className="w-full py-2.5 text-gray-400 hover:text-gray-200 text-sm font-semibold">رجوع</button>
               </div>
             )}
