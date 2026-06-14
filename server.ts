@@ -8275,20 +8275,67 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  // 4) PATCH /api/admin/invoices/:id/status — update invoice status
-  app.patch("/api/admin/invoices/:id/status", requireAdmin, (req, res) => {
+  // 4) Update invoice status — accepts BOTH PATCH and POST (the admin UI
+  //    posts; mobile / older clients PATCH). Was 404'ing with "فشل التحديث"
+  //    because the SPA used POST and the route only matched PATCH.
+  //
+  //    [invoice-cascade] When marking a transport/shipping invoice as paid,
+  //    verify the upstream invoice (purchase, then transport) was paid
+  //    first. Prevents the impossible state of a "paid shipping" on a car
+  //    whose purchase hasn't been paid.
+  const PAID_INVOICE_STATES = ['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'];
+  const updateInvoiceStatusHandler = (req: any, res: any) => {
     const { id } = req.params;
-    const { status } = req.body || {};
-    if (!status) return res.status(400).json({ error: 'status required' });
+    const { status, releaseCardUrl } = req.body || {};
+    if (!status) return res.status(400).json({ error: 'status مطلوب' });
     try {
       try { db.prepare("ALTER TABLE invoices ADD COLUMN updatedAt TEXT").run(); } catch (_) { /* exists */ }
-      db.prepare('UPDATE invoices SET status = ?, updatedAt = ? WHERE id = ?')
-        .run(status, new Date().toISOString(), id);
+
+      if (PAID_INVOICE_STATES.includes(status)) {
+        const inv: any = db.prepare("SELECT * FROM invoices WHERE id = ?").get(id);
+        if (!inv) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+
+        const upstreamPaid = (type: string): boolean => {
+          const u: any = db.prepare(
+            "SELECT status FROM invoices WHERE userId = ? AND carId = ? AND type = ? LIMIT 1"
+          ).get(inv.userId, inv.carId, type);
+          // If no upstream invoice exists at all, treat as OK (legacy/manual rows).
+          return !u || PAID_INVOICE_STATES.includes(u.status);
+        };
+
+        if (inv.type === 'transport' && !upstreamPaid('purchase')) {
+          return res.status(409).json({
+            error: 'لا يمكن تأكيد سداد فاتورة النقل قبل سداد فاتورة الشراء أوّلاً.',
+          });
+        }
+        if (inv.type === 'shipping' && (!upstreamPaid('purchase') || !upstreamPaid('transport'))) {
+          return res.status(409).json({
+            error: 'لا يمكن تأكيد سداد فاتورة الشحن قبل سداد فاتورتي الشراء والنقل.',
+          });
+        }
+      }
+
+      const sets: string[] = ['status = ?', 'updatedAt = ?'];
+      const vals: any[] = [status, new Date().toISOString()];
+      if (PAID_INVOICE_STATES.includes(status)) {
+        // First transition to paid: stamp paidAt so reports stay accurate.
+        sets.push('paidAt = COALESCE(paidAt, ?)');
+        vals.push(new Date().toISOString());
+      }
+      if (releaseCardUrl) {
+        sets.push('releaseCardUrl = ?');
+        vals.push(releaseCardUrl);
+      }
+      vals.push(id);
+      db.prepare(`UPDATE invoices SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
       res.json({ success: true, id, status });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'Failed to update invoice status' });
+      console.error('[INVOICE STATUS UPDATE]', e?.message);
+      res.status(500).json({ error: e?.message || 'فشل تحديث حالة الفاتورة' });
     }
-  });
+  };
+  app.patch("/api/admin/invoices/:id/status", requireAdmin, updateInvoiceStatusHandler);
+  app.post("/api/admin/invoices/:id/status",  requireAdmin, updateInvoiceStatusHandler);
 
   // 5) POST /api/admin/users/:userId/kyc — unified KYC approve/reject alias
   app.post("/api/admin/users/:userId/kyc", requireAdmin, (req, res) => {
