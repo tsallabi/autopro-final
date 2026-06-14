@@ -3,12 +3,13 @@ import { useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Calendar, Gauge, MapPin, Shield, Info, FileText,
-  Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle, TrendingUp, X, CheckCircle2, ArrowUp
+  Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle, TrendingUp, X, CheckCircle2, ArrowUp, Share2
 } from 'lucide-react';
 import { calculateTotalCost, MOCK_LOCATIONS } from '../services/calculatorService';
 import { VehicleType } from '../types/calculator';
 import { LiveAuction } from '../components/LiveAuction';
 import { useStore, authFetch } from '../context/StoreContext';
+import CarShareButtons from '../components/CarShareButtons';
 
 // ============================================================
 // Inline Proxy Bid Panel for Upcoming Market cars
@@ -298,14 +299,20 @@ export const CarDetails = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 pt-24 pb-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir={i18n.dir()}>
-      {/* Back Button */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-slate-500 hover:text-orange-500 transition-colors font-bold"
-      >
-        <ChevronLeft className="w-5 h-5" />
-        {t('carDetails.back')}
-      </button>
+      {/* Back + Share row */}
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-slate-500 hover:text-orange-500 transition-colors font-bold"
+        >
+          <ChevronLeft className="w-5 h-5" />
+          {t('carDetails.back')}
+        </button>
+
+        {/* [og-share] Native + WhatsApp + Facebook share. The server injects
+            car-specific og:image and og:title so previews look great. */}
+        <CarShareButtons car={car} />
+      </div>
 
       {/* Status Banner */}
       {car.status === 'upcoming' && (

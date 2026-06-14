@@ -8563,6 +8563,24 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     || !!process.env.RENDER
     || fs.existsSync(distPath);
 
+  // [og-share] Inject car-specific OG / Twitter meta tags into the SPA shell
+  // for /car-details/:id requests so Facebook, WhatsApp, Twitter link
+  // previews show the actual car (image + headline + price) instead of the
+  // generic homepage card. Mounted BEFORE express.static and the catch-all.
+  try {
+    const { carDetailsOgMiddleware } = await import('./lib/carDetailsOg.ts');
+    const srcIndexPath = path.join(__dirname, 'index.html');
+    app.use(carDetailsOgMiddleware({
+      db,
+      siteUrl: SITE_URL,
+      distPath: isProduction ? distPath : undefined,
+      srcIndexPath: !isProduction ? srcIndexPath : undefined,
+    }));
+    console.log('[BOOT] ✓ car-details OG middleware');
+  } catch (e: any) {
+    console.error('[BOOT] og middleware failed:', e?.message);
+  }
+
   if (isProduction) {
     console.log("🚀 Production mode — serving dist/");
     // Serve uploads BEFORE dist to prevent SPA catch-all from intercepting media files
