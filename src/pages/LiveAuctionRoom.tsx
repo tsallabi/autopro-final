@@ -8,7 +8,17 @@ export const LiveAuctionRoom = () => {
     const navigate = useNavigate();
     const { cars } = useStore();
 
-    const liveCar = cars.find(c => c.status === 'live' || c.status === 'ultimo');
+    // [sold-cars-out] Defensive filter: only truly-live or final-seconds
+    // (ultimo) cars; explicit AND against finalized states so a stale
+    // cars[] entry whose status string was patched out-of-band (e.g. via
+    // a different socket update path) can't slip through. The OR already
+    // implies this, but the AND makes the contract explicit at the call
+    // site and future-proofs against new finalized state names.
+    const FINALIZED = new Set(['sold', 'closed', 'cancelled', 'expired', 'pending_review']);
+    const liveCar = cars.find(c =>
+      (c.status === 'live' || c.status === 'ultimo')
+      && !FINALIZED.has(String(c.status))
+    );
     // [precise-schedule] Match the backend's tickAuctionSessions ordering:
     // primary = auctionStartTime ASC (sessions assign this on attach),
     // tie-break = id ASC (deterministic when scheduled times collide).
