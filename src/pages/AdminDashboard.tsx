@@ -8784,7 +8784,11 @@ export const AdminDashboard = () => {
                 setAdminInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, status: nextStatus, releaseCardUrl: invoice._newUrl || i.releaseCardUrl } : i));
                 showAlert('تم تحديث الفاتورة بنجاح', 'success');
               } else {
-                showAlert('فشل التحديث', 'error');
+                // [server-error-surface] Show the server's specific reason
+                // (e.g. "لا يمكن تأكيد سداد الشحن قبل الشراء") instead of a
+                // generic "فشل التحديث" so admin knows what to fix.
+                const data: any = await res.json().catch(() => ({}));
+                showAlert(data?.error || 'فشل التحديث', 'error');
               }
             } catch (err) {
               showAlert('حدث خطأ في تحديث الفاتورة', 'error');
