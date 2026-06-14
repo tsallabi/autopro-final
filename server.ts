@@ -4684,6 +4684,121 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     })));
   });
 
+  // ── Admin: confirm payment received (manual / cash / bank-confirmed) ──
+  //
+  // The financial-ledger UI in AdminDashboard had a "اعتمد وتسجيل" button
+  // hitting POST /api/invoices/:id/pay — but that endpoint is the BUYER
+  // pay flow: it requires `method` in the body and rejects when the caller
+  // isn't the invoice owner. Admin clicks always 400'd or 403'd → user
+  // saw the generic "حدث خطأ في تأكيد الدفعة".
+  //
+  // This new endpoint is admin-only and runs the same downstream cascade
+  // (settle seller wallet, update shipment, generate pickup code, journal
+  // entry) plus the purchase→transport→shipping ordering guard from PR #72.
+  app.post("/api/admin/invoices/:id/confirm-payment", requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const { method, note } = req.body || {};
+    const paidVia = String(method || 'bank_transfer').trim() || 'bank_transfer';
+    const PAID_INVOICE_STATES = ['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'];
+    try {
+      const invoice: any = db.prepare(
+        "SELECT i.*, c.sellerId, c.make, c.model, c.year FROM invoices i LEFT JOIN cars c ON i.carId = c.id WHERE i.id = ?"
+      ).get(id);
+      if (!invoice) return res.status(404).json({ error: "الفاتورة غير موجودة" });
+      if (PAID_INVOICE_STATES.includes(invoice.status)) {
+        return res.status(409).json({ error: "الفاتورة معتمدة مسبقاً" });
+      }
+
+      // [invoice-cascade] Same ordering guard as PR #72:
+      // transport needs purchase paid; shipping needs both paid.
+      const upstreamPaid = (type: string): boolean => {
+        const u: any = db.prepare(
+          "SELECT status FROM invoices WHERE userId = ? AND carId = ? AND type = ? LIMIT 1"
+        ).get(invoice.userId, invoice.carId, type);
+        return !u || PAID_INVOICE_STATES.includes(u.status);
+      };
+      if (invoice.type === 'transport' && !upstreamPaid('purchase')) {
+        return res.status(409).json({
+          error: 'لا يمكن اعتماد دفع فاتورة النقل قبل اعتماد فاتورة الشراء.',
+        });
+      }
+      if (invoice.type === 'shipping' && (!upstreamPaid('purchase') || !upstreamPaid('transport'))) {
+        return res.status(409).json({
+          error: 'لا يمكن اعتماد دفع فاتورة الشحن قبل اعتماد فاتورتي الشراء والنقل.',
+        });
+      }
+
+      const timestamp = new Date().toISOString();
+      const pickupCode = `AUTH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      db.transaction(() => {
+        db.prepare(
+          "UPDATE invoices SET status = 'paid', paidAt = ?, paidVia = ?, pickupAuthCode = ?, adminNote = ? WHERE id = ?"
+        ).run(timestamp, paidVia, pickupCode, note || '', id);
+
+        if (invoice.type === 'purchase') {
+          // Activate next-step invoice + advance shipment status
+          db.prepare(
+            "UPDATE invoices SET status = 'unpaid' WHERE carId = ? AND userId = ? AND type = 'transport' AND status = 'pending'"
+          ).run(invoice.carId, invoice.userId);
+          db.prepare(
+            "UPDATE shipments SET status = 'paid', updatedAt = ? WHERE carId = ? AND userId = ?"
+          ).run(timestamp, invoice.carId, invoice.userId);
+
+          if (invoice.sellerId) {
+            try {
+              const seller: any = db.prepare("SELECT commission FROM users WHERE id = ?").get(invoice.sellerId);
+              settleSaleToSellerWallet(
+                invoice.sellerId, invoice.carId, invoice.amount,
+                (seller as any)?.commission || 5,
+                `بيع سيارة: ${invoice.year} ${invoice.make} ${invoice.model} (اعتُمد يدوياً)`
+              );
+              sendNotification(
+                invoice.sellerId, '💰 تم اعتماد دفع سيارتك',
+                `الإدارة اعتمدت دفع سيارتك ${invoice.make} ${invoice.model}. تمت تسوية حسابك.`,
+                'success'
+              );
+            } catch (e: any) {
+              console.error('[ADMIN CONFIRM] seller settlement failed:', e?.message);
+            }
+          }
+        } else if (invoice.type === 'transport') {
+          db.prepare("UPDATE invoices SET status = 'unpaid' WHERE carId = ? AND userId = ? AND type = 'shipping' AND status = 'pending'")
+            .run(invoice.carId, invoice.userId);
+          db.prepare("UPDATE shipments SET status = 'in_transit', updatedAt = ? WHERE carId = ? AND userId = ?")
+            .run(timestamp, invoice.carId, invoice.userId);
+        } else if (invoice.type === 'shipping') {
+          db.prepare("UPDATE shipments SET status = 'in_shipping', updatedAt = ? WHERE carId = ? AND userId = ?")
+            .run(timestamp, invoice.carId, invoice.userId);
+        }
+      })();
+
+      // Auto journal entry
+      try { recordInvoicePaid(db, invoice, paidVia); }
+      catch (err: any) { console.error('[ACCOUNTING] admin-confirm JE failed:', err?.message); }
+
+      // Notify the buyer their payment was confirmed
+      try {
+        sendNotification(
+          invoice.userId, '✅ تم اعتماد دفع فاتورتك',
+          `اعتمدت الإدارة دفع فاتورة ${invoice.type === 'purchase' ? 'الشراء' : invoice.type === 'transport' ? 'النقل' : 'الشحن'} لسيارة ${invoice.make || ''} ${invoice.model || ''}. رمز الاستلام: ${pickupCode}`,
+          'success', 'general_notification', {}, '/dashboard/user?view=invoices'
+        );
+      } catch {}
+
+      res.json({
+        success: true,
+        status: 'paid',
+        invoiceId: id,
+        pickupCode,
+        message: 'تم اعتماد الدفع وتسوية المسار',
+      });
+    } catch (e: any) {
+      console.error('[ADMIN CONFIRM PAYMENT]', e?.message);
+      res.status(500).json({ error: e?.message || 'فشل اعتماد الدفعة' });
+    }
+  });
+
   app.post("/api/watchlist", requireAuth, (req, res) => {
     const userId = (req as any).user.id;
     const { carId } = req.body;

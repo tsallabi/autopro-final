@@ -6191,13 +6191,26 @@ export const AdminDashboard = () => {
                                 onClick={() => {
                                   showConfirm(`تأكيد استلام تحويل بقيمة $${inv.amount.toLocaleString()} واعتماد الفاتورة؟`, async () => {
                                     try {
-                                      const res = await authFetch(`/api/invoices/${inv.id}/pay`, { method: 'POST' });
+                                      // [admin-confirm-payment] Use the admin-only endpoint that
+                                      // handles cascade (settle seller, advance shipment, journal
+                                      // entry). The old /api/invoices/:id/pay is the BUYER flow
+                                      // and rejects admin with 403 because invoice.userId !== adminId.
+                                      const res = await authFetch(`/api/admin/invoices/${inv.id}/confirm-payment`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ method: 'bank_transfer' }),
+                                      });
                                       if (res.ok) {
-                                        showAlert('تم اعتماد الدفع بنجاح وتسوية حساب البائع ✅', 'success');
+                                        const data: any = await res.json().catch(() => ({}));
+                                        showAlert(
+                                          `✅ تم اعتماد الدفع وتسوية حساب البائع${data?.pickupCode ? ` — رمز الاستلام: ${data.pickupCode}` : ''}`,
+                                          'success'
+                                        );
                                         authFetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
                                         authFetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
                                       } else {
-                                        showAlert('حدث خطأ في ترصيد الدفعة', 'error');
+                                        const data: any = await res.json().catch(() => ({}));
+                                        showAlert(data?.error || 'حدث خطأ في ترصيد الدفعة', 'error');
                                       }
                                     } catch (error) {
                                       showAlert('التصال بالخادم فشل', 'error');
