@@ -582,6 +582,49 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
   });
 
   // ──────────────────────────────────────────────────────────────────
+  //  Broadcast helper — notifies every active customer when a session goes live.
+  //  Called once per session activation (deduped by the UPDATE
+  //  result.changes guard in tickAuctionSessions). Iterates user-by-user
+  //  so a single failing recipient doesn't kill the whole broadcast;
+  //  sendNotification handles in-app + push if the user is subscribed.
+  // ──────────────────────────────────────────────────────────────────
+  const CATEGORY_LABELS: Record<string, string> = {
+    cars: 'السيارات الركوبة',
+    trucks: 'الشاحنات',
+    heavy_equipment: 'المعدات الثقيلة',
+    motorcycles: 'الدراجات النارية',
+    jet_skis: 'الدراجات البحرية',
+    boats: 'القوارب',
+  };
+  async function broadcastSessionStart(session: any): Promise<void> {
+    if (typeof sendNotification !== 'function') return;
+    const catLabel = CATEGORY_LABELS[String(session.category || '')] || String(session.category || 'العام');
+    const title = `🔥 بدأ مزاد ${catLabel} الآن!`;
+    const body  = `جلسة ${session.name || ''} بدأت — تفقّد السيارات وقدّم عرضك قبل انتهاء الوقت`;
+    let recipients: any[] = [];
+    try {
+      recipients = db.prepare(`
+        SELECT id FROM users
+         WHERE COALESCE(role, 'buyer') IN ('buyer', 'user', 'user_pending', 'seller')
+           AND COALESCE(status, '') NOT IN ('banned', 'suspended', 'rejected', 'blocked')
+      `).all();
+    } catch (e: any) {
+      console.error('[sessions broadcast] recipient query failed:', e?.message);
+      return;
+    }
+    let sent = 0;
+    for (const r of recipients) {
+      try {
+        sendNotification(r.id, title, body, 'info', 'auction_started', {}, '/live-auction');
+        sent++;
+      } catch {
+        // swallow — one bad subscriber shouldn't stop the rest
+      }
+    }
+    console.log(`[sessions broadcast] session ${session.id}: notified ${sent}/${recipients.length} recipients`);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Scheduler — tickAuctionSessions runs every 15s.
   // ──────────────────────────────────────────────────────────────────
   function tickAuctionSessions() {
@@ -595,13 +638,25 @@ export function registerAuctionSessionsRoutes(ctx: AppContext) {
     `).all(now);
     for (const s of dueScheduled) {
       try {
-        db.prepare(`
+        // Use the UPDATE result to confirm this tick is the one that
+        // actually flipped the row (only one wins under multiple ticks).
+        const result: any = db.prepare(`
           UPDATE auction_sessions
              SET status = 'live', actualStart = ?
            WHERE id = ? AND status = 'scheduled'
         `).run(now, s.id);
         try { io.emit('session_started', { id: s.id, name: s.name, category: s.category }); } catch {}
         console.log(`[sessions] session ${s.id} (${s.name}) is now LIVE`);
+        // [session-start-notification] Broadcast a notification to every
+        // active user the first time we promote this session. Guarded by
+        // result.changes so a duplicate tick can't double-notify, and by
+        // sendNotification existing in the AppContext (older deployments
+        // without push-notification wiring just silently skip).
+        if (result && result.changes > 0) {
+          broadcastSessionStart(s).catch((e) => {
+            console.error('[sessions] broadcast failed:', e?.message);
+          });
+        }
       } catch (e: any) {
         console.error(`[sessions] failed to start session ${s.id}:`, e?.message);
       }
