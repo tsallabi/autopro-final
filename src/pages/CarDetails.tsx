@@ -99,21 +99,35 @@ const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert
         {isSubmitting ? t('carDetails.preBid.submitting') : t('carDetails.preBid.activateBtn')}
       </button>
 
-      {/* Buy It Now Render */}
-      {(car.buyItNow || (car.reservePrice && car.reservePrice * 1.5)) > 0 && (
-        <button
-          onClick={handleBuyItNow}
-          className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all outline-none mt-2"
-        >
-          <div className="flex flex-col items-center">
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5" />
-              {t('carDetails.preBid.buyNowBtn', { price: (car.buyItNow || car.reservePrice * 1.5).toLocaleString('en-US') })}
-            </span>
-            <span className="text-xs text-white/80 font-normal mt-1">≈ {Math.round((car.buyItNow || car.reservePrice * 1.5) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
-          </div>
-        </button>
-      )}
+      {/* [buynow-currency-fix] Show only when buyItNow is explicitly set.
+          The old code fell back to reservePrice * 1.5 which was confusing
+          (a user who entered 65,000 buyItNow but had buyItNow stored as 0
+          because of the PUT priority bug saw "94,500" — 63k * 1.5). */}
+      {(car.buyItNow ?? 0) > 0 && (() => {
+        const value = Number(car.buyItNow) || 0;
+        const rate = exchangeRate || 7;
+        const isLyd = (car as any).currency === 'LYD';
+        const primary = isLyd
+          ? `${value.toLocaleString('en-US')} د.ل`
+          : `$${value.toLocaleString('en-US')}`;
+        const secondary = isLyd
+          ? `$${Math.round(value / rate).toLocaleString('en-US')}`
+          : `${Math.round(value * rate).toLocaleString('en-US')} د.ل`;
+        return (
+          <button
+            onClick={handleBuyItNow}
+            className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all outline-none mt-2"
+          >
+            <div className="flex flex-col items-center">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5" />
+                اشتري الآن {primary}
+              </span>
+              <span className="text-xs text-white/80 font-normal mt-1">≈ {secondary}</span>
+            </div>
+          </button>
+        );
+      })()}
     </div>
   );
 };
@@ -513,32 +527,56 @@ export const CarDetails = () => {
                 <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">
                   {isOfferMarket ? t('carDetails.currentHighestOffer') : t('carDetails.lastBidPrice')}
                 </div>
-                <div className="text-5xl font-black font-mono text-green-400">
-                  ${(car.currentBid || car.reservePrice || 0).toLocaleString('en-US')}
-                  <div className="text-xl text-slate-400 font-sans tracking-normal font-medium mt-1">≈ {Math.round((car.currentBid || car.reservePrice || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</div>
-                </div>
+                {/* [currency-fix] Respect car.currency on every price display. */}
+                {(() => {
+                  const value = car.currentBid || car.reservePrice || 0;
+                  const rate = exchangeRate || 7;
+                  const isLyd = (car as any).currency === 'LYD';
+                  const primary = isLyd ? `${value.toLocaleString('en-US')} د.ل` : `$${value.toLocaleString('en-US')}`;
+                  const secondary = isLyd
+                    ? `$${Math.round(value / rate).toLocaleString('en-US')}`
+                    : `${Math.round(value * rate).toLocaleString('en-US')} د.ل`;
+                  return (
+                    <div className="text-5xl font-black font-mono text-green-400">
+                      {primary}
+                      <div className="text-xl text-slate-400 font-sans tracking-normal font-medium mt-1">≈ {secondary}</div>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="text-right flex flex-col gap-4">
                 <div>
                   <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">{t('carDetails.reservePrice')}</div>
-                  <div className="text-2xl font-black font-mono text-slate-400 line-through decoration-red-500/50">
-                    ${(car.reservePrice || 0).toLocaleString('en-US')}
-                  </div>
-                  <div className="text-sm font-bold text-slate-500 font-sans tracking-normal">
-                    ≈ {Math.round((car.reservePrice || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل
-                  </div>
+                  {(() => {
+                    const value = car.reservePrice || 0;
+                    const rate = exchangeRate || 7;
+                    const isLyd = (car as any).currency === 'LYD';
+                    const primary = isLyd ? `${value.toLocaleString('en-US')} د.ل` : `$${value.toLocaleString('en-US')}`;
+                    const secondary = isLyd
+                      ? `$${Math.round(value / rate).toLocaleString('en-US')}`
+                      : `${Math.round(value * rate).toLocaleString('en-US')} د.ل`;
+                    return <>
+                      <div className="text-2xl font-black font-mono text-slate-400 line-through decoration-red-500/50">{primary}</div>
+                      <div className="text-sm font-bold text-slate-500 font-sans tracking-normal">≈ {secondary}</div>
+                    </>;
+                  })()}
                 </div>
-                {car.buyItNow > 0 && (
-                  <div>
-                    <div className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-1">{t('carDetails.buyItNowLabel')}</div>
-                    <div className="text-3xl font-black font-mono text-amber-500">
-                      ${car.buyItNow.toLocaleString('en-US')}
+                {car.buyItNow > 0 && (() => {
+                  const value = car.buyItNow;
+                  const rate = exchangeRate || 7;
+                  const isLyd = (car as any).currency === 'LYD';
+                  const primary = isLyd ? `${value.toLocaleString('en-US')} د.ل` : `$${value.toLocaleString('en-US')}`;
+                  const secondary = isLyd
+                    ? `$${Math.round(value / rate).toLocaleString('en-US')}`
+                    : `${Math.round(value * rate).toLocaleString('en-US')} د.ل`;
+                  return (
+                    <div>
+                      <div className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-1">{t('carDetails.buyItNowLabel')}</div>
+                      <div className="text-3xl font-black font-mono text-amber-500">{primary}</div>
+                      <div className="text-sm font-bold text-amber-500/70 font-sans tracking-normal mt-1">≈ {secondary}</div>
                     </div>
-                    <div className="text-sm font-bold text-amber-500/70 font-sans tracking-normal mt-1">
-                      ≈ {Math.round(car.buyItNow * (exchangeRate || 7)).toLocaleString('en-US')} د.ل
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
 
