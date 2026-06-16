@@ -7690,7 +7690,17 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         keys ?? existing.keys, runsDrives ?? existing.runsDrives,
         location ?? locationDetails ?? existing.location,
         primaryDamage ?? existing.primaryDamage, secondaryDamage ?? existing.secondaryDamage,
-        titleType ?? existing.titleType, buyItNow ?? buyNowPrice ?? existing.buyItNow,
+        titleType ?? existing.titleType,
+        // [buynow-priority-fix] The form input is bound to `buyNowPrice` —
+        // when editing an existing car, `buyItNow` is also sent (spread from
+        // initialData) with the stale DB value. Using `??` made the stale 0
+        // win over the user's new value because 0 isn't nullish. Prefer
+        // buyNowPrice (the authoritative form field) when both are present.
+        (buyNowPrice !== undefined && buyNowPrice !== '' && buyNowPrice !== null)
+          ? Number(buyNowPrice) || 0
+          : (buyItNow !== undefined && buyItNow !== '' && buyItNow !== null)
+            ? Number(buyItNow) || 0
+            : existing.buyItNow,
         trim ?? existing.trim, mileageUnit ?? existing.mileageUnit,
         engineSize ?? existing.engineSize, horsepower ?? existing.horsepower,
         drivetrain ?? existing.drivetrain, auctionEndDate ?? existing.auctionEndDate,

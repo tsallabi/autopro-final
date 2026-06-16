@@ -297,7 +297,15 @@ export function registerCarRoutes(ctx: AppContext) {
         keys ?? existing.keys, runsDrives ?? existing.runsDrives,
         location ?? locationDetails ?? existing.location,
         primaryDamage ?? existing.primaryDamage, secondaryDamage ?? existing.secondaryDamage,
-        titleType ?? existing.titleType, buyItNow ?? buyNowPrice ?? existing.buyItNow,
+        titleType ?? existing.titleType,
+        // [buynow-priority-fix] See server.ts twin. Form field is buyNowPrice;
+        // form ALSO sends buyItNow (spread from initialData) with stale 0.
+        // Prefer buyNowPrice when present, else buyItNow, else keep existing.
+        (buyNowPrice !== undefined && buyNowPrice !== '' && buyNowPrice !== null)
+          ? Number(buyNowPrice) || 0
+          : (buyItNow !== undefined && buyItNow !== '' && buyItNow !== null)
+            ? Number(buyItNow) || 0
+            : existing.buyItNow,
         trim ?? existing.trim, mileageUnit ?? existing.mileageUnit,
         engineSize ?? existing.engineSize, horsepower ?? existing.horsepower,
         drivetrain ?? existing.drivetrain, auctionEndDate ?? existing.auctionEndDate,
@@ -306,7 +314,12 @@ export function registerCarRoutes(ctx: AppContext) {
         showroomName ?? existing.showroomName ?? '',
         isRecommended !== undefined ? (isRecommended ? 1 : 0) : existing.isRecommended ?? 0,
         isBuyNow !== undefined ? (isBuyNow ? 1 : 0) : existing.isBuyNow ?? 0,
-        buyItNow ?? buyNowPrice ?? existing.buyItNow ?? null,
+        // Same priority for the second buyItNow occurrence (column appears twice)
+        (buyNowPrice !== undefined && buyNowPrice !== '' && buyNowPrice !== null)
+          ? Number(buyNowPrice) || 0
+          : (buyItNow !== undefined && buyItNow !== '' && buyItNow !== null)
+            ? Number(buyItNow) || 0
+            : existing.buyItNow ?? null,
         newCurrentBid,
         id
       );
