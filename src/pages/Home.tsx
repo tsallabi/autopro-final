@@ -985,11 +985,18 @@ export const Home = () => {
         </div>
       </div>
 
-      {/* --- MAIN CONTENT --- */}
-      <div className="max-w-[1920px] mx-auto px-4 md:px-6 pt-2 pb-6 flex flex-col lg:flex-row gap-8 items-start w-full overflow-hidden min-w-0">
+      {/* --- MAIN CONTENT (top row of 3 cards + full-width feed below) --- */}
+      <div className="max-w-[1920px] mx-auto px-4 md:px-6 pt-2 pb-6 flex flex-col gap-6 w-full overflow-hidden min-w-0">
 
-        {/* Left Sidebar (Desktop Only) */}
-        <aside className="hidden lg:flex w-80 flex-col gap-6 sticky top-[90px] z-10">
+        {/* [layout-rearrange] Top row: Events card (right of banner),
+            Featured Cars Slider (center), My Auctions card (left of banner).
+            Below lg breakpoint the three stack vertically: events on top,
+            slider middle, my-auctions bottom. Slider container has min-w-0
+            so the carousel doesn't push the row wider than the viewport. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[20rem_1fr_20rem] gap-6 items-start">
+
+        {/* Right of banner (RTL: first child = rightmost) — Events / Saved Searches */}
+        <aside className="lg:sticky lg:top-[90px] lg:z-10 lg:max-h-[calc(100vh-110px)] lg:overflow-y-auto">
           <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden">
             <div className="flex p-2 bg-slate-50">
               <button
@@ -1112,25 +1119,71 @@ export const Home = () => {
             </div>
           </div>
 
-          {/* Featured Cars Banner in left sidebar */}
-          <FeaturedCarsBanner />
-
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden group border border-white/10 shadow-2xl">
-            <div className="relative z-10">
-              <div className="text-orange-500 font-black text-[10px] uppercase tracking-widest mb-2 text-right">{t('home.news.platformNews')}</div>
-              <h3 className="text-xl font-black mb-4 leading-tight">{t('home.news.freeCarfax')}</h3>
-              <button className="flex items-center gap-2 text-sm font-black text-white group-hover:gap-4 transition-all">
-                {t('home.news.details')} <ArrowUpRight className="w-4 h-4" />
-              </button>
-            </div>
-            <Shield className="absolute -bottom-10 -right-10 w-48 h-48 text-white/5 -rotate-12" />
-          </div>
         </aside>
 
-        {/* Main Feed */}
-        <main className="flex-1 space-y-6 min-w-0 overflow-hidden w-full max-w-[100vw] pb-32 lg:pb-0 pt-0">
-          {/* Featured Cars Hero Slider */}
+        {/* Middle column — Featured Cars Hero Slider */}
+        <div className="min-w-0 w-full">
           <FeaturedCarsSlider />
+        </div>
+
+        {/* Left of banner (RTL: third child = leftmost) — My Auctions
+            (only when logged in; empty placeholder keeps the grid lined up). */}
+        {currentUser ? (
+          <aside className="lg:sticky lg:top-[90px] lg:z-10 lg:max-h-[calc(100vh-110px)] lg:overflow-y-auto">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-4">
+              <div onClick={() => setIsMyAuctionsOpen(!isMyAuctionsOpen)} className="flex items-center justify-between mb-2 cursor-pointer group pb-3 border-b border-slate-100">
+                <h3 className="font-black text-slate-900 text-base flex items-center gap-2 group-hover:text-orange-500 transition-colors">مزايداتي (My Auctions)</h3>
+                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isMyAuctionsOpen ? 'rotate-180' : ''}`} />
+              </div>
+              {isMyAuctionsOpen && (
+                <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-2">
+                  {cars.filter(car => car.status === 'live' && car.winnerId === currentUser?.id).length === 0 && (
+                    <div className="text-center py-4 text-slate-400 text-xs italic">لا توجد مزايدات نشطة حالياً</div>
+                  )}
+                  {cars.filter(car => (car.status === 'live' || car.status === 'ultimo') && car.winnerId === currentUser?.id).map((car) => {
+                    const isWinning = car.winnerId === currentUser?.id;
+                    const carImage = Array.isArray(car.images) && car.images.length > 0 ? car.images[0] : 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=300';
+                    const remaining = car.auctionEndDate ? Math.max(0, Math.floor((new Date(car.auctionEndDate).getTime() - Date.now()) / 60000)) : 0;
+                    return (
+                      <div key={car.id} onClick={() => navigate('/live-auction')} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${isWinning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
+                        <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
+                          <img src={carImage} alt="car" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div className="flex justify-between items-start">
+                            <div className="min-w-0 pr-1">
+                              <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{car.year} {car.make} {car.model}</h4>
+                              <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{car.trim || ''} • {car.odometer?.toLocaleString()} mi</div>
+                            </div>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isWinning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                              <CheckCircle2 className="w-3 h-3" />
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-end mt-1">
+                            <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
+                              <Clock className="w-3 h-3 text-slate-400" /> {remaining}m
+                            </div>
+                            <div className={`text-sm font-black font-mono leading-none ${isWinning ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              ${(car.currentBid || 0).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full mt-2 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-black text-[11px] hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-2">
+                    عرض جميع المزايدات <ArrowUpRight className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>
+        ) : <div className="hidden lg:block" />}
+
+        </div>{/* end top row */}
+
+        {/* Main Feed — full width below the top row */}
+        <main className="w-full space-y-6 min-w-0 overflow-hidden max-w-[100vw] pb-32 lg:pb-0 pt-0">
 
           {/* [daily-auction-banner] Promotional banner above the tabs
               — points new visitors to the daily 6 PM auction schedule. */}
@@ -1504,73 +1557,27 @@ export const Home = () => {
               </button>
             </div>
           )}
-        </main>
 
-        {/* Right Sidebar (Desktop Only) */}
-        {
-          currentUser && (
-            <aside className="hidden lg:flex w-80 flex-col gap-6 sticky top-[90px] z-10">
-              {/* Featured Cars Banner — Premium Gold Dealers */}
-              <FeaturedCarsBanner />
-
-              {/* Ad Banner — Right side (under news) */}
-              <SideAdBanners side="right" className="!hidden lg:!flex" />
-
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-4">
-                <div onClick={() => setIsMyAuctionsOpen(!isMyAuctionsOpen)} className="flex items-center justify-between mb-2 cursor-pointer group pb-3 border-b border-slate-100">
-                  <h3 className="font-black text-slate-900 text-base flex items-center gap-2 group-hover:text-orange-500 transition-colors">مزايداتي (My Auctions)</h3>
-                  <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isMyAuctionsOpen ? 'rotate-180' : ''}`} />
-                </div>
-
-                {isMyAuctionsOpen && (
-                  <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-2">
-                    {cars.filter(car => car.status === 'live' && car.winnerId === currentUser?.id).length === 0 && (
-                      <div className="text-center py-4 text-slate-400 text-xs italic">لا توجد مزايدات نشطة حالياً</div>
-                    )}
-                    {cars.filter(car => (car.status === 'live' || car.status === 'ultimo') && car.winnerId === currentUser?.id).map((car) => {
-                      const isWinning = car.winnerId === currentUser?.id;
-                      const carImage = Array.isArray(car.images) && car.images.length > 0 ? car.images[0] : 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=300';
-                      const remaining = car.auctionEndDate ? Math.max(0, Math.floor((new Date(car.auctionEndDate).getTime() - Date.now()) / 60000)) : 0;
-                      return (
-                      <div key={car.id} onClick={() => navigate('/live-auction')} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${isWinning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
-                        <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
-                          <img src={carImage} alt="car" className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 flex flex-col justify-between min-w-0">
-                          <div className="flex justify-between items-start">
-                            <div className="min-w-0 pr-1">
-                              <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{car.year} {car.make} {car.model}</h4>
-                              <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{car.trim || ''} • {car.odometer?.toLocaleString()} mi</div>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isWinning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                              <CheckCircle2 className="w-3 h-3" />
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-end mt-1">
-                            <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
-                              <Clock className="w-3 h-3 text-slate-400" /> {remaining}m
-                            </div>
-                            <div className={`text-sm font-black font-mono leading-none ${isWinning ? 'text-emerald-600' : 'text-rose-600'}`}>
-                              ${(car.currentBid || 0).toLocaleString()}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      );
-                    })}
-
-                    <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full mt-2 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-black text-[11px] hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-2">
-                      عرض جميع المزايدات <ArrowUpRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
+          {/* [layout-rearrange] Bottom banners — ALL the sidebar banners
+              previously living on the right/left edges now stack here under
+              the cars list so the cars themselves get the full page width.
+              Grid: 2 columns on lg+, 1 column below. */}
+          <section className="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <FeaturedCarsBanner />
+            <SideAdBanners side="right" />
+            <SideAdBanners side="left" />
+            <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden group border border-white/10 shadow-2xl">
+              <div className="relative z-10">
+                <div className="text-orange-500 font-black text-[10px] uppercase tracking-widest mb-2 text-right">{t('home.news.platformNews')}</div>
+                <h3 className="text-xl font-black mb-4 leading-tight">{t('home.news.freeCarfax')}</h3>
+                <button className="flex items-center gap-2 text-sm font-black text-white group-hover:gap-4 transition-all">
+                  {t('home.news.details')} <ArrowUpRight className="w-4 h-4" />
+                </button>
               </div>
-
-              {/* Ad Banner — Left side (under my auctions) */}
-              <SideAdBanners side="left" className="!hidden lg:!flex" />
-            </aside>
-          )
-        }
+              <Shield className="absolute -bottom-10 -right-10 w-48 h-48 text-white/5 -rotate-12" />
+            </div>
+          </section>
+        </main>
       </div>
 
       {/* Mobile Advanced Filters Drawer */}
