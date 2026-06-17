@@ -1348,18 +1348,23 @@ export const Home = () => {
                     </div>
 
                     {/* Content Section */}
-                    <div className="p-4 md:p-6 flex-1 flex flex-col justify-between min-w-0">
+                    <div className={`flex-1 flex flex-col justify-between min-w-0 ${viewMode === 'list' ? 'p-4 md:p-6' : 'p-4'}`}>
                       <div onClick={() => handleBidClick(car)} className="cursor-pointer">
-                        <div className="flex justify-between items-start mb-2">
+                        {/* [grid-card-fix] In grid mode the column is narrow
+                            (~280px on a 3-col tablet); having title + price on
+                            the same row caused the truncated title to crash
+                            into the price (e.g. "...17" overlapping $3,820).
+                            Stack vertically in grid; keep side-by-side in list. */}
+                        <div className={viewMode === 'list' ? 'flex justify-between items-start mb-2 gap-3' : 'flex flex-col gap-2 mb-3'}>
                           <div className="min-w-0 flex-1">
-                            <h3 className="text-xl font-black text-slate-900 group-hover:text-orange-600 transition-colors truncate">
+                            <h3 className={`font-black text-slate-900 group-hover:text-orange-600 transition-colors truncate ${viewMode === 'list' ? 'text-xl' : 'text-base lg:text-lg'}`}>
                               {car.year} {car.make} {car.model}
                             </h3>
-                            <p className="text-xs font-bold text-slate-400 mt-0.5 flex items-center gap-2 tracking-widest leading-none">
-                              <MapPin className="w-3 h-3" /> {car.location}
-                              <span className="mx-1 text-slate-300">•</span>
-                              <span className="font-bold flex items-center gap-1 text-slate-600">
-                                {showroomName}
+                            <p className="text-xs font-bold text-slate-400 mt-0.5 flex items-center gap-2 tracking-widest leading-none truncate">
+                              <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{car.location}</span>
+                              <span className="mx-1 text-slate-300 shrink-0">•</span>
+                              <span className="font-bold flex items-center gap-1 text-slate-600 shrink-0">
+                                <span className="truncate max-w-[80px]">{showroomName}</span>
                                 {isVerified ? (
                                   <span title="معرض موثق" className="flex items-center"><ShieldCheck className="w-3.5 h-3.5 text-blue-500" /></span>
                                 ) : (
@@ -1368,36 +1373,39 @@ export const Home = () => {
                               </span>
                             </p>
                           </div>
-                          <div className="text-left">
+                          <div className={viewMode === 'list' ? 'text-left shrink-0' : 'text-right w-full'}>
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
                               {activeTab === 'buy_now' ? 'سعر الشراء الفوري' : car.status === 'offer_market' ? t('home.carCard.lastOffer') : car.status === 'upcoming' ? t('home.carCard.startingPrice') : car.status === 'closed' ? t('home.carCard.finalSalePrice') : t('home.carCard.currentAuction')}
                             </div>
-                            <div className={`text-2xl font-black font-mono mt-1 ${activeTab === 'buy_now' ? 'text-orange-600' : car.status === 'live' ? 'text-emerald-600' :
+                            <div className={`font-black font-mono mt-1 ${viewMode === 'list' ? 'text-2xl' : 'text-xl'} ${activeTab === 'buy_now' ? 'text-orange-600' : car.status === 'live' ? 'text-emerald-600' :
                               car.status === 'offer_market' ? 'text-purple-600' :
                                 car.status === 'closed' ? 'text-slate-600' :
                                   'text-slate-900'
                               }`}>${(activeTab === 'buy_now' && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0)).toLocaleString()}
-                              <div className="text-sm font-bold text-slate-400 font-mono mt-0.5">
+                              <div className="text-xs font-bold text-slate-400 font-mono mt-0.5">
                                 {Math.round((activeTab === 'buy_now' && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0)) * (exchangeRate || 7)).toLocaleString()} د.ل
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 my-4">
-                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
+                        {/* [grid-card-fix] Force 2 cols on grid cards even at md+
+                            so the 4 spec chips stay legible. List mode keeps
+                            the original responsive 2→4 columns. */}
+                        <div className={`grid gap-2 my-3 ${viewMode === 'list' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'}`}>
+                          <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
                             <Droplets className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span className="text-[10px] font-black text-slate-900 truncate">{car.fuelType || 'بنزين'}</span>
                           </div>
-                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
+                          <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
                             <Settings2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span className="text-[10px] font-black text-slate-900 truncate">{car.transmission || 'اوتوماتيك'}</span>
                           </div>
-                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
+                          <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
                             <Gauge className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span className="text-[10px] font-black text-slate-900 truncate">{car.odometer?.toLocaleString() || '0'} mi</span>
                           </div>
-                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
+                          <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
                             <div className={`w-1.5 h-1.5 shrink-0 rounded-full ${car.primaryDamage && car.primaryDamage !== 'لا يوجد' ? 'bg-red-500' : 'bg-green-500'}`}></div>
                             <span className="text-[10px] font-black text-slate-900 truncate">{car.primaryDamage ? `حالي: ${car.primaryDamage}` : 'سليم'}</span>
                           </div>
