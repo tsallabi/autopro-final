@@ -13,6 +13,7 @@ import {
   Ship,
 } from 'lucide-react';
 import TransitCarCard, { TransitCar } from '../components/TransitCarCard';
+import { SoldStampIfSold } from '../components/SoldStamp';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { useTranslation } from 'react-i18next';
@@ -1351,6 +1352,10 @@ export const Home = () => {
                         className="w-full h-full object-cover car-card-image transition-transform duration-700 group-hover:scale-105"
                         loading="lazy"
                       />
+                      {/* [sold-stamp] Diagonal "تم البيع — ليبيا أوتو برو" overlay
+                          shown only for finalized-sold cars. Sized smaller in
+                          list mode (the image is wider but shorter). */}
+                      <SoldStampIfSold status={car.status} size={viewMode === 'list' ? 'sm' : 'md'} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
                       {/* Status Overlay */}

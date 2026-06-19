@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ArrowLeft } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { SoldStampIfSold } from './SoldStamp';
 
 export const FeaturedCarsBanner: React.FC = () => {
   const navigate = useNavigate();
@@ -35,6 +36,8 @@ export const FeaturedCarsBanner: React.FC = () => {
         className="relative aspect-video overflow-hidden cursor-pointer group"
       >
         <img src={img} alt={`${car.make} ${car.model}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+        {/* [sold-stamp] Banner sometimes recycles sold-status cars; show stamp. */}
+        <SoldStampIfSold status={(car as any).status} size="sm" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
         <div className="absolute bottom-0 right-0 left-0 p-4 text-white">
           <h3 className="text-lg font-black mb-1">{car.year} {car.make} {car.model}</h3>
