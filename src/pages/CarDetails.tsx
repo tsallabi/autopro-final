@@ -10,6 +10,7 @@ import { VehicleType } from '../types/calculator';
 import { LiveAuction } from '../components/LiveAuction';
 import { useStore, authFetch } from '../context/StoreContext';
 import CarShareButtons from '../components/CarShareButtons';
+import { SoldStampIfSold } from '../components/SoldStamp';
 
 // ============================================================
 // Inline Proxy Bid Panel for Upcoming Market cars
@@ -390,6 +391,8 @@ export const CarDetails = () => {
                 (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/car/800/600';
               }}
             />
+            {/* [sold-stamp] Larger stamp on the details hero image. */}
+            <SoldStampIfSold status={car.status} size="lg" />
           </div>
           <div className="grid grid-cols-5 gap-2">
             {allImages.map((img: string, i: number) => (

@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { CheckCircle2, MapPin, Calendar } from 'lucide-react';
+import { SoldStamp } from './SoldStamp';
 
 type Item = {
   id: string;
@@ -81,9 +82,14 @@ export default function DeliveredCarsShowcase({ limit = 8 }: { limit?: number })
             }}>
               <div style={{ position: 'relative', aspectRatio: '16 / 10', background: '#e2e8f0', overflow: 'hidden' }}>
                 {it.image ? (
-                  <img src={it.image} alt={`${it.make} ${it.model}`}
-                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                       loading="lazy" />
+                  <>
+                    <img src={it.image} alt={`${it.make} ${it.model}`}
+                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                         loading="lazy" />
+                    {/* [sold-stamp] Every car in this showcase is, by definition,
+                        sold — so the stamp is always shown (no conditional check). */}
+                    <SoldStamp size="sm" />
+                  </>
                 ) : (
                   <div style={{
                     width: '100%', height: '100%', display: 'flex',
