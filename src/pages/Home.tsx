@@ -1418,15 +1418,22 @@ export const Home = () => {
                             <h3 className={`font-black text-slate-900 group-hover:text-orange-600 transition-colors truncate ${viewMode === 'list' ? 'text-xl' : 'text-base lg:text-lg'}`}>
                               {car.year} {car.make} {car.model}
                             </h3>
-                            <p className="text-xs font-bold text-slate-400 mt-0.5 flex items-center gap-2 tracking-widest leading-none truncate">
-                              <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{car.location}</span>
-                              <span className="mx-1 text-slate-300 shrink-0">•</span>
-                              <span className="font-bold flex items-center gap-1 text-slate-600 shrink-0">
-                                <span className="truncate max-w-[80px]">{showroomName}</span>
+                            {/* [text-clip-fix] leading-none + tracking-widest was
+                                clipping Arabic descenders on the location and
+                                showroom names ("طرابلس" / معرض ...) — looked
+                                like the bottom of the text was cut off.
+                                Switched to leading-snug and slightly more
+                                vertical space (py-0.5) so descenders breathe. */}
+                            <p className="text-xs font-bold text-slate-400 mt-1 py-0.5 flex items-center gap-2 leading-snug">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{car.location}</span>
+                              <span className="text-slate-300 shrink-0">•</span>
+                              <span className="font-bold flex items-center gap-1 text-slate-600 min-w-0">
+                                <span className="truncate max-w-[120px]">{showroomName}</span>
                                 {isVerified ? (
-                                  <span title="معرض موثق" className="flex items-center"><ShieldCheck className="w-3.5 h-3.5 text-blue-500" /></span>
+                                  <span title="معرض موثق" className="flex items-center shrink-0"><ShieldCheck className="w-3.5 h-3.5 text-blue-500" /></span>
                                 ) : (
-                                  <span title="معرض غير موثق" className="flex items-center"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>
+                                  <span title="معرض غير موثق" className="flex items-center shrink-0"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>
                                 )}
                               </span>
                             </p>
@@ -1475,7 +1482,17 @@ export const Home = () => {
                         <div className={`grid gap-2 my-3 ${viewMode === 'list' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'}`}>
                           <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
                             <Droplets className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="text-[10px] font-black text-slate-900 truncate">{car.fuelType || 'بنزين'}</span>
+                            <span className="text-[10px] font-black text-slate-900 truncate">{(() => {
+                              // [fuel-label-fix] Old rows stored fuel as "غاز"
+                              // (or "غاز (Gasoline)") which Arabic speakers
+                              // confuse with CNG/natural gas. Normalize at
+                              // display time so existing cars show "بنزين"
+                              // without a DB migration.
+                              const ft = String(car.fuelType || '').trim();
+                              if (!ft) return 'بنزين';
+                              if (ft === 'غاز' || ft === 'غاز (Gasoline)' || /^gasoline$/i.test(ft)) return 'بنزين';
+                              return ft;
+                            })()}</span>
                           </div>
                           <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center gap-2 overflow-hidden">
                             <Settings2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />

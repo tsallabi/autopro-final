@@ -283,7 +283,12 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
           <div>
             <span className="text-slate-400 block text-[10px] uppercase tracking-wider mb-1 font-bold">الوقود</span>
             <span className="font-bold text-slate-700 flex items-center gap-1.5 text-xs">
-              {car.fuelType || 'بنزين'}
+              {(() => {
+                const ft = String(car.fuelType || '').trim();
+                if (!ft) return 'بنزين';
+                if (ft === 'غاز' || ft === 'غاز (Gasoline)' || /^gasoline$/i.test(ft)) return 'بنزين';
+                return ft;
+              })()}
             </span>
           </div>
           <div>

@@ -11,7 +11,7 @@ interface UnifiedCarFormProps {
 }
 
 const MAKES = ['Toyota', 'Hyundai', 'Kia', 'Mercedes-Benz', 'BMW', 'Ford', 'Chevrolet', 'Nissan', 'Honda'];
-const FUEL_TYPES = ['غاز (Gasoline)', 'ديزل (Diesel)', 'كهربائي (Electric)', 'هجين (Hybrid)'];
+const FUEL_TYPES = ['بنزين (Gasoline)', 'ديزل (Diesel)', 'غاز طبيعي (CNG)', 'كهربائي (Electric)', 'هجين (Hybrid)'];
 const TRANSMISSIONS = ['أوتوماتيكي (Automatic)', 'عادي (Manual)'];
 const DRIVETRAINS = ['دفع أمامي (FWD)', 'دفع خلفي (RWD)', 'دفع رباعي (AWD/4WD)'];
 const SALE_STATUSES = ['البائع وضع حد أدنى للقبول (Minimum Bid)', 'بيع خالص (Pure Sale)', 'بناء على موافقة البائع (On Approval)'];
@@ -196,7 +196,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                         if (ft.includes('diesel')) fuelType = 'ديزل (Diesel)';
                         else if (ft.includes('electric')) fuelType = 'كهربائي (Electric)';
                         else if (ft.includes('hybrid')) fuelType = 'هجين (Hybrid)';
-                        else if (ft.includes('gasoline')) fuelType = 'غاز (Gasoline)';
+                        else if (ft.includes('gasoline')) fuelType = 'بنزين (Gasoline)';
                     }
 
                     return {
