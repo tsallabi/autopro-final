@@ -33,8 +33,17 @@ export const FeaturedCarsSlider: React.FC = () => {
   const car = featured[currentIdx];
   const imgs = Array.isArray(car.images) ? car.images : [];
   const bgImg = imgs[0] || 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=1200';
-  const price = (car as any).isBuyNow && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0);
-  const lyd = Math.round(price * (exchangeRate || 7));
+  const rawPrice = (car as any).isBuyNow && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0);
+  // [currency-aware] Honor car.currency for the headline price so an
+  // LYD-priced car shows "د.ل X" big and "$Y" small, not the reverse.
+  const isLyd = (car as any).currency === 'LYD';
+  const rate = exchangeRate || 7;
+  const primaryPrice = isLyd
+    ? `${rawPrice.toLocaleString()} د.ل`
+    : `$${rawPrice.toLocaleString()}`;
+  const secondaryPrice = isLyd
+    ? `$${Math.round(rawPrice / rate).toLocaleString()}`
+    : `${Math.round(rawPrice * rate).toLocaleString()} د.ل`;
 
   const isLive = car.status === 'live';
   const isOffer = car.status === 'offer_market';
@@ -85,10 +94,10 @@ export const FeaturedCarsSlider: React.FC = () => {
         {/* Price */}
         <div className="flex items-end gap-4 mb-5">
           <div className="text-3xl md:text-4xl font-black text-orange-400 font-mono drop-shadow-lg">
-            ${price.toLocaleString()}
+            {primaryPrice}
           </div>
           <div className="text-lg text-white/60 font-bold pb-1">
-            {lyd.toLocaleString()} د.ل
+            ≈ {secondaryPrice}
           </div>
         </div>
 

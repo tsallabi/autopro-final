@@ -1435,15 +1435,37 @@ export const Home = () => {
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
                               {activeTab === 'buy_now' ? 'سعر الشراء الفوري' : car.status === 'offer_market' ? t('home.carCard.lastOffer') : car.status === 'upcoming' ? t('home.carCard.startingPrice') : car.status === 'closed' ? t('home.carCard.finalSalePrice') : t('home.carCard.currentAuction')}
                             </div>
-                            <div className={`font-black font-mono mt-1 ${viewMode === 'list' ? 'text-2xl' : 'text-xl'} ${activeTab === 'buy_now' ? 'text-orange-600' : car.status === 'live' ? 'text-emerald-600' :
-                              car.status === 'offer_market' ? 'text-purple-600' :
-                                car.status === 'closed' ? 'text-slate-600' :
-                                  'text-slate-900'
-                              }`}>${(activeTab === 'buy_now' && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0)).toLocaleString()}
-                              <div className="text-xs font-bold text-slate-400 font-mono mt-0.5">
-                                {Math.round((activeTab === 'buy_now' && car.buyItNow ? car.buyItNow : (car.currentBid || car.startingBid || 0)) * (exchangeRate || 7)).toLocaleString()} د.ل
-                              </div>
-                            </div>
+                            {/* [marketplace-currency-fix] Both list and grid views
+                                honor car.currency. The hardcoded "$" + rate
+                                multiplier always produced "$X" no matter what
+                                currency the admin chose on the form — buyer
+                                saw "$68,000" on a car priced 68,000 د.ل. Now
+                                LYD cars show "د.ل X" big and "$Y" small;
+                                USD cars keep "$X" big and "د.ل Y" small. */}
+                            {(() => {
+                              const rawValue = activeTab === 'buy_now' && car.buyItNow
+                                ? car.buyItNow
+                                : (car.currentBid || car.startingBid || 0);
+                              const rate = exchangeRate || 7;
+                              const isLyd = (car as any).currency === 'LYD';
+                              const primary = isLyd
+                                ? `${rawValue.toLocaleString()} د.ل`
+                                : `$${rawValue.toLocaleString()}`;
+                              const secondary = isLyd
+                                ? `$${Math.round(rawValue / rate).toLocaleString()}`
+                                : `${Math.round(rawValue * rate).toLocaleString()} د.ل`;
+                              return (
+                                <div className={`font-black font-mono mt-1 ${viewMode === 'list' ? 'text-2xl' : 'text-xl'} ${activeTab === 'buy_now' ? 'text-orange-600' : car.status === 'live' ? 'text-emerald-600' :
+                                  car.status === 'offer_market' ? 'text-purple-600' :
+                                    car.status === 'closed' ? 'text-slate-600' :
+                                      'text-slate-900'
+                                  }`}>{primary}
+                                  <div className="text-xs font-bold text-slate-400 font-mono mt-0.5">
+                                    ≈ {secondary}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
 

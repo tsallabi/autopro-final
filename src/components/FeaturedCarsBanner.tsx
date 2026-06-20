@@ -44,7 +44,11 @@ export const FeaturedCarsBanner: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[10px] font-bold text-amber-300">المزايدة الحالية</div>
-              <div className="text-xl font-black text-amber-300">${(car.currentBid || 0).toLocaleString()}</div>
+              <div className="text-xl font-black text-amber-300">
+                {(car as any).currency === 'LYD'
+                  ? `${(car.currentBid || 0).toLocaleString()} د.ل`
+                  : `$${(car.currentBid || 0).toLocaleString()}`}
+              </div>
             </div>
             <button className="bg-amber-400 text-slate-900 hover:bg-amber-300 px-3 py-1.5 rounded-lg font-black text-xs flex items-center gap-1">
               زايد الآن <ArrowLeft className="w-3 h-3" />
