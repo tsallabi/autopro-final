@@ -79,7 +79,9 @@ export const UserDashboard = () => {
   // Payment System State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'bank_transfer' | 'cash' | 'card'>('wallet');
+  // [no-bank-transfer] 'bank_transfer' removed from the union — see
+  // payment-methods array below. 'plutu' added since it's a real option.
+  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'cash' | 'card' | 'plutu'>('wallet');
   const [referenceNo, setReferenceNo] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -483,7 +485,12 @@ export const UserDashboard = () => {
       const res = await authFetch('/api/wallet/topup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: effectiveUser.id, amount, method: 'bank_transfer' })
+        // [no-bank-transfer] Was 'bank_transfer'. The wallet top-up modal
+        // doesn't actually pick a method — it just opens a payment request
+        // for the admin. Labelling it as cash_office (default cash-in-office
+        // flow) is honest about how 99% of these get settled now that the
+        // bank-transfer option is hidden from buyers everywhere.
+        body: JSON.stringify({ userId: effectiveUser.id, amount, method: 'cash_office' })
       });
 
       if (res.ok) {
@@ -2842,10 +2849,13 @@ export const UserDashboard = () => {
                   <label className="block text-sm font-black text-slate-900 mb-4 px-2 tracking-wide">اختر طريقة الدفع المناسبة:</label>
                   <div className="grid grid-cols-2 gap-4">
                     {[
+                      // [no-bank-transfer] Per owner: bank transfer is hidden
+                      // EVERYWHERE — buyers were abandoning the funnel at the
+                      // "send wire receipt" step. MyPay / cash-in-office /
+                      // wallet / electronic card only.
                       { id: 'wallet', label: 'المحفظة الرقمية', icon: Wallet, desc: 'دفع فوري من رصيدك' },
-                      { id: 'bank_transfer', label: 'تحويل بنكي', icon: Building2, desc: 'يتطلب مراجعة الإدارة' },
-                      { id: 'cash', label: 'دفع نقدي', icon: DollarSign, desc: 'في أقرب مكتب لنا' },
-                      { id: 'card', label: 'بطاقة إئتمان', icon: CreditCard, desc: 'دفع إلكتروني سريع' },
+                      { id: 'cash', label: 'كاش في مكتبنا', icon: DollarSign, desc: 'الخمس — شارع الفرناج، بجوار غسيل سيارات 90' },
+                      { id: 'card', label: 'MyPay / بطاقة', icon: CreditCard, desc: 'دفع إلكتروني فوري' },
                       { id: 'plutu', label: 'Plutu', icon: CreditCard, desc: 'دفع إلكتروني آمن' },
                     ].map((m) => (
                       <button
@@ -2866,8 +2876,9 @@ export const UserDashboard = () => {
                   </div>
                 </div>
 
-                {/* Conditional Fields for Manual Methods */}
-                {(paymentMethod === 'bank_transfer' || paymentMethod === 'cash') && (
+                {/* [no-bank-transfer] Previously: (bank_transfer || cash).
+                    bank_transfer no longer exists in the methods list. */}
+                {paymentMethod === 'cash' && (
                   <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
                     <div className="flex items-center gap-4 mb-2">
                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-orange-500 shadow-sm">
