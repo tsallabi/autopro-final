@@ -36,6 +36,8 @@ import WhatsAppPoster from './components/admin/WhatsAppPoster';
 import PaymentVerificationPanel from './components/admin/PaymentVerificationPanel';
 import BiddingActivationModal from './components/BiddingActivationModal';
 import SupportChatWidget from './components/SupportChatWidget';
+import { CustomerAssistant } from './components/CustomerAssistant';
+import AdminAssistantPanel from './components/admin/AdminAssistantPanel';
 
 // Lazy-load heavy dashboard pages for code splitting
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -147,10 +149,14 @@ function AppContent() {
         {isAdmin && <MarketingPanel />}
         {isAdmin && <WhatsAppPoster />}
         {isAdmin && <PaymentVerificationPanel />}
+        {/* [ai] Admin agentic assistant (Claude Opus 4.8) — admin only */}
+        {isAdmin && <AdminAssistantPanel />}
         {/* Global activation popup — shown when an unverified user tries to bid/offer */}
         <BiddingActivationModal />
         {/* Support chat widget — visible to every visitor on public pages */}
         <SupportChatWidget />
+        {/* [ai] Customer AI assistant (Claude Opus 4.8) — public, self-hides if no key */}
+        <CustomerAssistant />
     </>
   );
 }
