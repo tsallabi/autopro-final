@@ -8,10 +8,12 @@ import { LibyaProModal } from './LibyaProModal';
 // Key must match FOOTER_KEY in AdminDashboard
 const FOOTER_KEY = 'autopro_footer_settings_v7';
 const FOOTER_DEFAULT = {
-    description: 'منصة مزادات السيارات الأولى في ليبيا — شراء، بيع، شحن دولي بكل شفافية.',
+    // Defaults are translation keys so the footer renders in the active language.
+    // The admin can override with literal text via the footer settings panel.
+    description: 'footer.description',
     phone: '+218 91 234 5678',
     email: 'info@autopro.ly',
-    address: 'طرابلس، ليبيا',
+    address: 'footer.address',
     facebook: '#', twitter: '#', instagram: '#', youtube: '#',
     companyLinks: [
         { label: 'footer.aboutCompany', href: '/about' },
@@ -24,7 +26,7 @@ const FOOTER_DEFAULT = {
         { label: 'footer.browseCars', href: '/marketplace' },
         { label: 'footer.costCalculator', href: '/calculator' },
         { label: 'footer.shippingServices', href: '/shipping' },
-        { label: 'أقرب مركز شحن', href: '/nearest-shipping-center' },
+        { label: 'footer.nearestShippingCenter', href: '/nearest-shipping-center' },
     ],
     legalLinks: [
         { label: 'footer.termsAndConditions', href: '/terms' },
@@ -56,10 +58,10 @@ export const SiteFooter = () => {
     const siteName = branchConfig?.name || (i18n.language === 'en' ? 'Libya AUTO PRO' : 'ليبيا AUTO PRO');
 
     const socialLinks = [
-        { name: 'فيسبوك', icon: Facebook, href: cfg.facebook || '#' },
-        { name: 'تويتر', icon: Twitter, href: cfg.twitter || '#' },
-        { name: 'إنستجرام', icon: Instagram, href: cfg.instagram || '#' },
-        { name: 'يوتيوب', icon: Youtube, href: cfg.youtube || '#' },
+        { name: t('footer.facebook'), icon: Facebook, href: cfg.facebook || '#' },
+        { name: t('footer.twitter'), icon: Twitter, href: cfg.twitter || '#' },
+        { name: t('footer.instagram'), icon: Instagram, href: cfg.instagram || '#' },
+        { name: t('footer.youtube'), icon: Youtube, href: cfg.youtube || '#' },
     ];
 
     return (
@@ -70,7 +72,7 @@ export const SiteFooter = () => {
 
                 {/* Brand column */}
                 <div className="col-span-2 md:col-span-1 space-y-5">
-                    <Link to="/" aria-label="الرئيسية" title="الرئيسية" className="flex items-center gap-3 group w-fit">
+                    <Link to="/" aria-label={t('nav.home')} title={t('nav.home')} className="flex items-center gap-3 group w-fit">
                         <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
                             <Car className="w-6 h-6 text-white" />
                         </div>
@@ -147,16 +149,18 @@ export const SiteFooter = () => {
             <div className="border-t border-slate-800 py-5">
                 <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                     <p className="text-center sm:text-right">
-                        © {year} منصة <span className="text-white font-semibold">ليبيا أوتو برو</span> من تصميم{' '}
+                        © {year} {t('footer.copyrightPrefix')}{' '}
+                        <span className="text-white font-semibold">{t('footer.platformName')}</span>{' '}
+                        {t('footer.designedBy')}{' '}
                         <button
                             type="button"
                             onClick={() => setShowLibyaPro(true)}
                             className="inline-flex items-center gap-1 font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 underline decoration-amber-500/40 hover:decoration-amber-400 underline-offset-4 transition-all cursor-pointer"
-                            title="ليبيا برو للتقنية — تصميم وبناء المواقع والمنصات"
+                            title={t('footer.libyaProTechTitle')}
                         >
-                            ليبيا برو للتقنية
+                            {t('footer.libyaProTech')}
                         </button>
-                        . جميع الحقوق محفوظة.
+                        . {t('footer.rightsReserved')}.
                     </p>
                     <div className="flex items-center gap-4">
                         {cfg.legalLinks.map((l: any) => (
