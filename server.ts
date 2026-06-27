@@ -3889,6 +3889,30 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     const reqUser = (req as any).user;
     const effectiveSellerId = sellerId || reqUser?.id || null;
 
+    // [required-seller-fields] Enforce server-side: every car must carry a
+    // visible seller name + a location. The showroom name falls back to the
+    // seller's own profile (company → full name) so the identity is never
+    // blank; admin internal listings default to "AutoPro Auctions".
+    let effectiveShowroom = String(showroomName || '').trim();
+    if (!effectiveShowroom && effectiveSellerId) {
+      try {
+        const su: any = db.prepare("SELECT firstName, lastName, companyName, role FROM users WHERE id = ?").get(effectiveSellerId);
+        if (su) {
+          effectiveShowroom = String(su.companyName || '').trim()
+            || `${su.firstName || ''} ${su.lastName || ''}`.trim()
+            || (su.role === 'admin' ? 'AutoPro Auctions' : '');
+        }
+      } catch { /* fall through */ }
+    }
+    if (!effectiveShowroom && reqUser?.role === 'admin') effectiveShowroom = 'AutoPro Auctions';
+    if (!effectiveShowroom) {
+      return res.status(400).json({ error: 'اسم المعرض / التاجر مطلوب لكل سيارة.' });
+    }
+    const effectiveLocation = String(location || '').trim();
+    if (!effectiveLocation) {
+      return res.status(400).json({ error: 'مكان السيارة مطلوب لكل سيارة.' });
+    }
+
     const id = Date.now().toString();
     try {
       // [starting-bid-preservation] Store the opening price in BOTH currentBid
@@ -3907,12 +3931,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, lotNumber || '', vin, make, model, trim || '', year || 2024, odometer || 0, engine || '', engineSize || '', horsepower || '',
         transmission || '', drive || '', drivetrain || '', fuelType || '', exteriorColor || '', interiorColor || '',
-        primaryDamage || '', secondaryDamage || '', titleType || '', location || '',
+        primaryDamage || '', secondaryDamage || '', titleType || '', effectiveLocation,
         openingPrice, openingPrice, reservePrice || 0, buyItNow || buyNowPrice || 0, currency || 'USD', JSON.stringify(images || []),
         videoUrl || engineVideoUrl || '', inspectionPdf || '', 'pending_approval',
         null, effectiveSellerId, keys || 'yes', runsDrives || 'yes', notes || '', mileageUnit || 'mi', acceptOffers ? 1 : 0,
         engineAudioUrl || '', engineVideoUrl || '',
-        showroomName || (reqUser?.role === 'admin' ? 'AutoPro Auctions' : '') || '',
+        effectiveShowroom,
         isRecommended ? 1 : 0
       );
       res.json({ id, ...req.body });

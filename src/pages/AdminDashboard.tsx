@@ -4969,7 +4969,18 @@ export const AdminDashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {(() => {
-                      const baseList = filter === 'pending' ? pendingUsers : users;
+                      // [user-filter-fix] The stat cards set filter to
+                      // 'sellers' / 'admin' but the base list previously only
+                      // handled 'pending' — so those cards highlighted but
+                      // never actually filtered. Now every filter id maps to
+                      // a real subset.
+                      const baseList = filter === 'pending'
+                        ? pendingUsers
+                        : filter === 'sellers'
+                          ? users.filter(u => u.role === 'seller')
+                          : filter === 'admin'
+                            ? users.filter(u => u.role === 'admin' || u.role === 'manager')
+                            : users;
                       const q = userSearch.trim().toLowerCase();
                       const filtered = q ? baseList.filter(u =>
                         `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
@@ -5205,7 +5216,15 @@ export const AdminDashboard = () => {
                 </table>
                 {/* Users Pagination */}
                 {(() => {
-                  const baseList = filter === 'pending' ? pendingUsers : users;
+                  // [user-filter-fix] Mirror the role-aware base list used in
+                  // the table body above so pagination counts match.
+                  const baseList = filter === 'pending'
+                    ? pendingUsers
+                    : filter === 'sellers'
+                      ? users.filter(u => u.role === 'seller')
+                      : filter === 'admin'
+                        ? users.filter(u => u.role === 'admin' || u.role === 'manager')
+                        : users;
                   const q = userSearch.trim().toLowerCase();
                   const filtered = q ? baseList.filter(u =>
                     `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
