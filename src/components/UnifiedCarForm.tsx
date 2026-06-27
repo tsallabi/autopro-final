@@ -321,6 +321,20 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
             showAlert('يرجى تعبئة الحقول الأساسية (VIN، الماركة، الموديل)', 'error');
             return;
         }
+        // [required-seller-fields] Showroom/seller name + car location are now
+        // mandatory so every listing shows WHO is selling and WHERE the car
+        // is. Previously a dealer could add a car with no name/location and
+        // it appeared as "Unknown Location / تاجر" with no identity.
+        const showroom = String(formData.showroomName || '').trim();
+        const loc = String(formData.location || formData.locationDetails || '').trim();
+        if (!showroom) {
+            showAlert('اسم المعرض / التاجر مطلوب — لا يمكن إضافة سيارة بدون اسم البائع', 'error');
+            return;
+        }
+        if (!loc) {
+            showAlert('مكان السيارة مطلوب — أدخل موقع السيارة (مثال: طرابلس أو GA - ATLANTA)', 'error');
+            return;
+        }
 
         const allImages = mainImage ? [mainImage, ...extraImages] : extraImages;
         await onSubmit(formData, allImages, engineSoundMedia, inspectionReportMedia);
@@ -438,8 +452,8 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                 <ComboSelect label="شكل الهيكل" value={formData.bodyType} options={BODY_TYPES} onChange={(v: string) => handleFieldChange('bodyType', v)} />
                                 <ComboSelect label="نوع الضرر الأساسي" value={formData.primaryDamage} options={['بدون ضرر', 'أمامي', 'خلفي', 'جانبي', 'سقف', 'غرق', 'حريق', 'تلف بيئي', 'سرقة مسترجعة', 'ميكانيكي', 'كهربائي', 'أخرى']} onChange={(v: string) => handleFieldChange('primaryDamage', v)} />
                                 <div>
-                                    <label className="block text-xs font-black text-orange-500 mb-2">موقع السيارة (Location)</label>
-                                    <input type="text" value={formData.location || formData.locationDetails || ''} onChange={e => { handleFieldChange('location', e.target.value); handleFieldChange('locationDetails', e.target.value); }} className={iptClass} placeholder="مثال: GA - ATLANTA, USA" />
+                                    <label className="block text-xs font-black text-orange-500 mb-2">موقع السيارة (Location) *</label>
+                                    <input type="text" required value={formData.location || formData.locationDetails || ''} onChange={e => { handleFieldChange('location', e.target.value); handleFieldChange('locationDetails', e.target.value); }} className={iptClass} placeholder="مثال: طرابلس أو GA - ATLANTA, USA" />
                                 </div>
                                 <ComboSelect label="بلد الاستيراد" value={formData.titleType} options={['الولايات المتحدة us', 'كندا ca', 'كوريا kr', 'الإمارات ae', 'أوروبا eu', 'أخرى']} onChange={(v: string) => handleFieldChange('titleType', v)} />
                                 <ComboSelect label="إضاءة المزاد (حالة عامة)" value={formData.auctionLights} options={AUCTION_LIGHTS} onChange={(v: string) => handleFieldChange('auctionLights', v)} />
@@ -520,8 +534,8 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                     <input type="text" aria-label="رقم خط المزايدة" title="رقم خط المزايدة" value={formData.auctionLane} onChange={e => handleFieldChange('auctionLane', e.target.value)} className={iptClass} placeholder="Lane A..." />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-black text-orange-500 mb-2">اسم المعرض (اختياري)</label>
-                                    <input title="اسم المعرض" aria-label="اسم المعرض" placeholder="اسم المعرض..." type="text" value={formData.showroomName} onChange={e => handleFieldChange('showroomName', e.target.value)} className={iptClass} />
+                                    <label className="block text-xs font-black text-orange-500 mb-2">اسم المعرض / التاجر *</label>
+                                    <input title="اسم المعرض" aria-label="اسم المعرض" required placeholder="اسم المعرض أو التاجر..." type="text" value={formData.showroomName} onChange={e => handleFieldChange('showroomName', e.target.value)} className={iptClass} />
                                 </div>
 
                                 <div className="col-span-2 grid md:grid-cols-2 gap-4">
