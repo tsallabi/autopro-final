@@ -1774,7 +1774,28 @@ const PORT = Number(process.env.PORT) || 3005;
 
 // Health check must respond BEFORE full initialization
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+  // [health-providers] Report WHICH integrations are configured — booleans
+  // only, never the secret values. Lets the owner verify remotely with a
+  // single `curl https://autopro.ac/api/health` (e.g. confirm RESEND_API_KEY
+  // is present now that outbound SMTP is being blocked on the host).
+  const has = (v: string | undefined) => !!(v && String(v).trim());
+  res.json({
+    status: "ok",
+    time: new Date().toISOString(),
+    providers: {
+      // Email — Resend is the primary (HTTPS, survives SMTP blocks); SMTP is fallback.
+      resend: has(process.env.RESEND_API_KEY),
+      smtp: has(process.env.SMTP_USER) && has(process.env.SMTP_PASS),
+      emailReady: has(process.env.RESEND_API_KEY) || (has(process.env.SMTP_USER) && has(process.env.SMTP_PASS)),
+      // Payments
+      mypay: has(process.env.MYPAY_CLIENT_ID) && has(process.env.MYPAY_CLIENT_SECRET),
+      stripe: has(process.env.STRIPE_SECRET_KEY),
+      // Messaging / AI / auth
+      whatsapp: has(process.env.WASENDER_TOKEN),
+      anthropic: has(process.env.ANTHROPIC_API_KEY),
+      google: has(process.env.GOOGLE_CLIENT_ID),
+    },
+  });
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
