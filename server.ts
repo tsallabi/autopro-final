@@ -5381,21 +5381,32 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     const { email, phone } = req.body;
     const results = [];
 
+    // [notif-test-hang-fix] The test button "spun forever" because it awaited
+    // transporter.sendMail() (raw SMTP) which HANGS with no timeout when the
+    // host blocks outbound SMTP — the promise never settles, so the frontend
+    // finally{} never runs. Two fixes: (1) route through the unified
+    // sendEmail() (Resend HTTPS-first, SMTP fallback), and (2) wrap every
+    // external call in a hard timeout so the button always gets a result.
+    const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout بعد ${ms / 1000} ثانية`)), ms)),
+      ]);
+
     // 1. Test Email
     if (email) {
       try {
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM || `"AUTOPRO AUCTIONS" <${process.env.SMTP_USER}>`,
+        await withTimeout(sendEmail({
           to: email,
           subject: "🔍 Test Notification - Auto Pro Platform",
           html: `<div dir="rtl" style="font-family: Arial; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
                   <h2 style="color: #f97316;">AUTOPRO - Test Message</h2>
                   <p>This is a test email sent from your platform admin dashboard.</p>
-                  <p>Status: <b>SMTP connection working correctly</b></p>
+                  <p>Status: <b>Email delivery working correctly</b></p>
                   <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
                   <small style="color: #64748b;">Timestamp: ${new Date().toLocaleString('ar-LY')}</small>
                  </div>`
-        });
+        }), 15000, 'إرسال الإيميل');
 
         db.prepare("INSERT INTO external_notifications (id, type, contact, title, content, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(`test-em-${Date.now()}`, 'email', email, 'Test Email Dispatch', 'Test email from Admin', 'sent', new Date().toISOString());
@@ -5417,20 +5428,30 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         try {
           // Strip leading zeros or + for WasenderAPI
           const finalPhone = phone.replace(/[^0-9]/g, '').replace(/^00/, '').replace(/^0/, '');
-          
-          const waRes = await fetch(`https://wasenderapi.com/api/send-message`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              to: finalPhone,
-              text: `🚀 *AUTOPRO Platform Test*\n\nهذه رسالة تجريبية لتأكيد عمل نظام الواتساب (WasenderAPI) بنجاح.\n\nالوقت: ${new Date().toLocaleString('ar-LY')}`
-            })
-          });
 
-          const waData: any = await waRes.json();
+          // [notif-test-hang-fix] AbortController timeout so a slow/unreachable
+          // WasenderAPI can't hang the request (and the spinner) forever.
+          const waController = new AbortController();
+          const waTimer = setTimeout(() => waController.abort(), 12000);
+          let waRes: Response;
+          try {
+            waRes = await fetch(`https://wasenderapi.com/api/send-message`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                to: finalPhone,
+                text: `🚀 *AUTOPRO Platform Test*\n\nهذه رسالة تجريبية لتأكيد عمل نظام الواتساب (WasenderAPI) بنجاح.\n\nالوقت: ${new Date().toLocaleString('ar-LY')}`
+              }),
+              signal: waController.signal,
+            });
+          } finally {
+            clearTimeout(waTimer);
+          }
+
+          const waData: any = await waRes.json().catch(() => ({}));
           if (waRes.ok) {
             db.prepare("INSERT INTO external_notifications (id, type, contact, title, content, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
               .run(`test-wa-${Date.now()}`, 'whatsapp', phone, 'Test WhatsApp Dispatch', 'Test WhatsApp from Admin', 'sent', new Date().toISOString());

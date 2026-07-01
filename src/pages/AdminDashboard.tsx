@@ -527,15 +527,21 @@ const ExternalLogsViewer: React.FC = () => {
     }
 
     setTesting(true);
+    // [notif-test-hang-fix] Client-side timeout as belt-and-suspenders: even
+    // if the server never responds, abort after 35s so the spinner always
+    // stops instead of spinning forever.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 35000);
     try {
       const res = await authFetch('/api/admin/external-notifications/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trialEmail, phone: trialPhone })
+        body: JSON.stringify({ email: trialEmail, phone: trialPhone }),
+        signal: ctrl.signal,
       });
-      
+
       const data = await res.json();
-      
+
       if (res.ok) {
         const emailRes = data.results.find((r: any) => r.type === 'email');
         const waRes = data.results.find((r: any) => r.type === 'whatsapp');
@@ -549,9 +555,12 @@ const ExternalLogsViewer: React.FC = () => {
       } else {
         alert(`❌ فشل الاتصال بالخادم. الخطأ: ${data.error || 'Unknown error'}`);
       }
-    } catch (e) {
-      alert('❌ فشل إرسال التجربة، السيرفر لا يستجيب');
+    } catch (e: any) {
+      alert(e?.name === 'AbortError'
+        ? '❌ انتهت المهلة — السيرفر لم يستجب خلال 35 ثانية. تحقّق من إعدادات البريد/الواتساب.'
+        : '❌ فشل إرسال التجربة، السيرفر لا يستجيب');
     } finally {
+      clearTimeout(timer);
       setTesting(false);
     }
   };
