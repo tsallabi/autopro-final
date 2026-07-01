@@ -2202,11 +2202,16 @@ const MarketingPanel: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emails, subject, html: generateHTML() })
       });
+      const data: any = await res.json().catch(() => ({}));
       if (res.ok) {
-        showAlert('تم إدراج الحملة للإرسال بنجاح!', 'success');
+        // [campaign-fix] Server now sends in the background and returns
+        // { queued: N }. Reflect the real count so the admin knows it's
+        // being delivered gradually (not instantly).
+        showAlert(`تم بدء إرسال الحملة إلى ${data.queued ?? emails.length} مستلم — يُرسَل تدريجياً في الخلفية.`, 'success');
         setSelectedUsers([]);
       } else {
-        showAlert('فشل في إرسال الحملة', 'error');
+        // Surface the server's specific reason instead of a generic failure.
+        showAlert(data.error || 'فشل في إرسال الحملة', 'error');
       }
     } catch (e) {
       showAlert('حدث خطأ في النظام', 'error');
