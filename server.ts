@@ -5459,85 +5459,91 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ==========================================
   app.post('/api/admin/send-campaign', requireAdmin, async (req, res) => {
     try {
-      const { carId, type } = req.body;
-      const stmt = db.prepare('SELECT * FROM cars WHERE id = ?');
-      const car = stmt.get(carId) as any;
-      if (!car) return res.status(404).json({ error: 'Car not found' });
-      if (typeof car.images === 'string') car.images = JSON.parse(car.images);
+      // [campaign-fix] The marketing-center UI was upgraded to send a fully
+      // composed campaign — { emails, subject, html } with a hand-picked
+      // audience + live preview — but this endpoint still expected the OLD
+      // { carId, type } "announce one car" contract, so it looked up a car
+      // by an undefined id, 404'd "Car not found", and the UI showed
+      // "فشل في إرسال الحملة".
+      //
+      // Now it accepts the new contract, keeps the old one for back-compat,
+      // uses the unified sendEmail() (Resend-first, SMTP fallback — the raw
+      // transporter alone fails on hosts that block outbound SMTP), and
+      // sends in the BACKGROUND so 1490 recipients don't time out the HTTP
+      // request.
+      let { emails, subject, html, carId, type } = req.body || {};
 
-      const usersStmt = db.prepare("SELECT * FROM users WHERE status = ? OR role = ?");
-      const allUsers = usersStmt.all('active', 'مستخدم');
-      const emails = allUsers.map((u: any) => u.email).filter(Boolean);
-
-      let color = '#f97316';
-      let title = 'سيارة قادمة في المزاد';
-      let action = 'سجل للمزايدة الآن';
-
-      if (type === 'live') {
-        color = '#ef4444'; title = 'المزاد بدأ الآن!'; action = 'زايد الآن';
-      } else if (type === 'offer_market') {
-        color = '#3b82f6'; title = 'فرصة سوق العروض للسيارة الفاخرة'; action = 'قدم عرضك الآن السعر: $' + (car.currentBid || car.reservePrice);
-      }
-
-      const htmlTemplate = `
-      <div dir="rtl" style="font-family: Arial; padding: 40px 20px; background: #0f172a; color: white;">
-        <div style="max-width: 600px; margin: auto; background: #1e293b; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
-          <!-- Header -->
-          <div style="padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <h1 style="color: ${color}; margin: 0; font-size: 28px;">AUTOPRO AUCTIONS</h1>
-            <p style="color: #94a3b8; margin: 10px 0 0;">${title}</p>
-          </div>
-
-          <!-- Image -->
-          <img src="${car.images[0]}" style="width: 100%; height: 350px; object-fit: cover;" />
-
-          <!-- Body -->
-          <div style="padding: 40px 30px;">
-            <h2 style="margin: 0 0 10px; font-size: 24px; text-align: center;">${car.make} ${car.model} ${car.year}</h2>
-            <p style="color: #94a3b8; text-align: center; margin: 0 0 30px;">${car.trim || ''} - متواجدة في ${car.location}</p>
-
-            <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 20px; margin-bottom: 30px;">
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
-                <span style="color: #94a3b8;">رقم اللوت (Lot)</span>
-                <strong style="font-family: monospace;">${car.lotNumber}</strong>
+      // ── Back-compat path: old { carId, type } payload builds its own html ──
+      if ((!Array.isArray(emails) || emails.length === 0) && carId) {
+        const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(carId) as any;
+        if (!car) return res.status(404).json({ error: 'Car not found' });
+        if (typeof car.images === 'string') { try { car.images = JSON.parse(car.images); } catch { car.images = []; } }
+        const allUsers = db.prepare("SELECT email FROM users WHERE status = ? OR role = ?").all('active', 'مستخدم');
+        emails = allUsers.map((u: any) => u.email).filter(Boolean);
+        let color = '#f97316', title = 'سيارة قادمة في المزاد', action = 'سجل للمزايدة الآن';
+        if (type === 'live') { color = '#ef4444'; title = 'المزاد بدأ الآن!'; action = 'زايد الآن'; }
+        else if (type === 'offer_market') { color = '#3b82f6'; title = 'فرصة سوق العروض'; action = 'قدم عرضك الآن'; }
+        subject = subject || `🔥 [AUTOPRO] ${title} ${car.make} ${car.model}`;
+        const img = (Array.isArray(car.images) && car.images[0]) || '';
+        html = `
+          <div dir="rtl" style="font-family: Arial; padding: 40px 20px; background: #0f172a; color: white;">
+            <div style="max-width: 600px; margin: auto; background: #1e293b; border-radius: 24px; overflow: hidden;">
+              <div style="padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <h1 style="color: ${color}; margin: 0; font-size: 28px;">AUTOPRO AUCTIONS</h1>
+                <p style="color: #94a3b8; margin: 10px 0 0;">${title}</p>
               </div>
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
-                <span style="color: #94a3b8;">رقم الهيكل (VIN)</span>
-                <strong style="font-family: monospace;">${car.vin}</strong>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: #94a3b8;">السعر / المزايدة الحالية</span>
-                <strong style="color: ${color}; font-size: 20px;">$${Number(car.currentBid || car.reservePrice).toLocaleString()}</strong>
+              ${img ? `<img src="${img}" style="width: 100%; height: 350px; object-fit: cover;" />` : ''}
+              <div style="padding: 40px 30px;">
+                <h2 style="margin: 0 0 10px; font-size: 24px; text-align: center;">${car.make} ${car.model} ${car.year}</h2>
+                <p style="color: #94a3b8; text-align: center; margin: 0 0 30px;">${car.trim || ''} - متواجدة في ${car.location || ''}</p>
+                <a href="https://www.autopro.ac" style="display: block; background: ${color}; color: white; text-align: center; padding: 18px; border-radius: 14px; text-decoration: none; font-weight: bold; font-size: 18px;">${action}</a>
               </div>
             </div>
-
-            <a href="https://www.autopro.ac" style="display: block; background: ${color}; color: white; text-align: center; padding: 18px; border-radius: 14px; text-decoration: none; font-weight: bold; font-size: 18px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
-              ${action}
-            </a>
-          </div>
-
-          <!-- Footer -->
-          <div style="padding: 20px; text-align: center; background: rgba(0,0,0,0.2);">
-            <p style="color: #64748b; font-size: 12px; margin: 0;">هذه الرسالة تم إرسالها من منصة Libya Auto Pro</p>
-          </div>
-        </div>
-      </div>
-      `;
-
-      // Process sending emails securely using Nodemailer
-      for (const email of emails) {
-        transporter.sendMail({
-          from: '"AUTOPRO AUCTIONS" <' + process.env.SMTP_USER + '>',
-          to: email,
-          subject: `🔥 [AUTOPRO] ${title} ${car.make} ${car.model}`,
-          html: htmlTemplate
-        }).catch(err => console.error('Email failed to send directly:', err));
+          </div>`;
       }
 
-      res.json({ success: true, count: emails.length });
-    } catch (error) {
+      // ── Validate the (now unified) payload ──
+      if (!Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ error: 'لا يوجد مستلمون للحملة — اختر جمهوراً مستهدفاً.' });
+      }
+      if (!subject || !String(subject).trim()) {
+        return res.status(400).json({ error: 'عنوان الحملة مطلوب.' });
+      }
+      if (!html || !String(html).trim()) {
+        return res.status(400).json({ error: 'محتوى الحملة (HTML) مطلوب.' });
+      }
+
+      // De-dupe + sanitize recipient list.
+      const recipients = Array.from(new Set(
+        (emails as any[]).map((e: any) => String(e || '').trim().toLowerCase()).filter((e: string) => e.includes('@'))
+      ));
+      if (recipients.length === 0) {
+        return res.status(400).json({ error: 'قائمة المستلمين لا تحتوي على أي بريد صالح.' });
+      }
+
+      // Respond immediately — sending 1490 emails synchronously would time
+      // out the request. The actual sends run in the background with a
+      // small delay between each to stay under provider rate limits.
+      res.json({ success: true, queued: recipients.length });
+
+      setImmediate(async () => {
+        let sent = 0, failed = 0;
+        for (const to of recipients) {
+          try {
+            await sendEmail({ to, subject: String(subject), html: String(html) });
+            sent++;
+          } catch (err: any) {
+            failed++;
+            console.error(`[campaign] send to ${to} failed:`, err?.message);
+          }
+          // ~120ms gap → ~8/sec, safe for Resend + SMTP.
+          await new Promise(r => setTimeout(r, 120));
+        }
+        console.log(`[campaign] done — sent=${sent} failed=${failed} of ${recipients.length}`);
+      });
+    } catch (error: any) {
       console.error('Campaign error:', error);
-      res.status(500).json({ error: 'Failed to broadcast campaign' });
+      res.status(500).json({ error: 'فشل إرسال الحملة: ' + (error?.message || 'خطأ غير معروف') });
     }
   });
 
