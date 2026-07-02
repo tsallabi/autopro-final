@@ -8,6 +8,11 @@ interface UnifiedCarFormProps {
     onSubmit: (data: any, images: File[], engineSound: File | null, inspectionReport: File | null) => Promise<void>;
     onCancel: () => void;
     isSubmitting: boolean;
+    // [transit] When true (admin only), show the "قادمة في الطريق / في البحر"
+    // toggle so a car can be added straight into the in-transit list instead of
+    // the normal auction flow. Sellers never see this (creating in_transit cars
+    // is admin-only on the backend).
+    allowTransit?: boolean;
 }
 
 const MAKES = ['Toyota', 'Hyundai', 'Kia', 'Mercedes-Benz', 'BMW', 'Ford', 'Chevrolet', 'Nissan', 'Honda'];
@@ -83,7 +88,7 @@ const VEHICLE_CATEGORIES: { key: string; label: string; icon: string }[] = [
     { key: 'boats',           label: 'قوارب', icon: '🚤' },
 ];
 
-export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onSubmit, onCancel, isSubmitting }) => {
+export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onSubmit, onCancel, isSubmitting, allowTransit = false }) => {
     const { showAlert } = useStore();
     const [formData, setFormData] = useState<any>({
         vin: '', make: '', model: '', year: new Date().getFullYear(), trim: '',
@@ -102,6 +107,12 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         // LYD on cars priced in Libyan dinar (local fleet, returned cars).
         // Stored in cars.currency column.
         currency: 'USD',
+        // [transit] "قادمة في الطريق / في البحر". When isTransit is on, the car
+        // is created with status='in_transit' via /api/admin/cars/transit and
+        // stays OUT of every auction loop until an admin moves it to auction.
+        isTransit: (initialData?.status === 'in_transit') || false,
+        transitEta: '', transitOrigin: '', transitDestination: 'ميناء طرابلس',
+        transitVessel: '', transitContainer: '', transitTrackingUrl: '',
         ...(initialData || {}),
         // [price-fields] Map DB columns → form field names so EDIT pre-fills
         // the opening price and buy-now correctly. The car row stores the
@@ -275,6 +286,8 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
             setMainImage(file);
             setMainImagePreview(URL.createObjectURL(file));
         }
+        // Reset so picking the SAME file again still fires onChange.
+        e.target.value = '';
     };
 
     const handleExtraImagesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,6 +297,17 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
             setExtraImages(prev => [...prev, ...files]);
             setExtraImagePreviews(prev => [...prev, ...newPreviews]);
         }
+        // Reset so re-selecting the same files still fires onChange.
+        e.target.value = '';
+    };
+
+    // Explicitly open the main-image picker. Used by the floating "+" badge so
+    // it works as a real button (it used to be pointer-events-none decoration
+    // that only worked by click pass-through, which broke once a preview
+    // overlay covered it).
+    const openMainImagePicker = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        fileInputRef.current?.click();
     };
 
     const removeExtraImage = (idx: number) => {
@@ -317,6 +341,19 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        // [transit] In-transit cars (قادمة في الطريق) use a lighter contract:
+        // the /api/admin/cars/transit endpoint only requires make/model/year.
+        // VIN, showroom name and location aren't known while the car is still
+        // on the boat, so don't force them.
+        if (formData.isTransit) {
+            if (!formData.make || !formData.model || !formData.year) {
+                showAlert('للسيارة القادمة في الطريق: الماركة والموديل والسنة مطلوبة', 'error');
+                return;
+            }
+            const allImagesT = mainImage ? [mainImage, ...extraImages] : extraImages;
+            await onSubmit(formData, allImagesT, engineSoundMedia, inspectionReportMedia);
+            return;
+        }
         if (!formData.vin || !formData.make || !formData.model) {
             showAlert('يرجى تعبئة الحقول الأساسية (VIN، الماركة، الموديل)', 'error');
             return;
@@ -365,6 +402,55 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                     {/* Right Column: Main Form */}
                     <div className="lg:col-span-8 space-y-6">
 
+                        {/* [transit] Box 0: قادمة في الطريق / في البحر (admin only) */}
+                        {allowTransit && (
+                            <div className={`rounded-2xl p-6 border shadow-2xl transition-colors ${formData.isTransit ? 'bg-cyan-950/40 border-cyan-500/40' : 'bg-slate-900 border-slate-800'}`}>
+                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={!!formData.isTransit}
+                                        onChange={e => handleFieldChange('isTransit', e.target.checked)}
+                                        className="w-5 h-5 accent-cyan-500"
+                                    />
+                                    <span className="text-lg font-black text-cyan-400 flex items-center gap-2">
+                                        🚢 سيارة قادمة في الطريق (في البحر)
+                                    </span>
+                                </label>
+                                <p className="text-[11px] text-slate-400 font-bold mt-2 mr-8">
+                                    فعّل هذا الخيار للسيارات التي اشتريتها ولا تزال في الطريق إلى ليبيا. لن تدخل المزاد إلا عند نقلها يدويًا لاحقًا. (الماركة والموديل والسنة كافية — لا يلزم VIN أو موقع)
+                                </p>
+
+                                {formData.isTransit && (
+                                    <div className="grid md:grid-cols-2 gap-4 mt-5 pt-5 border-t border-cyan-500/20">
+                                        <div>
+                                            <label className="block text-xs font-black text-cyan-400 mb-2">📅 تاريخ الوصول المتوقع (ETA)</label>
+                                            <input type="date" aria-label="تاريخ الوصول المتوقع" title="تاريخ الوصول المتوقع" value={formData.transitEta || ''} onChange={e => handleFieldChange('transitEta', e.target.value)} className={iptClass} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-cyan-400 mb-2">🛳️ اسم الباخرة</label>
+                                            <input type="text" aria-label="اسم الباخرة" value={formData.transitVessel || ''} onChange={e => handleFieldChange('transitVessel', e.target.value)} className={iptClass} placeholder="مثال: MSC Rania" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-cyan-400 mb-2">📍 ميناء الانطلاق</label>
+                                            <input type="text" aria-label="ميناء الانطلاق" value={formData.transitOrigin || ''} onChange={e => handleFieldChange('transitOrigin', e.target.value)} className={iptClass} placeholder="مثال: Newark, NJ" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-cyan-400 mb-2">🏁 ميناء الوصول</label>
+                                            <input type="text" aria-label="ميناء الوصول" value={formData.transitDestination || ''} onChange={e => handleFieldChange('transitDestination', e.target.value)} className={iptClass} placeholder="ميناء طرابلس" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-cyan-400 mb-2">📦 رقم الحاوية</label>
+                                            <input type="text" aria-label="رقم الحاوية" value={formData.transitContainer || ''} onChange={e => handleFieldChange('transitContainer', e.target.value)} className={iptClass} placeholder="مثال: MSCU1234567" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-cyan-400 mb-2">🔗 رابط التتبّع (اختياري)</label>
+                                            <input type="url" aria-label="رابط التتبع" value={formData.transitTrackingUrl || ''} onChange={e => handleFieldChange('transitTrackingUrl', e.target.value)} className={iptClass} placeholder="https://..." />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Box 1: Vehicle Info */}
                         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-2xl">
                             <h2 className="text-lg font-black text-orange-500 flex items-center gap-2 mb-6 border-b border-slate-800 pb-4">
@@ -388,7 +474,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                             }}
                                             className={`flex-1 ${iptClass}`}
                                             placeholder="أدخل رقم الشاصي المكون من 17 حرفاً ورقم..."
-                                            required
+                                            required={!formData.isTransit}
                                         />
                                         <button
                                             type="button"
@@ -453,7 +539,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                 <ComboSelect label="نوع الضرر الأساسي" value={formData.primaryDamage} options={['بدون ضرر', 'أمامي', 'خلفي', 'جانبي', 'سقف', 'غرق', 'حريق', 'تلف بيئي', 'سرقة مسترجعة', 'ميكانيكي', 'كهربائي', 'أخرى']} onChange={(v: string) => handleFieldChange('primaryDamage', v)} />
                                 <div>
                                     <label className="block text-xs font-black text-orange-500 mb-2">موقع السيارة (Location) *</label>
-                                    <input type="text" required value={formData.location || formData.locationDetails || ''} onChange={e => { handleFieldChange('location', e.target.value); handleFieldChange('locationDetails', e.target.value); }} className={iptClass} placeholder="مثال: طرابلس أو GA - ATLANTA, USA" />
+                                    <input type="text" required={!formData.isTransit} value={formData.location || formData.locationDetails || ''} onChange={e => { handleFieldChange('location', e.target.value); handleFieldChange('locationDetails', e.target.value); }} className={iptClass} placeholder="مثال: طرابلس أو GA - ATLANTA, USA" />
                                 </div>
                                 <ComboSelect label="بلد الاستيراد" value={formData.titleType} options={['الولايات المتحدة us', 'كندا ca', 'كوريا kr', 'الإمارات ae', 'أوروبا eu', 'أخرى']} onChange={(v: string) => handleFieldChange('titleType', v)} />
                                 <ComboSelect label="إضاءة المزاد (حالة عامة)" value={formData.auctionLights} options={AUCTION_LIGHTS} onChange={(v: string) => handleFieldChange('auctionLights', v)} />
@@ -535,7 +621,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                 </div>
                                 <div>
                                     <label className="block text-xs font-black text-orange-500 mb-2">اسم المعرض / التاجر *</label>
-                                    <input title="اسم المعرض" aria-label="اسم المعرض" required placeholder="اسم المعرض أو التاجر..." type="text" value={formData.showroomName} onChange={e => handleFieldChange('showroomName', e.target.value)} className={iptClass} />
+                                    <input title="اسم المعرض" aria-label="اسم المعرض" required={!formData.isTransit} placeholder="اسم المعرض أو التاجر..." type="text" value={formData.showroomName} onChange={e => handleFieldChange('showroomName', e.target.value)} className={iptClass} />
                                 </div>
 
                                 <div className="col-span-2 grid md:grid-cols-2 gap-4">
@@ -586,7 +672,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                     <label className="block text-xs font-black text-orange-500 mb-2">
                                         أقل سعر يتم قبوله Reserve ({formData.currency === 'LYD' ? 'د.ل' : '$'}) *
                                     </label>
-                                    <input title="السعر الاحتياطي" aria-label="السعر الاحتياطي" placeholder={formData.currency === 'LYD' ? '25000' : '5000'} type="number" value={formData.reservePrice} onChange={e => handleFieldChange('reservePrice', e.target.value)} className={iptClass} required />
+                                    <input title="السعر الاحتياطي" aria-label="السعر الاحتياطي" placeholder={formData.currency === 'LYD' ? '25000' : '5000'} type="number" value={formData.reservePrice} onChange={e => handleFieldChange('reservePrice', e.target.value)} className={iptClass} required={!formData.isTransit} />
                                 </div>
 
                                 <div>
@@ -747,9 +833,15 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                         <div className="text-xs text-slate-500 font-bold">انقر لرفع الصورة الرئيسية</div>
                                     </>
                                 )}
-                                <div className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-lg pointer-events-none">
-                                    <div className="text-lg font-black leading-none">+</div>
-                                </div>
+                                <button
+                                    type="button"
+                                    title="رفع صورة"
+                                    aria-label="رفع صورة"
+                                    onClick={openMainImagePicker}
+                                    className="absolute bottom-3 right-3 w-9 h-9 rounded-full bg-blue-500 hover:bg-blue-400 text-white flex items-center justify-center shadow-lg z-20 transition-colors"
+                                >
+                                    <span className="text-lg font-black leading-none">+</span>
+                                </button>
                             </div>
                             <div className="text-center mt-3 text-[10px] text-slate-500 font-bold">الحجم الموصى به 1024 × 768 بكسل</div>
                         </div>
