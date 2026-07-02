@@ -6876,12 +6876,41 @@ export const AdminDashboard = () => {
                            </div>
                         </td>
                         <td className="p-4">
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${car.status === 'live' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                            {car.status === 'live' ? 'مباشر' : 'قادم'}
-                          </span>
+                          {(() => {
+                            const s = car.status;
+                            const map: Record<string, { t: string; c: string }> = {
+                              live:         { t: 'مباشر',       c: 'bg-red-100 text-red-600' },
+                              closed:       { t: 'مباعة',       c: 'bg-emerald-100 text-emerald-700' },
+                              in_transit:   { t: '🚢 في الطريق', c: 'bg-cyan-100 text-cyan-700' },
+                              offer_market: { t: 'سوق العروض',  c: 'bg-amber-100 text-amber-700' },
+                              pending_approval: { t: 'بانتظار الاعتماد', c: 'bg-slate-200 text-slate-600' },
+                              upcoming:     { t: 'قادم',        c: 'bg-blue-100 text-blue-600' },
+                            };
+                            const m = map[s] || { t: 'قادم', c: 'bg-blue-100 text-blue-600' };
+                            return <span className={`px-2 py-1 rounded text-xs font-bold ${m.c}`}>{m.t}</span>;
+                          })()}
                         </td>
                         <td className="p-4">
                           <div className="flex gap-2">
+                            {car.status === 'closed' && (
+                              <button aria-label="إرجاع للمزاد" title="إرجاع السيارة المباعة إلى المزاد (إلغاء البيع)"
+                                onClick={async () => {
+                                  if (!window.confirm('إرجاع هذه السيارة المباعة إلى المزاد؟\n\nسيتم إلغاء فاتورة الشراء والشحنة وإزالة المشتري، وتعود السيارة قابلة للمزايدة.')) return;
+                                  try {
+                                    const r = await authFetch(`/api/admin/cars/${car.id}/cancel-sale`, {
+                                      method: 'POST',
+                                      body: JSON.stringify({ reason: 'إرجاع من لوحة إدارة السيارات', suspendWinner: false }),
+                                    });
+                                    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'تعذّر إرجاع السيارة'); }
+                                    showAlert('✅ تم إرجاع السيارة إلى المزاد (بانتظار الاعتماد/الجدولة)', 'success');
+                                  } catch (err: any) {
+                                    showAlert('⚠️ ' + (err?.message || 'فشل الإرجاع'), 'error');
+                                  }
+                                }}
+                                className="p-2 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-emerald-600 transition-colors">
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
+                            )}
                             <button aria-label="زر" title="زر"
                               onClick={() => {
                                 setEditingCarId(car.id);
@@ -8123,6 +8152,7 @@ export const AdminDashboard = () => {
             </button>
             <UnifiedCarForm
               isSubmitting={false}
+              allowTransit={true}
               initialData={editingCarId ? cars.find(c => c.id === editingCarId) : newCar}
               onCancel={() => setShowAddCarModal(false)}
               onSubmit={async (data, images, engineSound, inspectionReport) => {
@@ -8181,6 +8211,42 @@ export const AdminDashboard = () => {
                     : (existingCar?.images && existingCar.images.length > 0
                         ? existingCar.images
                         : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800']);
+
+                  // [transit] "قادمة في الطريق / في البحر" — create via the dedicated
+                  // endpoint so the car lands with status='in_transit' and stays OUT
+                  // of every auction loop until an admin moves it to auction. Only on
+                  // NEW cars; editing keeps the normal path (which preserves status).
+                  if (data.isTransit && !editingCarId) {
+                    const tRes = await authFetch('/api/admin/cars/transit', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        lot: data.lotNumber || '',
+                        vin: data.vin || '',
+                        make: data.make, model: data.model, year: data.year,
+                        trim: data.trim || '',
+                        odometer: data.odometer || 0,
+                        color: data.exteriorColor || '',
+                        fuel: data.fuelType || '',
+                        transmission: data.transmission || '',
+                        images: finalImages,
+                        description: data.specialNote || '',
+                        buyItNow: data.buyNowPrice || 0,
+                        transitEta: data.transitEta || null,
+                        transitOrigin: data.transitOrigin || '',
+                        transitDestination: data.transitDestination || 'ميناء طرابلس',
+                        transitVessel: data.transitVessel || '',
+                        transitContainer: data.transitContainer || '',
+                        transitTrackingUrl: data.transitTrackingUrl || '',
+                      }),
+                    });
+                    if (!tRes.ok) {
+                      const e = await tRes.json().catch(() => ({}));
+                      throw new Error(e.error || 'فشل إضافة السيارة القادمة في الطريق');
+                    }
+                    setShowAddCarModal(false);
+                    showAlert('🚢 تمت إضافة السيارة إلى قائمة "قادمة في الطريق"', 'success');
+                    return;
+                  }
 
                   // Spread ALL form fields first so nothing (isRecommended, damage flags, etc.) gets dropped
                   const car: any = {
