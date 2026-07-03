@@ -1362,7 +1362,16 @@ export function registerAdminRoutes(ctx: AppContext) {
   //  ADMIN: CAMPAIGN
   // ══════════════════════════════════════════════════════════════
 
-  app.post('/api/admin/send-campaign', requireAdmin, async (req, res) => {
+  app.post('/api/admin/send-campaign', requireAdmin, async (req, res, next) => {
+    // [campaign-shadow-fix] The upgraded marketing UI posts a fully composed
+    // campaign — { emails, subject, html } (hand-picked audience). This legacy
+    // handler only understands the old { carId, type } "announce one car"
+    // contract, so it looked up a car by an undefined id and replied
+    // "Car not found". Since this route is registered BEFORE the fixed inline
+    // handler in server.ts, it shadowed it. Defer to that newer handler (which
+    // supports both contracts + Resend-first background send) whenever the new
+    // payload is present.
+    if (Array.isArray((req.body || {}).emails) || (req.body || {}).html) return next();
     try {
       const { carId, type } = req.body;
       const stmt = db.prepare('SELECT * FROM cars WHERE id = ?');
