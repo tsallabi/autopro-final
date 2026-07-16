@@ -83,18 +83,60 @@ __safetyScheduleBackup(db, BACKUP_DIR, BACKUP_INTERVAL_HOURS, BACKUP_KEEP_DAYS);
   },
   {
     label: '3/12 expand /api/health + add admin endpoints',
+    // NOTE: this `find` must track server.ts exactly. It was updated on
+    // 2026-07-16 after PR #87 rewrote the health handler (providers report) —
+    // the old pattern no longer matched, so `npm run build` failed loudly and
+    // production kept running the previous server.mjs even after redeploys.
     find: `// Health check must respond BEFORE full initialization
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+  // [health-providers] Report WHICH integrations are configured — booleans
+  // only, never the secret values. Lets the owner verify remotely with a
+  // single \`curl https://autopro.ac/api/health\` (e.g. confirm RESEND_API_KEY
+  // is present now that outbound SMTP is being blocked on the host).
+  const has = (v: string | undefined) => !!(v && String(v).trim());
+  res.json({
+    status: "ok",
+    time: new Date().toISOString(),
+    providers: {
+      // Email — Resend is the primary (HTTPS, survives SMTP blocks); SMTP is fallback.
+      resend: has(process.env.RESEND_API_KEY),
+      smtp: has(process.env.SMTP_USER) && has(process.env.SMTP_PASS),
+      emailReady: has(process.env.RESEND_API_KEY) || (has(process.env.SMTP_USER) && has(process.env.SMTP_PASS)),
+      // Payments
+      mypay: has(process.env.MYPAY_CLIENT_ID) && has(process.env.MYPAY_CLIENT_SECRET),
+      stripe: has(process.env.STRIPE_SECRET_KEY),
+      // Messaging / AI / auth
+      whatsapp: has(process.env.WASENDER_TOKEN),
+      anthropic: has(process.env.ANTHROPIC_API_KEY),
+      google: has(process.env.GOOGLE_CLIENT_ID),
+    },
+  });
 });`,
-    replace: `// [SAFETY] Health check returns DB integrity + backup info for external monitors.
+    replace: `// [SAFETY] Health check merges the providers report (which integrations are
+// configured — booleans only, never secrets) with DB integrity + backup info
+// for external monitors.
 app.get("/api/health", (_req, res) => {
+  const has = (v: string | undefined) => !!(v && String(v).trim());
+  const providers = {
+    // Email — Resend is the primary (HTTPS, survives SMTP blocks); SMTP is fallback.
+    resend: has(process.env.RESEND_API_KEY),
+    smtp: has(process.env.SMTP_USER) && has(process.env.SMTP_PASS),
+    emailReady: has(process.env.RESEND_API_KEY) || (has(process.env.SMTP_USER) && has(process.env.SMTP_PASS)),
+    // Payments
+    mypay: has(process.env.MYPAY_CLIENT_ID) && has(process.env.MYPAY_CLIENT_SECRET),
+    stripe: has(process.env.STRIPE_SECRET_KEY),
+    // Messaging / AI / auth
+    whatsapp: has(process.env.WASENDER_TOKEN),
+    anthropic: has(process.env.ANTHROPIC_API_KEY),
+    google: has(process.env.GOOGLE_CLIENT_ID),
+  };
   try {
     const integrity = __safetyCheckDb(db);
     const backups = __safetyGetStatus(BACKUP_DIR);
     res.status(integrity.ok ? 200 : 503).json({
       status: integrity.ok ? "ok" : "degraded",
       time: new Date().toISOString(),
+      providers,
       db: {
         ok: integrity.ok,
         integrity: integrity.result,
@@ -112,7 +154,7 @@ app.get("/api/health", (_req, res) => {
       },
     });
   } catch (err: any) {
-    res.status(500).json({ status: "error", error: err?.message || String(err) });
+    res.status(500).json({ status: "error", error: err?.message || String(err), providers });
   }
 });
 
