@@ -2213,11 +2213,35 @@ const MarketingPanel: React.FC = () => {
       });
       const data: any = await res.json().catch(() => ({}));
       if (res.ok) {
-        // [campaign-fix] Server now sends in the background and returns
-        // { queued: N }. Reflect the real count so the admin knows it's
-        // being delivered gradually (not instantly).
-        showAlert(`تم بدء إرسال الحملة إلى ${data.queued ?? emails.length} مستلم — يُرسَل تدريجياً في الخلفية.`, 'success');
+        // [campaign-reliability] Server sends in the background through a
+        // rate-limited SMTP pool (~1 msg / 2.5s) and records the run in
+        // campaign_runs. Tell the admin the realistic duration, then poll
+        // the run so they learn the REAL outcome (sent/failed + first
+        // error) instead of assuming "queued" means "delivered".
+        const total = data.queued ?? emails.length;
+        const mins = Math.max(1, Math.ceil((total * 2.5) / 60));
+        showAlert(`تم بدء إرسال الحملة إلى ${total} مستلم — تُرسَل تدريجياً وتستغرق نحو ${mins} دقيقة. ستظهر النتيجة النهائية هنا تلقائياً.`, 'success');
         setSelectedUsers([]);
+        const poll = window.setInterval(async () => {
+          try {
+            const st = await authFetch('/api/admin/campaign-status');
+            const j: any = await st.json().catch(() => ({}));
+            const run = j?.run;
+            if (run && run.finishedAt) {
+              window.clearInterval(poll);
+              if (Number(run.failed) > 0) {
+                showAlert(
+                  `اكتملت الحملة: ✅ نجح ${run.sent} — ❌ فشل ${run.failed}${run.firstError ? `\nأول خطأ: ${run.firstError}` : ''}`,
+                  Number(run.sent) > 0 ? 'success' : 'error'
+                );
+              } else {
+                showAlert(`✅ اكتملت الحملة بنجاح — أُرسلت ${run.sent} رسالة.`, 'success');
+              }
+            }
+          } catch { /* keep polling */ }
+        }, 30000);
+        // Safety stop after 3h so an abandoned tab doesn't poll forever.
+        window.setTimeout(() => window.clearInterval(poll), 3 * 60 * 60 * 1000);
       } else {
         // Surface the server's specific reason instead of a generic failure.
         showAlert(data.error || 'فشل في إرسال الحملة', 'error');
