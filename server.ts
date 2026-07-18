@@ -191,7 +191,7 @@ const stripeClient = process.env.STRIPE_SECRET_KEY
 
 // Unified email sender — uses Resend if API key set, falls back to SMTP
 async function sendEmail(opts: { to: string; subject: string; html: string; from?: string }) {
-  const fromAddr = opts.from || process.env.EMAIL_FROM || '"AutoPro Libya | أوتو برو" <info@autopro.ac>';
+  const fromAddr = opts.from || process.env.EMAIL_FROM || process.env.SMTP_FROM || '"AutoPro Libya | أوتو برو" <info@autopro.ac>';
   if (resendClient) {
     try {
       const result = await resendClient.emails.send({
@@ -2054,10 +2054,17 @@ async function startServer() {
       const emailTemplateData = template ? { ...template, context: fullContext } : null;
 
       if (wantsEmail && transporter && user.email) {
+        // Subject must get the same context substitution as the body —
+        // admin-edited templates put {{userName}} in the subject and it was
+        // reaching inboxes unrendered (only {{title}} was replaced here).
+        let emailSubject = template?.subject?.replace(/\{\{title\}\}/g, title) || `${title} | تنبيه منصة أوتو برو`;
+        Object.keys(fullContext).forEach(key => {
+          emailSubject = emailSubject.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), fullContext[key] || '');
+        });
         transporter.sendMail({
           from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
           to: user.email,
-          subject: template?.subject?.replace(/\{\{title\}\}/g, title) || `${title} | تنبيه منصة أوتو برو`,
+          subject: emailSubject,
           html: TemplateEngine.getHtml(title, message, type, emailTemplateData)
         }).catch(err => console.error("Rich Email Error:", err.message));
       }
@@ -5499,6 +5506,57 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ==========================================
   // ROUTES
   // ==========================================
+  // ── [campaign-reliability] ──────────────────────────────────────────────
+  // Mass campaigns used to open a NEW SMTP connection per recipient at
+  // ~8/sec (120ms gap). privateemail accepts one-off transactional sends but
+  // treats that connection burst as abuse — after the first batch it starts
+  // refusing/hanging, so system emails delivered fine while campaign blasts
+  // silently died inside the fire-and-forget background loop. Fix: a single
+  // pooled connection throttled to ~1 msg / 2.5s (~1,400/hour), plus a
+  // campaign_runs table so the admin UI can poll real sent/failed results
+  // instead of the outcome living only in server logs.
+  db.exec(`CREATE TABLE IF NOT EXISTS campaign_runs (
+    id TEXT PRIMARY KEY,
+    subject TEXT,
+    total INTEGER,
+    sent INTEGER DEFAULT 0,
+    failed INTEGER DEFAULT 0,
+    firstError TEXT,
+    startedAt TEXT,
+    finishedAt TEXT
+  )`);
+
+  const campaignTransporter = nodemailer.createTransport({
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 50,
+    rateDelta: 2500,
+    rateLimit: 1,
+    // Hard timeouts so a network problem fails the message (recorded in
+    // campaign_runs) instead of hanging the whole background run forever.
+    connectionTimeout: 30_000,
+    greetingTimeout: 30_000,
+    socketTimeout: 60_000,
+    host: process.env.SMTP_HOST || 'mail.privateemail.com',
+    port: parseInt(process.env.SMTP_PORT || '465'),
+    secure: (process.env.SMTP_PORT || '465') === '465',
+    auth: {
+      user: process.env.SMTP_USER || 'info@autopro.ac',
+      pass: process.env.SMTP_PASS?.replace(/"/g, '') || ''
+    }
+  });
+
+  // Latest campaign run — lets the marketing UI poll progress and the final
+  // result (sent / failed / first error) without SSH access to the server.
+  app.get('/api/admin/campaign-status', requireAdmin, (_req, res) => {
+    try {
+      const run: any = db.prepare('SELECT * FROM campaign_runs ORDER BY startedAt DESC LIMIT 1').get();
+      res.json({ run: run || null });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
   app.post('/api/admin/send-campaign', requireAdmin, async (req, res) => {
     try {
       // [campaign-fix] The marketing-center UI was upgraded to send a fully
@@ -5563,24 +5621,44 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         return res.status(400).json({ error: 'قائمة المستلمين لا تحتوي على أي بريد صالح.' });
       }
 
-      // Respond immediately — sending 1490 emails synchronously would time
-      // out the request. The actual sends run in the background with a
-      // small delay between each to stay under provider rate limits.
-      res.json({ success: true, queued: recipients.length });
+      // Respond immediately — sending ~1,600 emails synchronously would time
+      // out the request. The actual sends run in the background through the
+      // pooled, rate-limited campaign transporter; progress is persisted to
+      // campaign_runs so the UI can report the real outcome.
+      const runId = `camp-${Date.now()}`;
+      db.prepare('INSERT INTO campaign_runs (id, subject, total, startedAt) VALUES (?, ?, ?, ?)')
+        .run(runId, String(subject), recipients.length, new Date().toISOString());
+      res.json({ success: true, queued: recipients.length, runId });
 
       setImmediate(async () => {
+        const fromAddr = process.env.EMAIL_FROM || process.env.SMTP_FROM
+          || '"AutoPro Libya | أوتو برو" <info@autopro.ac>';
         let sent = 0, failed = 0;
+        let firstError: string | null = null;
+        const bump = db.prepare('UPDATE campaign_runs SET sent = ?, failed = ?, firstError = ? WHERE id = ?');
         for (const to of recipients) {
           try {
-            await sendEmail({ to, subject: String(subject), html: String(html) });
+            if (resendClient) {
+              await sendEmail({ to, subject: String(subject), html: String(html) });
+            } else {
+              // Pooled + rate-limited (nodemailer queues internally): one
+              // SMTP connection reused, ~1 message per 2.5s.
+              await campaignTransporter.sendMail({ from: fromAddr, to, subject: String(subject), html: String(html) });
+            }
             sent++;
           } catch (err: any) {
             failed++;
+            if (!firstError) firstError = String(err?.message || err).slice(0, 300);
             console.error(`[campaign] send to ${to} failed:`, err?.message);
           }
-          // ~120ms gap → ~8/sec, safe for Resend + SMTP.
-          await new Promise(r => setTimeout(r, 120));
+          if ((sent + failed) % 20 === 0) {
+            try { bump.run(sent, failed, firstError, runId); } catch {}
+          }
         }
+        try {
+          bump.run(sent, failed, firstError, runId);
+          db.prepare('UPDATE campaign_runs SET finishedAt = ? WHERE id = ?').run(new Date().toISOString(), runId);
+        } catch {}
         console.log(`[campaign] done — sent=${sent} failed=${failed} of ${recipients.length}`);
       });
     } catch (error: any) {
