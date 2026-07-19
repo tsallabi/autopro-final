@@ -2203,6 +2203,12 @@ const MarketingPanel: React.FC = () => {
                ${config.buttonText}
              </a>
           </div>
+          <div style="background-color:#f8fafc; text-align:center; border-top:3px solid ${config.accent};">
+             <a href="${SITE}/marketplace" style="display:block; text-decoration:none;">
+               <img src="${SITE}/campaign_footer_banner.jpg" alt="طارق الصلابي — مزادات أوتو برو للسيارات AUTOPRO AUCTIONS" width="600" style="width:100%; max-width:600px; display:block; border:0;" />
+             </a>
+             <p style="color:#334155; font-size:14px; font-weight:900; margin:0; padding:12px 10px 14px; background-color:#f8fafc;">طارق الصلابي — المدير التنفيذي لمجموعة المزاد الدولي</p>
+          </div>
           <div style="background-color:#020617; padding:20px; text-align:center;">
              <p style="color:#64748b; font-size:12px; margin:0;">حقوق النشر أوتو برو للمزادات 2026. المتبعة في السوق المحلي، ليبيا</p>
           </div>
