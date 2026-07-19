@@ -5613,6 +5613,15 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         return res.status(400).json({ error: 'محتوى الحملة (HTML) مطلوب.' });
       }
 
+      // [campaign-email-fix] Absolutize relative URLs. Email clients open the
+      // message outside the site, so src="/uploads/…" images render broken
+      // and href="/car-details/…" links go nowhere. Rewrite root-relative
+      // src/href to the public site URL — a safety net that covers every
+      // template, including future ones.
+      const siteBase = (process.env.SITE_URL || 'https://www.autopro.ac').replace(/\/+$/, '');
+      html = String(html)
+        .replace(/(src|href)=(["'])\/(?!\/)/g, `$1=$2${siteBase}/`);
+
       // De-dupe + sanitize recipient list.
       const recipients = Array.from(new Set(
         (emails as any[]).map((e: any) => String(e || '').trim().toLowerCase()).filter((e: string) => e.includes('@'))

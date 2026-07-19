@@ -2126,6 +2126,19 @@ const MarketingPanel: React.FC = () => {
   };
 
   const generateHTML = () => {
+    // [campaign-email-fix] Email clients open the message OUTSIDE the site, so
+    // every URL must be absolute — relative /uploads/... images render broken
+    // in Gmail. Also note: DB rows store the buy-now price as `buyItNow`
+    // (buyNowPrice is only a form field name), and Gmail strips JS so an
+    // onerror fallback never runs there.
+    const SITE = 'https://www.autopro.ac';
+    const absUrl = (u: any) => {
+      const s = String(u || '').trim();
+      if (!s) return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400';
+      if (/^https?:\/\//i.test(s)) return s;
+      return SITE + (s.startsWith('/') ? s : '/' + s);
+    };
+
     let config = {
       bgTitle: '#0f172a',
       bgBody: '#1e293b',
@@ -2134,7 +2147,7 @@ const MarketingPanel: React.FC = () => {
       buttonText: 'تصفح واربح سيارتك من هنا',
       badgeText: 'متاح الآن!',
       priceLabel: 'السعر الحالي',
-      showPrice: (c: any) => c.buyNowPrice || c.currentBid || 0
+      showPrice: (c: any) => c.buyItNow || c.buyNowPrice || c.currentBid || 0
     };
 
     if (templateType === 'upcoming') {
@@ -2142,21 +2155,22 @@ const MarketingPanel: React.FC = () => {
     } else if (templateType === 'live_auction') {
       config = { bgTitle: '#9f1239', bgBody: '#881337', accent: '#f8fafc', title: 'المزاد يشتعل الآن!', buttonText: 'ادخل المزاد قبل انتهاء الوقت', badgeText: 'متاح الآن للمزايدة!', priceLabel: 'السعر الحالي', showPrice: (c: any) => c.currentBid || c.startingBid || 0 };
     } else if (templateType === 'offer_market') {
-      config = { bgTitle: '#065f46', bgBody: '#064e3b', accent: '#ea580c', title: 'عروض مذهلة بانتظارك', buttonText: 'تصفح سوق العروض واشترِ الآن', badgeText: 'شراء فوري', priceLabel: 'سعر الشراء الفوري', showPrice: (c: any) => c.buyNowPrice || 0 };
+      config = { bgTitle: '#065f46', bgBody: '#064e3b', accent: '#ea580c', title: 'عروض مذهلة بانتظارك', buttonText: 'تصفح سوق العروض واشترِ الآن', badgeText: 'شراء فوري', priceLabel: 'سعر الشراء الفوري', showPrice: (c: any) => c.buyItNow || c.buyNowPrice || 0 };
     }
 
     const carsHtml = selectedCars.map(carId => {
       const c = cars.find(x => x.id === carId);
       if (!c) return '';
+      // Whole card is a link to the car page so a tap anywhere opens it.
       return `
-          <div style="display:inline-block; width:46%; margin: 1%; text-align:center; background:white; border-radius:12px; overflow:hidden; box-shadow:0 6px 15px rgba(0,0,0,0.15); vertical-align:top;">
-          <img src="${getCarImage(c)}" style="width:100%; height:140px; object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400';" />
+          <a href="${SITE}/car-details/${c.id}" style="display:inline-block; width:46%; margin: 1%; text-align:center; background:white; border-radius:12px; overflow:hidden; box-shadow:0 6px 15px rgba(0,0,0,0.15); vertical-align:top; text-decoration:none;">
+          <img src="${absUrl(getCarImage(c))}" alt="${c.year} ${c.make} ${c.model}" style="width:100%; height:140px; object-fit:cover; display:block; border:0;" />
           <div style="padding:15px; text-align:center;">
             <div style="font-weight:900; font-size:15px; color:#1e293b;">${c.year} ${c.make} ${c.model}</div>
             <div style="color:${config.accent}; font-size:13px; font-weight:bold; margin-top:4px;">${config.badgeText}</div>
-            <div style="color:#ea580c; font-size:18px; font-weight:900; margin-top:8px;">$${config.showPrice(c)} ${config.priceLabel}</div>
+            <div style="color:#ea580c; font-size:18px; font-weight:900; margin-top:8px;">$${Number(config.showPrice(c)).toLocaleString()} ${config.priceLabel}</div>
           </div>
-        </div>
+        </a>
       `;
     }).join('');
 
