@@ -1215,12 +1215,12 @@ export const Home = () => {
           <div className="flex items-center gap-2 overflow-x-auto pb-4 pt-2 mb-4 scrollbar-hide min-w-0 w-full max-w-[100vw] lg:sticky lg:top-[85px] sticky top-[40px] z-[40] bg-[#F8FAFC]">
             {[
               { id: 'all', label: t('home.tabs.all'), count: (cars || []).filter(c => ['live', 'upcoming', 'offer_market'].includes(c.status)).length },
+              { id: 'transit', label: '🚢 قادمة في الطريق', count: transitCars.length },
               { id: 'upcoming', label: t('home.tabs.upcoming'), count: (cars || []).filter(c => c.status === 'upcoming').length },
               { id: 'live', label: t('home.tabs.liveAuctions'), count: (cars || []).filter(c => c.status === 'live').length },
               { id: 'offer_market', label: t('home.tabs.offersMarket'), count: (cars || []).filter(c => c.status === 'offer_market').length },
               { id: 'buy_now', label: 'اشتري الآن', count: (cars || []).filter(c => (c as any).isBuyNow && c.buyItNow && c.buyItNow > 0 && c.status !== 'closed').length },
               { id: 'closed', label: t('home.tabs.soldCars'), count: (cars || []).filter(c => c.status === 'closed').length },
-              { id: 'transit', label: '🚢 قادمة في الطريق', count: transitCars.length },
               { id: 'watchlist', label: t('home.tabs.favorites'), count: (watchlist || []).length },
             ].map((tab) => (
               <button
