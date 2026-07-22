@@ -4994,6 +4994,11 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   console.log('[BOOT] ✓ seller routes');
   registerBuyerRoutes(ctx as any);
   console.log('[BOOT] ✓ buyer routes');
+  // [transit-order-fix] Transit routes MUST register BEFORE the generic car
+  // routes: routes/cars.ts defines GET /api/cars/:id, which otherwise
+  // swallows the literal /api/cars/transit path (":id" matched "transit"),
+  // so the public in-transit list always 404'd "السيارة غير موجودة".
+  try { registerTransitRoutes(ctx as any); console.log('[BOOT] ✓ transit-cars routes'); } catch (e: any) { console.error('[BOOT] transit-cars routes failed:', e?.message); }
   registerCarRoutes(ctx as any);
   console.log('[BOOT] ✓ car routes');
   registerShippingRoutes(ctx as any);
@@ -5010,7 +5015,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
   try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
   try { registerPublicStatsRoutes(ctx as any); console.log('[BOOT] ✓ public-stats routes'); } catch (e: any) { console.error('[BOOT] public-stats routes failed:', e?.message); }
-  try { registerTransitRoutes(ctx as any); console.log('[BOOT] ✓ transit-cars routes'); } catch (e: any) { console.error('[BOOT] transit-cars routes failed:', e?.message); }
+  // (transit-cars routes are registered earlier, before registerCarRoutes —
+  // see [transit-order-fix] above.)
   try { registerMyPayRoutes(ctx as any); console.log('[BOOT] ✓ mypay routes'); } catch (e: any) { console.error('[BOOT] mypay routes failed:', e?.message); }
   try { registerWhatsAppPosterRoutes(ctx as any); console.log('[BOOT] ✓ whatsapp poster routes'); } catch (e: any) { console.error('[BOOT] whatsapp poster routes failed:', e?.message); }
   try { registerSeoRoutes(ctx as any); console.log('[BOOT] ✓ seo routes'); } catch (e: any) { console.error('[BOOT] seo routes failed:', e?.message); }
