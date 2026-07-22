@@ -5521,11 +5521,51 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     total INTEGER,
     sent INTEGER DEFAULT 0,
     failed INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
     firstError TEXT,
     startedAt TEXT,
     finishedAt TEXT
   )`);
+  try { db.exec("ALTER TABLE campaign_runs ADD COLUMN skipped INTEGER DEFAULT 0"); } catch {}
 
+  // ── [email-hygiene] ─────────────────────────────────────────────────────
+  // Namecheap blocked outbound sending (ticket NC-VGW-7157, 2026-07-21)
+  // after campaigns kept hitting full/dead mailboxes and a recipient
+  // complained. They explicitly asked that affected recipients be removed.
+  // email_suppression = addresses we must NEVER campaign to again
+  // (unsubscribed / hard bounce / full mailbox / complaint).
+  // campaign_last_sent enforces a frequency cap so the same inbox is not
+  // blasted repeatedly (default: one campaign per address per 72h).
+  db.exec(`CREATE TABLE IF NOT EXISTS email_suppression (
+    email TEXT PRIMARY KEY,
+    reason TEXT,
+    createdAt TEXT
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS campaign_last_sent (
+    email TEXT PRIMARY KEY,
+    lastSentAt TEXT
+  )`);
+  {
+    // Seed from Namecheap's bounce report (2026-07-21). Idempotent.
+    const FULL_MAILBOX = ['aymen2002er','aimanelabd51','zara00766','abdualrhmanmeelad','mohaned.alkelane','abdllrheem.asbli.asbli','shihabomranaboajaja','lio00on684','muhammed.o.aljlassey','alabtraywb','deyaking31','qrqwmmhmdqrqwm','khaldabwhnyk','moomer17111988','abd312abd','ambgh1981','alfarednaser','musabshtewi','bwrwysmstfy916','osta1981osta','mresheeg','mouhtah2019','elnaisabdelsalam','marwan82mk58','ahmed369a','laldghary8','aali06352','mustafaaswaid54','emazeb14','sanad.elzayani89','ly6618189','rmboshalla348','alrdaalshryfalrda','mokamoka0944013734','noureddein1990','mtzalray83','abdulhalim87ly','khalloufilotfi.5','aly333122','ahmedasaeh992','mohamed992alh','sjazwi9','aa5594787','hafedzahiazahia','mo853644','issaissa8585','akramramdan320','kbozid','zhyralshary028','hamebkzet','alfetorya4','erhem2010','msaree06','wjyhbwsd740'].map(u => u + '@gmail.com');
+    const INVALID_ADDR = ['a.team82391@gailm.com','user@autopro.com','seller-1@autopro.com','motaz@arhoma.com','aaziz2015a@gmali.com','abdallh@20148.yhoo.com','www.heshamsalam286@gmial.com','asim6969alameen@ail.com','alaa.ym10@gemail.com','ganas.5509272@gameil.com'];
+    const seed = db.prepare("INSERT OR IGNORE INTO email_suppression (email, reason, createdAt) VALUES (?, ?, ?)");
+    const seededAt = new Date().toISOString();
+    for (const e of FULL_MAILBOX) seed.run(e, 'mailbox_full', seededAt);
+    for (const e of INVALID_ADDR) seed.run(e, 'invalid', seededAt);
+  }
+
+  // Typo/test domains that only ever produce hard bounces.
+  const BAD_EMAIL_DOMAINS = new Set(['gmial.com','gailm.com','gmali.com','gemail.com','gameil.com','gnail.com','gmil.com','hotmial.com','yhoo.com','20148.yhoo.com','ail.com','autopro.com','example.com','test.com']);
+  const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const unsubSig = (email: string) =>
+    crypto.createHmac('sha256', JWT_SECRET).update(email.toLowerCase()).digest('hex').slice(0, 32);
+
+  // Campaigns can (and per Namecheap's AUP, should) go through a dedicated
+  // bulk-email SMTP relay instead of Private Email. Set CAMPAIGN_SMTP_HOST /
+  // PORT / USER / PASS / FROM to route ONLY marketing campaigns through it —
+  // transactional email keeps using the regular SMTP account untouched.
+  const campaignSmtpPort = process.env.CAMPAIGN_SMTP_PORT || process.env.SMTP_PORT || '465';
   const campaignTransporter = nodemailer.createTransport({
     pool: true,
     maxConnections: 1,
@@ -5537,12 +5577,12 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     connectionTimeout: 30_000,
     greetingTimeout: 30_000,
     socketTimeout: 60_000,
-    host: process.env.SMTP_HOST || 'mail.privateemail.com',
-    port: parseInt(process.env.SMTP_PORT || '465'),
-    secure: (process.env.SMTP_PORT || '465') === '465',
+    host: process.env.CAMPAIGN_SMTP_HOST || process.env.SMTP_HOST || 'mail.privateemail.com',
+    port: parseInt(campaignSmtpPort),
+    secure: campaignSmtpPort === '465',
     auth: {
-      user: process.env.SMTP_USER || 'info@autopro.ac',
-      pass: process.env.SMTP_PASS?.replace(/"/g, '') || ''
+      user: process.env.CAMPAIGN_SMTP_USER || process.env.SMTP_USER || 'info@autopro.ac',
+      pass: (process.env.CAMPAIGN_SMTP_PASS || process.env.SMTP_PASS)?.replace(/"/g, '') || ''
     }
   });
 
@@ -5555,6 +5595,55 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e: any) {
       res.status(500).json({ error: e?.message });
     }
+  });
+
+  // ── Public unsubscribe ──────────────────────────────────────────────────
+  // Every campaign email carries a personalized HMAC-signed link + the
+  // List-Unsubscribe / One-Click headers (RFC 8058), so Gmail shows its own
+  // "unsubscribe" button. GET renders an Arabic confirmation page; POST is
+  // the One-Click path. The signature stops bulk-unsubscribing other people.
+  const handleUnsubscribe = (req: any, res: any) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    const sig = String(req.query.sig || '');
+    if (!email || !EMAIL_RX.test(email) || sig !== unsubSig(email)) {
+      return res.status(400).send('رابط إلغاء الاشتراك غير صالح');
+    }
+    try {
+      db.prepare("INSERT OR REPLACE INTO email_suppression (email, reason, createdAt) VALUES (?, 'unsubscribed', ?)")
+        .run(email, new Date().toISOString());
+    } catch {}
+    if (req.method === 'POST') return res.json({ success: true });
+    res.send(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>تم إلغاء الاشتراك | أوتو برو</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;font-family:Arial,sans-serif;background:#f8fafc;text-align:center;padding:60px 20px;">
+  <div style="max-width:480px;margin:auto;background:white;border-radius:16px;padding:40px 28px;box-shadow:0 10px 25px rgba(0,0,0,0.08);">
+    <div style="font-size:44px;">✅</div>
+    <h2 style="color:#0f172a;margin:14px 0 8px;">تم إلغاء اشتراكك بنجاح</h2>
+    <p style="color:#475569;line-height:1.9;margin:0 0 20px;">لن تصلك رسائل تسويقية من أوتو برو بعد الآن على<br><b dir="ltr">${email}</b><br>إشعارات حسابك المهمة (الفواتير والمزايدات) ستستمر كالمعتاد.</p>
+    <a href="https://www.autopro.ac" style="color:#f97316;font-weight:bold;text-decoration:none;">العودة إلى أوتو برو ←</a>
+  </div>
+</body></html>`);
+  };
+  app.get('/api/unsubscribe', handleUnsubscribe);
+  app.post('/api/unsubscribe', handleUnsubscribe);
+
+  // ── Admin: manage the suppression list ─────────────────────────────────
+  app.get('/api/admin/suppression', requireAdmin, (_req, res) => {
+    try {
+      const rows = db.prepare("SELECT * FROM email_suppression ORDER BY createdAt DESC LIMIT 500").all();
+      const count = (db.prepare("SELECT COUNT(*) AS c FROM email_suppression").get() as any)?.c || 0;
+      res.json({ count, rows });
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+  app.post('/api/admin/suppression', requireAdmin, (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RX.test(email)) return res.status(400).json({ error: 'بريد غير صالح' });
+    db.prepare("INSERT OR REPLACE INTO email_suppression (email, reason, createdAt) VALUES (?, ?, ?)")
+      .run(email, String(req.body?.reason || 'manual'), new Date().toISOString());
+    res.json({ success: true });
+  });
+  app.delete('/api/admin/suppression/:email', requireAdmin, (req, res) => {
+    const r = db.prepare("DELETE FROM email_suppression WHERE email = ?").run(String(req.params.email || '').toLowerCase());
+    res.json({ success: true, removed: r.changes });
   });
 
   app.post('/api/admin/send-campaign', requireAdmin, async (req, res) => {
@@ -5622,12 +5711,35 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       html = String(html)
         .replace(/(src|href)=(["'])\/(?!\/)/g, `$1=$2${siteBase}/`);
 
-      // De-dupe + sanitize recipient list.
-      const recipients = Array.from(new Set(
-        (emails as any[]).map((e: any) => String(e || '').trim().toLowerCase()).filter((e: string) => e.includes('@'))
+      // De-dupe, then drop: invalid syntax, known typo/test domains,
+      // suppressed addresses (unsubscribed / bounced / full mailbox), and
+      // anyone already emailed within CAMPAIGN_MIN_HOURS (default 72h).
+      // Repeated blasts to the same dead/full inboxes are exactly what made
+      // Namecheap block outbound sending — never resend blindly.
+      const deduped = Array.from(new Set(
+        (emails as any[]).map((e: any) => String(e || '').trim().toLowerCase())
       ));
+      const suppressedSet = new Set(
+        (db.prepare("SELECT email FROM email_suppression").all() as any[]).map((r: any) => r.email)
+      );
+      const minHours = Number(process.env.CAMPAIGN_MIN_HOURS) || 72;
+      const recentCutoff = Date.now() - minHours * 3600_000;
+      const lastSentMap = new Map(
+        (db.prepare("SELECT email, lastSentAt FROM campaign_last_sent").all() as any[])
+          .map((r: any) => [r.email, Date.parse(r.lastSentAt) || 0])
+      );
+      let skipInvalid = 0, skipSuppressed = 0, skipRecent = 0;
+      const recipients = deduped.filter((e: string) => {
+        if (!EMAIL_RX.test(e) || BAD_EMAIL_DOMAINS.has(e.split('@')[1])) { skipInvalid++; return false; }
+        if (suppressedSet.has(e)) { skipSuppressed++; return false; }
+        if ((lastSentMap.get(e) || 0) > recentCutoff) { skipRecent++; return false; }
+        return true;
+      });
+      const skippedTotal = skipInvalid + skipSuppressed + skipRecent;
       if (recipients.length === 0) {
-        return res.status(400).json({ error: 'قائمة المستلمين لا تحتوي على أي بريد صالح.' });
+        return res.status(400).json({
+          error: `لا يوجد مستلمون صالحون — استُبعد ${skippedTotal}: ملغي اشتراك/مرتد ${skipSuppressed}، بريد غير صالح ${skipInvalid}، رُوسل خلال آخر ${minHours} ساعة ${skipRecent}.`,
+        });
       }
 
       // Respond immediately — sending ~1,600 emails synchronously would time
@@ -5635,30 +5747,55 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // pooled, rate-limited campaign transporter; progress is persisted to
       // campaign_runs so the UI can report the real outcome.
       const runId = `camp-${Date.now()}`;
-      db.prepare('INSERT INTO campaign_runs (id, subject, total, startedAt) VALUES (?, ?, ?, ?)')
-        .run(runId, String(subject), recipients.length, new Date().toISOString());
-      res.json({ success: true, queued: recipients.length, runId });
+      db.prepare('INSERT INTO campaign_runs (id, subject, total, skipped, startedAt) VALUES (?, ?, ?, ?, ?)')
+        .run(runId, String(subject), recipients.length, skippedTotal, new Date().toISOString());
+      res.json({
+        success: true,
+        queued: recipients.length,
+        skipped: { invalid: skipInvalid, suppressed: skipSuppressed, recent: skipRecent },
+        runId,
+      });
 
       setImmediate(async () => {
-        const fromAddr = process.env.EMAIL_FROM || process.env.SMTP_FROM
+        const fromAddr = process.env.CAMPAIGN_SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_FROM
           || '"AutoPro Libya | أوتو برو" <info@autopro.ac>';
         let sent = 0, failed = 0;
         let firstError: string | null = null;
         const bump = db.prepare('UPDATE campaign_runs SET sent = ?, failed = ?, firstError = ? WHERE id = ?');
+        const markSent = db.prepare('INSERT OR REPLACE INTO campaign_last_sent (email, lastSentAt) VALUES (?, ?)');
+        const suppress = db.prepare("INSERT OR REPLACE INTO email_suppression (email, reason, createdAt) VALUES (?, ?, ?)");
         for (const to of recipients) {
+          // Personalized signed unsubscribe link + RFC 8058 One-Click headers.
+          const unsubUrl = `${siteBase}/api/unsubscribe?email=${encodeURIComponent(to)}&sig=${unsubSig(to)}`;
+          const unsubFooter = `<div style="text-align:center;padding:14px 10px;background:#f1f5f9;font-family:Arial,sans-serif;"><a href="${unsubUrl}" style="color:#64748b;font-size:12px;text-decoration:underline;">إلغاء الاشتراك من الرسائل التسويقية</a></div>`;
+          const bodyHtml = String(html).includes('</body>')
+            ? String(html).replace('</body>', unsubFooter + '</body>')
+            : String(html) + unsubFooter;
           try {
             if (resendClient) {
-              await sendEmail({ to, subject: String(subject), html: String(html) });
+              await sendEmail({ to, subject: String(subject), html: bodyHtml });
             } else {
               // Pooled + rate-limited (nodemailer queues internally): one
               // SMTP connection reused, ~1 message per 2.5s.
-              await campaignTransporter.sendMail({ from: fromAddr, to, subject: String(subject), html: String(html) });
+              await campaignTransporter.sendMail({
+                from: fromAddr, to, subject: String(subject), html: bodyHtml,
+                headers: {
+                  'List-Unsubscribe': `<${unsubUrl}>`,
+                  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                },
+              });
             }
             sent++;
+            try { markSent.run(to, new Date().toISOString()); } catch {}
           } catch (err: any) {
             failed++;
-            if (!firstError) firstError = String(err?.message || err).slice(0, 300);
-            console.error(`[campaign] send to ${to} failed:`, err?.message);
+            const msg = String(err?.message || err);
+            if (!firstError) firstError = msg.slice(0, 300);
+            // Hard bounce → suppress so we never retry a dead address.
+            if (/\b55[0-9]\b|does not exist|User unknown|Host or domain name not found|Invalid recipient|no such user|Recipient address rejected/i.test(msg)) {
+              try { suppress.run(to, 'bounce', new Date().toISOString()); } catch {}
+            }
+            console.error(`[campaign] send to ${to} failed:`, msg);
           }
           if ((sent + failed) % 20 === 0) {
             try { bump.run(sent, failed, firstError, runId); } catch {}
