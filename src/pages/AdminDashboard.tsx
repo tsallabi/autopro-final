@@ -2240,7 +2240,15 @@ const MarketingPanel: React.FC = () => {
         // error) instead of assuming "queued" means "delivered".
         const total = data.queued ?? emails.length;
         const mins = Math.max(1, Math.ceil((total * 2.5) / 60));
-        showAlert(`تم بدء إرسال الحملة إلى ${total} مستلم — تُرسَل تدريجياً وتستغرق نحو ${mins} دقيقة. ستظهر النتيجة النهائية هنا تلقائياً.`, 'success');
+        // Surface the hygiene filter so the admin knows WHY the queued count
+        // may be lower than the selection (unsubscribed/bounced/invalid/
+        // recently-emailed addresses are auto-excluded).
+        const sk = data.skipped;
+        const skTotal = sk ? (sk.invalid || 0) + (sk.suppressed || 0) + (sk.recent || 0) : 0;
+        const skNote = skTotal > 0
+          ? `\nاستُبعد ${skTotal} تلقائياً (ملغي اشتراك/مرتد: ${sk.suppressed || 0} · بريد غير صالح: ${sk.invalid || 0} · رُوسل مؤخراً: ${sk.recent || 0}).`
+          : '';
+        showAlert(`تم بدء إرسال الحملة إلى ${total} مستلم — تُرسَل تدريجياً وتستغرق نحو ${mins} دقيقة. ستظهر النتيجة النهائية هنا تلقائياً.${skNote}`, 'success');
         setSelectedUsers([]);
         const poll = window.setInterval(async () => {
           try {
