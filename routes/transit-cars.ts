@@ -65,20 +65,25 @@ function rowToCar(r: any): any {
     images = typeof r.images === 'string' ? JSON.parse(r.images) : (r.images || []);
     if (!Array.isArray(images)) images = [];
   } catch { images = []; }
+  // [schema-fix] The cars table has NO lot/color/fuel/description columns —
+  // the real ones are lotNumber/exteriorColor/fuelType/notes. Every SQL
+  // statement in this module now uses the real columns, while rowToCar keeps
+  // exposing the ORIGINAL field names (lot, color, fuel, description) so the
+  // frontend transit cards keep working unchanged.
   return {
     id: r.id,
-    lot: r.lot,
+    lot: r.lotNumber ?? r.lot,
     vin: r.vin,
     make: r.make,
     model: r.model,
     year: r.year,
     trim: r.trim,
     odometer: r.odometer,
-    color: r.color,
-    fuel: r.fuel,
+    color: r.exteriorColor ?? r.color,
+    fuel: r.fuelType ?? r.fuel,
     transmission: r.transmission,
     images,
-    description: r.description,
+    description: r.notes ?? r.description,
     status: r.status,
     currentBid: r.currentBid || 0,
     buyItNow: r.buyItNow || 0,
@@ -101,8 +106,9 @@ export function registerTransitRoutes(ctx: AppContext) {
   app.get('/api/cars/transit', (_req: any, res: any) => {
     try {
       const rows: any[] = db.prepare(
-        `SELECT id, lot, vin, make, model, year, trim, odometer, color, fuel,
-                transmission, images, description, status, currentBid, buyItNow,
+        `SELECT id, lotNumber, vin, make, model, year, trim, odometer,
+                exteriorColor, fuelType, transmission, images, notes, status,
+                currentBid, buyItNow,
                 transitEta, transitOrigin, transitDestination,
                 transitVessel, transitContainer, transitTrackingUrl
            FROM cars
@@ -201,7 +207,7 @@ export function registerTransitRoutes(ctx: AppContext) {
     try {
       const rows: any[] = db.prepare(
         `SELECT ti.id AS interestId, ti.expressedAt, ti.notified, ti.message,
-                c.id, c.lot, c.make, c.model, c.year, c.images,
+                c.id, c.lotNumber, c.make, c.model, c.year, c.images,
                 c.status, c.transitEta, c.transitVessel
            FROM transit_interests ti
            LEFT JOIN cars c ON c.id = ti.carId
@@ -240,8 +246,8 @@ export function registerTransitRoutes(ctx: AppContext) {
 
       db.prepare(
         `INSERT INTO cars (
-          id, lot, vin, make, model, year, trim, odometer, color, fuel,
-          transmission, images, description, status, currentBid, buyItNow,
+          id, lotNumber, vin, make, model, year, trim, odometer, exteriorColor, fuelType,
+          transmission, images, notes, status, currentBid, buyItNow,
           transitEta, transitOrigin, transitDestination,
           transitVessel, transitContainer, transitTrackingUrl
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
