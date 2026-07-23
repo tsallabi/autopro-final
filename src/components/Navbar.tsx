@@ -170,7 +170,7 @@ export const Navbar = () => {
                     {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName[0] : (currentUser.firstName?.[0] || 'U')}
                   </div>
                   <span className="text-sm font-bold text-white max-w-[120px] truncate">
-                    {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || 'مستخدم')}
+                    {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || t('nav.userFallback'))}
                   </span>
                   <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform flex-shrink-0 ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
@@ -195,12 +195,12 @@ export const Navbar = () => {
                         <Link to="/dashboard/user" onClick={() => setShowDropdown(false)}
                           className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
                           <User className="w-4 h-4 text-green-500" />
-                          عرض كـ مشتري (اختبار)
+                          {t('nav.viewAsBuyer')}
                         </Link>
                         <Link to="/dashboard/seller" onClick={() => setShowDropdown(false)}
                           className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
                           <Store className="w-4 h-4 text-blue-500" />
-                          عرض كـ بائع (اختبار)
+                          {t('nav.viewAsSeller')}
                         </Link>
                       </>
                     )}
@@ -231,8 +231,8 @@ export const Navbar = () => {
 
           {/* ── Mobile Hamburger ── */}
           <button
-            title={mobileOpen ? "إغلاق القائمة" : "فتح القائمة"}
-            aria-label={mobileOpen ? "إغلاق القائمة" : "فتح القائمة"}
+            title={mobileOpen ? t('nav.closeMenu') : t('nav.openMenu')}
+            aria-label={mobileOpen ? t('nav.closeMenu') : t('nav.openMenu')}
             className="md:hidden text-slate-300 hover:text-white p-2 transition-colors"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
@@ -268,7 +268,7 @@ export const Navbar = () => {
                 {currentUser ? (
                   <>
                     <div className="px-4 py-2 text-xs font-black text-slate-500 uppercase tracking-widest">
-                      {t('nav.welcome')}، {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || 'مستخدم')}
+                      {t('nav.welcome')}، {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || t('nav.userFallback'))}
                     </div>
                     <Link to={dashboardPath} onClick={() => setMobileOpen(false)}
                       className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
@@ -285,12 +285,12 @@ export const Navbar = () => {
                         <Link to="/dashboard/user" onClick={() => setMobileOpen(false)}
                           className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                           <User className="w-5 h-5 text-green-500" />
-                          عرض كـ مشتري (اختبار)
+                          {t('nav.viewAsBuyer')}
                         </Link>
                         <Link to="/dashboard/seller" onClick={() => setMobileOpen(false)}
                           className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                           <Store className="w-5 h-5 text-blue-500" />
-                          عرض كـ بائع (اختبار)
+                          {t('nav.viewAsSeller')}
                         </Link>
                       </>
                     )}
