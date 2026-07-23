@@ -17,6 +17,7 @@ import { registerAdminExtrasRoutes } from './routes/admin-extras.ts';
 import { registerReferralRoutes } from './routes/referrals.ts';
 import { registerPublicStatsRoutes } from './routes/public-stats.ts';
 import { registerTransitRoutes } from './routes/transit-cars.ts';
+import { registerShareRoutes } from './routes/share.ts';
 import { registerMyPayRoutes } from './routes/mypay.ts';
 import { registerWhatsAppPosterRoutes } from './routes/whatsapp-poster.ts';
 import { registerSeoRoutes } from './routes/seo.ts';
@@ -4999,6 +5000,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // swallows the literal /api/cars/transit path (":id" matched "transit"),
   // so the public in-transit list always 404'd "السيارة غير موجودة".
   try { registerTransitRoutes(ctx as any); console.log('[BOOT] ✓ transit-cars routes'); } catch (e: any) { console.error('[BOOT] transit-cars routes failed:', e?.message); }
+  try { registerShareRoutes(ctx as any); console.log('[BOOT] ✓ share routes'); } catch (e: any) { console.error('[BOOT] share routes failed:', e?.message); }
   registerCarRoutes(ctx as any);
   console.log('[BOOT] ✓ car routes');
   registerShippingRoutes(ctx as any);

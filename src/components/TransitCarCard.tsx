@@ -26,6 +26,8 @@ export type TransitCar = {
   interestCount?: number;
   buyItNow?: number;
   sold?: boolean;
+  primaryDamage?: string;
+  runsDrives?: string;
 };
 
 function daysUntil(iso?: string): number | null {
@@ -115,6 +117,24 @@ export default function TransitCarCard({ car, onInterestChange }: {
           </h3>
           {car.trim && <p className="text-xs text-slate-500 font-bold mt-0.5">{car.trim}</p>}
         </div>
+
+        {/* Condition line — mechanical state + damage type at a glance */}
+        {(car.runsDrives || car.primaryDamage) && (
+          <div className="flex flex-wrap gap-1.5">
+            {car.runsDrives && (
+              <span className={`text-[10px] font-black px-2 py-1 rounded-full ${
+                String(car.runsDrives).includes('لا تعمل') ? 'bg-rose-100 text-rose-700'
+                : String(car.runsDrives).includes('فقط') ? 'bg-amber-100 text-amber-700'
+                : 'bg-emerald-100 text-emerald-700'
+              }`}>🔧 {car.runsDrives}</span>
+            )}
+            {car.primaryDamage && (
+              <span className={`text-[10px] font-black px-2 py-1 rounded-full ${
+                String(car.primaryDamage).includes('بدون') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+              }`}>⚠️ {car.primaryDamage}</span>
+            )}
+          </div>
+        )}
 
         {/* Buy-at-sea price */}
         {(car.buyItNow ?? 0) > 0 && !car.sold && (
