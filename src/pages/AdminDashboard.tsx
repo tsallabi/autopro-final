@@ -2037,7 +2037,7 @@ const MarketingPanel: React.FC = () => {
   const [cars, setCars] = useState<any[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [selectedCars, setSelectedCars] = useState<string[]>([]);
-  const [templateType, setTemplateType] = useState<'upcoming' | 'live_auction' | 'offer_market'>('live_auction');
+  const [templateType, setTemplateType] = useState<'upcoming' | 'live_auction' | 'offer_market' | 'transit'>('live_auction');
   const [subject, setSubject] = useState('🚗 مزاد أوتو برو مفتوح الآن! سيارات حصرية بانتظارك');
   const [sending, setSending] = useState(false);
   
@@ -2147,15 +2147,40 @@ const MarketingPanel: React.FC = () => {
       buttonText: 'تصفح واربح سيارتك من هنا',
       badgeText: 'متاح الآن!',
       priceLabel: 'السعر الحالي',
-      showPrice: (c: any) => c.buyItNow || c.buyNowPrice || c.currentBid || 0
+      showPrice: (c: any) => c.buyItNow || c.buyNowPrice || c.currentBid || 0,
+      linkPrefix: 'car-details',
+      buttonUrl: `${SITE}/marketplace`,
+      extraLine: (_c: any) => '',
     };
 
     if (templateType === 'upcoming') {
-      config = { bgTitle: '#1e3a8a', bgBody: '#172554', accent: '#fcd34d', title: 'سيارات نخبوية قادمة!', buttonText: 'أضف لمفضلتك واستعد للمزايدة', badgeText: 'قريباً في المزاد', priceLabel: 'السعر المبدئي', showPrice: (c: any) => c.startingBid || 0 };
+      config = { bgTitle: '#1e3a8a', bgBody: '#172554', accent: '#fcd34d', title: 'سيارات نخبوية قادمة!', buttonText: 'أضف لمفضلتك واستعد للمزايدة', badgeText: 'قريباً في المزاد', priceLabel: 'السعر المبدئي', showPrice: (c: any) => c.startingBid || 0, linkPrefix: 'car-details', buttonUrl: `${SITE}/marketplace`, extraLine: (_c: any) => '' };
     } else if (templateType === 'live_auction') {
-      config = { bgTitle: '#9f1239', bgBody: '#881337', accent: '#f8fafc', title: 'المزاد يشتعل الآن!', buttonText: 'ادخل المزاد قبل انتهاء الوقت', badgeText: 'متاح الآن للمزايدة!', priceLabel: 'السعر الحالي', showPrice: (c: any) => c.currentBid || c.startingBid || 0 };
+      config = { bgTitle: '#9f1239', bgBody: '#881337', accent: '#f8fafc', title: 'المزاد يشتعل الآن!', buttonText: 'ادخل المزاد قبل انتهاء الوقت', badgeText: 'متاح الآن للمزايدة!', priceLabel: 'السعر الحالي', showPrice: (c: any) => c.currentBid || c.startingBid || 0, linkPrefix: 'car-details', buttonUrl: `${SITE}/marketplace`, extraLine: (_c: any) => '' };
     } else if (templateType === 'offer_market') {
-      config = { bgTitle: '#065f46', bgBody: '#064e3b', accent: '#ea580c', title: 'عروض مذهلة بانتظارك', buttonText: 'تصفح سوق العروض واشترِ الآن', badgeText: 'شراء فوري', priceLabel: 'سعر الشراء الفوري', showPrice: (c: any) => c.buyItNow || c.buyNowPrice || 0 };
+      config = { bgTitle: '#065f46', bgBody: '#064e3b', accent: '#ea580c', title: 'عروض مذهلة بانتظارك', buttonText: 'تصفح سوق العروض واشترِ الآن', badgeText: 'شراء فوري', priceLabel: 'سعر الشراء الفوري', showPrice: (c: any) => c.buyItNow || c.buyNowPrice || 0, linkPrefix: 'car-details', buttonUrl: `${SITE}/marketplace`, extraLine: (_c: any) => '' };
+    } else if (templateType === 'transit') {
+      // [transit-campaign] Sea-themed template for cars still on the boat:
+      // each card carries an ETA countdown chip and links to the buy-at-sea
+      // page /transit-car/:id.
+      config = {
+        bgTitle: '#0c4a6e', bgBody: '#082f49', accent: '#22d3ee',
+        title: '🚢 سيارات قادمة من أمريكا في الطريق إليكم!',
+        buttonText: 'اشترِها الآن وهي في البحر ⚓',
+        badgeText: '⚓ اشترِها قبل وصولها',
+        priceLabel: 'سعر الشراء في البحر',
+        showPrice: (c: any) => c.buyItNow || c.buyNowPrice || 0,
+        linkPrefix: 'transit-car',
+        buttonUrl: `${SITE}/marketplace?tab=transit`,
+        extraLine: (c: any) => {
+          const eta = c.transitEta;
+          if (!eta) return '';
+          const days = Math.max(0, Math.ceil((new Date(eta).getTime() - Date.now()) / 86400000));
+          const dateTxt = new Date(eta).toLocaleDateString('ar-LY', { month: 'long', day: 'numeric' });
+          const label = days === 0 ? 'تصل اليوم!' : days === 1 ? 'تصل غداً!' : `تبقى ${days} يوماً على الوصول`;
+          return `<div style="margin-top:8px;"><span style="display:inline-block;background:#0e7490;color:#ffffff;font-size:11px;font-weight:bold;padding:4px 12px;border-radius:100px;">⏱ ${label} — ${dateTxt}</span></div>`;
+        },
+      };
     }
 
     const carsHtml = selectedCars.map(carId => {
@@ -2163,12 +2188,13 @@ const MarketingPanel: React.FC = () => {
       if (!c) return '';
       // Whole card is a link to the car page so a tap anywhere opens it.
       return `
-          <a href="${SITE}/car-details/${c.id}" style="display:inline-block; width:46%; margin: 1%; text-align:center; background:white; border-radius:12px; overflow:hidden; box-shadow:0 6px 15px rgba(0,0,0,0.15); vertical-align:top; text-decoration:none;">
+          <a href="${SITE}/${config.linkPrefix}/${c.id}" style="display:inline-block; width:46%; margin: 1%; text-align:center; background:white; border-radius:12px; overflow:hidden; box-shadow:0 6px 15px rgba(0,0,0,0.15); vertical-align:top; text-decoration:none;">
           <img src="${absUrl(getCarImage(c))}" alt="${c.year} ${c.make} ${c.model}" style="width:100%; height:140px; object-fit:cover; display:block; border:0;" />
           <div style="padding:15px; text-align:center;">
             <div style="font-weight:900; font-size:15px; color:#1e293b;">${c.year} ${c.make} ${c.model}</div>
-            <div style="color:${config.accent}; font-size:13px; font-weight:bold; margin-top:4px;">${config.badgeText}</div>
+            <div style="color:${config.accent === '#22d3ee' ? '#0e7490' : config.accent}; font-size:13px; font-weight:bold; margin-top:4px;">${config.badgeText}</div>
             <div style="color:#ea580c; font-size:18px; font-weight:900; margin-top:8px;">$${Number(config.showPrice(c)).toLocaleString()} ${config.priceLabel}</div>
+            ${config.extraLine(c)}
           </div>
         </a>
       `;
@@ -2199,7 +2225,7 @@ const MarketingPanel: React.FC = () => {
             </ul>
           </div>
           <div style="text-align:center; padding:35px 20px; background-color:${config.bgBody};">
-             <a href="https://www.autopro.ac/marketplace" style="display:inline-block; background-color:${config.accent}; color:${config.bgTitle}; padding:18px 36px; font-size:22px; font-weight:900; text-decoration:none; border-radius:10px; box-shadow:0 6px 15px rgba(0,0,0,0.4);">
+             <a href="${config.buttonUrl}" style="display:inline-block; background-color:${config.accent}; color:${config.bgTitle}; padding:18px 36px; font-size:22px; font-weight:900; text-decoration:none; border-radius:10px; box-shadow:0 6px 15px rgba(0,0,0,0.4);">
                ${config.buttonText}
              </a>
           </div>
@@ -2386,6 +2412,7 @@ const MarketingPanel: React.FC = () => {
               </h3>
               <div className="space-y-5 max-h-[500px] overflow-y-auto pr-2 pb-2">
                 {[
+                  { title: '🚢 قادمة في الطريق', list: cars.filter(c => c.status === 'in_transit').slice(0, 10) },
                   { title: 'قريباً', list: cars.filter(c => c.status === 'upcoming').slice(0, 6) },
                   { title: 'المزادات المباشرة', list: cars.filter(c => c.status === 'active' || c.status === 'live').slice(0, 6) },
                   { title: 'سوق العروض', list: cars.filter(c => c.status === 'offer_market' || c.status === 'ultimo').slice(0, 10) }
@@ -2405,7 +2432,7 @@ const MarketingPanel: React.FC = () => {
                           <img alt={`سيارة ${c.make} ${c.model} `} src={getCarImage(c)} className="w-full h-20 object-cover" />
                           <div className="p-2 text-center">
                             <p className="font-bold text-xs truncate text-slate-800" dir="ltr">{c.year} {c.make}</p>
-                            <p className="text-emerald-600 font-bold text-xs mt-1">${c.buyNowPrice || c.currentBid || 0}</p>
+                            <p className="text-emerald-600 font-bold text-xs mt-1">${(c as any).buyItNow || c.buyNowPrice || c.currentBid || 0}</p>
                           </div>
                           {selectedCars.includes(c.id) && (
                             <div className="absolute top-1 right-1 bg-indigo-500 text-white rounded-full p-1 shadow-sm">
@@ -2439,6 +2466,7 @@ const MarketingPanel: React.FC = () => {
                   <option value="upcoming">سيارات قريباً</option>
                   <option value="live_auction">المزادات المباشرة</option>
                   <option value="offer_market">سوق العروض</option>
+                  <option value="transit">🚢 قادمة في الطريق (البيع في البحر)</option>
                 </select>
               </div>
               <div>
