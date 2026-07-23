@@ -224,6 +224,37 @@ export const TransitCarDetails = () => {
             )}
           </div>
 
+          {/* Condition badges — damage type + mechanical state, front and center */}
+          {(car.primaryDamage || car.runsDrives || car.titleType) && (
+            <div className="flex flex-wrap gap-2">
+              {car.runsDrives && (
+                <span className={`text-xs font-black px-3 py-1.5 rounded-full border ${
+                  String(car.runsDrives).includes('لا تعمل')
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : String(car.runsDrives).includes('فقط')
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                }`}>
+                  🔧 الحالة الميكانيكية: {car.runsDrives}
+                </span>
+              )}
+              {car.primaryDamage && (
+                <span className={`text-xs font-black px-3 py-1.5 rounded-full border ${
+                  String(car.primaryDamage).includes('بدون')
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  ⚠️ نوع الضرر: {car.primaryDamage}
+                </span>
+              )}
+              {car.titleType && (
+                <span className="text-xs font-black px-3 py-1.5 rounded-full border bg-slate-50 text-slate-700 border-slate-200">
+                  📄 الملكية: {car.titleType}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Share for promotion — WhatsApp/Facebook/Twitter/copy, with rich
               link previews injected server-side (carDetailsOg). */}
           <CarShareButtons

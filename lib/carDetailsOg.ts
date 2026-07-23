@@ -27,6 +27,7 @@ interface MinimalCar {
   buyItNow?: number;
   odometer?: number;
   primaryDamage?: string;
+  runsDrives?: string;
   status?: string;
   transitEta?: string;
   winnerId?: string;
@@ -71,9 +72,13 @@ function buildCarOgHtml(car: MinimalCar, html: string, siteUrl: string, pathPref
     const eta = car.transitEta
       ? ` تصل ${new Date(car.transitEta).toLocaleDateString('ar-LY', { year: 'numeric', month: 'long', day: 'numeric' })}.`
       : '';
+    const cond = [
+      car.runsDrives ? `الحالة: ${car.runsDrives}` : '',
+      car.primaryDamage ? `الضرر: ${car.primaryDamage}` : '',
+    ].filter(Boolean).join(' · ');
     desc = car.winnerId
       ? `⚓ ${title} — بيعت وهي في البحر!${eta} تصفّح بقية السيارات القادمة على AutoPro Libya.`
-      : `⚓ ${title} قادمة في الطريق إلى ليبيا${priceText}.${eta} اشترِها الآن وهي في البحر على AutoPro Libya!`;
+      : `⚓ ${title} قادمة في الطريق إلى ليبيا${priceText}${cond ? ' · ' + cond : ''}.${eta} اشترِها الآن وهي في البحر على AutoPro Libya!`;
   } else {
     desc = `${title}${priceText}${damage}${odo} — تصفّح التفاصيل وقدّم عرضك على AutoPro Libya.`;
   }
@@ -164,7 +169,7 @@ export function carDetailsOgMiddleware(opts: {
     try {
       car = db.prepare(
         `SELECT id, make, model, year, images, currency, currentBid, startingBid,
-                buyItNow, odometer, primaryDamage, status, transitEta, winnerId
+                buyItNow, odometer, primaryDamage, runsDrives, status, transitEta, winnerId
            FROM cars WHERE id = ?`
       ).get(id) as MinimalCar | undefined;
     } catch { /* ignore — fall through */ }

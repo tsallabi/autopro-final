@@ -30,9 +30,15 @@ export default function CarShareButtons({ car, pathPrefix = 'car-details', share
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
 
+  // Share the /api/share/car/:id link, NOT the SPA page URL: /api/* is
+  // guaranteed to reach Node behind any proxy (Apache serves the SPA shell
+  // itself on the VPS, so crawlers hitting /transit-car/... saw the generic
+  // homepage card with no photo). The share endpoint returns full OG tags
+  // for crawlers and instantly redirects humans to the real page.
+  void pathPrefix; // kept for API compat; landing path now resolved server-side
   const url = typeof window !== 'undefined'
-    ? `${window.location.origin}/${pathPrefix}/${car.id}`
-    : `/${pathPrefix}/${car.id}`;
+    ? `${window.location.origin}/api/share/car/${car.id}`
+    : `/api/share/car/${car.id}`;
 
   const title = `${car.year || ''} ${car.make || ''} ${car.model || ''}`.trim() || 'سيارة في AutoPro';
   const price = Number(car.currentBid || car.startingBid || car.buyItNow || 0);
