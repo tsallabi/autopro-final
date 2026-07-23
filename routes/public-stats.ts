@@ -167,15 +167,19 @@ export function registerPublicStatsRoutes(ctx: AppContext) {
   app.get('/api/public/recent-deliveries', (req: any, res: any) => {
     try {
       const limit = Math.max(1, Math.min(24, Number(req.query.limit) || 8));
+      // [schema-fix] cars has NO lot/soldAt/updatedAt columns — the real ones
+      // are lotNumber / auctionEndDate / createdAt. The old SELECT threw
+      // "no such column" and this endpoint 500'd since it shipped.
       const rows: any[] = db.prepare(
-        `SELECT c.id, c.lot, c.vin, c.make, c.model, c.year, c.images,
-                c.currentBid AS soldPrice, c.soldAt, c.updatedAt,
+        `SELECT c.id, c.lotNumber AS lot, c.vin, c.make, c.model, c.year, c.images,
+                c.currentBid AS soldPrice,
+                COALESCE(c.auctionEndDate, c.createdAt) AS soldAt,
                 u.firstName AS winnerFirst, u.country AS winnerCountry
            FROM cars c
            LEFT JOIN users u ON u.id = c.winnerId
           WHERE c.status IN ('sold','closed')
             AND c.winnerId IS NOT NULL AND c.winnerId != ''
-          ORDER BY COALESCE(c.soldAt, c.updatedAt) DESC
+          ORDER BY COALESCE(c.auctionEndDate, c.createdAt) DESC
           LIMIT ?`
       ).all(limit);
 
