@@ -20,19 +20,25 @@ interface CarLike {
   buyItNow?: number;
 }
 
-export default function CarShareButtons({ car }: { car: CarLike }) {
+export default function CarShareButtons({ car, pathPrefix = 'car-details', shareText }: {
+  car: CarLike;
+  /** URL segment — 'car-details' (default) or 'transit-car' for at-sea cars. */
+  pathPrefix?: string;
+  /** Optional override for the share message (e.g. transit promo copy). */
+  shareText?: string;
+}) {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
 
   const url = typeof window !== 'undefined'
-    ? `${window.location.origin}/car-details/${car.id}`
-    : `/car-details/${car.id}`;
+    ? `${window.location.origin}/${pathPrefix}/${car.id}`
+    : `/${pathPrefix}/${car.id}`;
 
   const title = `${car.year || ''} ${car.make || ''} ${car.model || ''}`.trim() || 'سيارة في AutoPro';
   const price = Number(car.currentBid || car.startingBid || car.buyItNow || 0);
   const currencyLabel = car.currency === 'LYD' ? 'د.ل' : '$';
   const priceText = price > 0 ? ` بـ${currencyLabel} ${price.toLocaleString('en-US')}` : '';
-  const text = `🚗 ${title}${priceText} — تصفّح التفاصيل وقدّم عرضك على AutoPro Libya:`;
+  const text = shareText || `🚗 ${title}${priceText} — تصفّح التفاصيل وقدّم عرضك على AutoPro Libya:`;
 
   const tryNativeShare = async () => {
     if ((navigator as any).share) {

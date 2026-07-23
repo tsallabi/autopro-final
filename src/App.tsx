@@ -6,6 +6,7 @@ import { Home } from './pages/Home';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
 import { CarDetails } from './pages/CarDetails';
+import { TransitCarDetails } from './pages/TransitCarDetails';
 import { LiveAuctionRoom } from './pages/LiveAuctionRoom';
 import { CostCalculator } from './pages/CostCalculator';
 import { ShippingPage } from './pages/ShippingPage';
@@ -92,6 +93,7 @@ function AppContent() {
             <Route path="login" element={<Navigate to="/auth" replace />} />
             <Route path="live-auction" element={<LiveAuctionRoom />} />
             <Route path="car-details/:id" element={<CarDetails />} />
+            <Route path="transit-car/:id" element={<TransitCarDetails />} />
             <Route path="calculator" element={<CostCalculator />} />
             <Route path="shipping" element={<ShippingPage />} />
             <Route path="wallet" element={<WalletPage />} />
