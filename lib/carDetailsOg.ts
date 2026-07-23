@@ -28,6 +28,8 @@ interface MinimalCar {
   odometer?: number;
   primaryDamage?: string;
   status?: string;
+  transitEta?: string;
+  winnerId?: string;
 }
 
 function clean(s: any): string {
@@ -55,17 +57,29 @@ function pickFirstImage(images: any): string | undefined {
   return undefined;
 }
 
-function buildCarOgHtml(car: MinimalCar, html: string, siteUrl: string): string {
+function buildCarOgHtml(car: MinimalCar, html: string, siteUrl: string, pathPrefix: string = 'car-details'): string {
   const title = `${car.year || ''} ${car.make || ''} ${car.model || ''}`.trim() || 'سيارة في AutoPro';
-  const price = Number(car.currentBid || car.startingBid || car.buyItNow || 0);
+  const isTransit = car.status === 'in_transit';
+  const price = Number(isTransit ? (car.buyItNow || 0) : (car.currentBid || car.startingBid || car.buyItNow || 0));
   const currency = car.currency === 'LYD' ? 'د.ل' : '$';
   const priceText = price > 0 ? ` — السعر ${currency} ${price.toLocaleString('en-US')}` : '';
   const damage = car.primaryDamage && car.primaryDamage !== 'بدون ضرر' ? ` · ${car.primaryDamage}` : '';
   const odo = car.odometer ? ` · ${Number(car.odometer).toLocaleString('en-US')} ميل` : '';
-  const desc = `${title}${priceText}${damage}${odo} — تصفّح التفاصيل وقدّم عرضك على AutoPro Libya.`;
+  // In-transit cars get a promo-flavored description: at-sea purchase + ETA.
+  let desc: string;
+  if (isTransit) {
+    const eta = car.transitEta
+      ? ` تصل ${new Date(car.transitEta).toLocaleDateString('ar-LY', { year: 'numeric', month: 'long', day: 'numeric' })}.`
+      : '';
+    desc = car.winnerId
+      ? `⚓ ${title} — بيعت وهي في البحر!${eta} تصفّح بقية السيارات القادمة على AutoPro Libya.`
+      : `⚓ ${title} قادمة في الطريق إلى ليبيا${priceText}.${eta} اشترِها الآن وهي في البحر على AutoPro Libya!`;
+  } else {
+    desc = `${title}${priceText}${damage}${odo} — تصفّح التفاصيل وقدّم عرضك على AutoPro Libya.`;
+  }
 
   const image = absoluteImageUrl(pickFirstImage(car.images), siteUrl);
-  const url = `${siteUrl.replace(/\/$/, '')}/car-details/${car.id}`;
+  const url = `${siteUrl.replace(/\/$/, '')}/${pathPrefix}/${car.id}`;
   const fullTitle = `${title} — AutoPro Libya | أوتو برو`;
 
   // Strip the existing og:* and twitter:* tags + the <title>, then inject
@@ -134,20 +148,23 @@ export function carDetailsOgMiddleware(opts: {
     return ''; // SPA catch-all will handle it
   }
 
-  const re = /^\/car-details\/([^/?#]+)/;
+  // Also covers /transit-car/:id so shared "قادمة في الطريق" links show the
+  // car photo + at-sea price + ETA on WhatsApp/Facebook/Telegram/Twitter.
+  const re = /^\/(car-details|transit-car)\/([^/?#]+)/;
 
   return function handle(req: Request, res: Response, next: NextFunction) {
     if (req.method !== 'GET') return next();
     const m = req.path.match(re);
     if (!m) return next();
-    const id = decodeURIComponent(m[1]);
+    const pathPrefix = m[1];
+    const id = decodeURIComponent(m[2]);
     if (!id) return next();
 
     let car: MinimalCar | undefined;
     try {
       car = db.prepare(
         `SELECT id, make, model, year, images, currency, currentBid, startingBid,
-                buyItNow, odometer, primaryDamage, status
+                buyItNow, odometer, primaryDamage, status, transitEta, winnerId
            FROM cars WHERE id = ?`
       ).get(id) as MinimalCar | undefined;
     } catch { /* ignore — fall through */ }
@@ -157,7 +174,7 @@ export function carDetailsOgMiddleware(opts: {
     const shell = loadShell();
     if (!shell) return next();
 
-    const html = buildCarOgHtml(car, shell, siteUrl);
+    const html = buildCarOgHtml(car, shell, siteUrl, pathPrefix);
     res.set('Content-Type', 'text/html; charset=utf-8');
     res.set('Cache-Control', 'public, max-age=300');
     res.send(html);

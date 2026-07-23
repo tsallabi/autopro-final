@@ -13,6 +13,7 @@ import {
   Fuel, Cog, Palette, FileText, Anchor, Container, ExternalLink, Users,
 } from 'lucide-react';
 import { authFetch, useStore } from '../context/StoreContext';
+import CarShareButtons from '../components/CarShareButtons';
 
 type TransitCarFull = {
   id: string;
@@ -222,6 +223,14 @@ export const TransitCarDetails = () => {
               </p>
             )}
           </div>
+
+          {/* Share for promotion — WhatsApp/Facebook/Twitter/copy, with rich
+              link previews injected server-side (carDetailsOg). */}
+          <CarShareButtons
+            car={{ id: car.id, year: car.year, make: car.make, model: car.model, buyItNow: car.buyItNow }}
+            pathPrefix="transit-car"
+            shareText={`⚓ ${car.year} ${car.make} ${car.model} قادمة في الطريق إلى ليبيا${price > 0 ? ` — اشترِها الآن وهي في البحر بـ$${price.toLocaleString()}` : ''}! على AutoPro Libya:`}
+          />
 
           {/* Shipment itinerary */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-3">
