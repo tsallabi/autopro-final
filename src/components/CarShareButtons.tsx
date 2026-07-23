@@ -36,9 +36,13 @@ export default function CarShareButtons({ car, pathPrefix = 'car-details', share
   // homepage card with no photo). The share endpoint returns full OG tags
   // for crawlers and instantly redirects humans to the real page.
   void pathPrefix; // kept for API compat; landing path now resolved server-side
+  // ?v= cache-buster: WhatsApp/Facebook cache a URL's preview for DAYS, so a
+  // preview fetched while the page was broken (or before a price change)
+  // would stick. A fresh token per mount makes every share a fresh preview.
+  const [shareToken] = useState(() => Date.now().toString(36));
   const url = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/share/car/${car.id}`
-    : `/api/share/car/${car.id}`;
+    ? `${window.location.origin}/api/share/car/${car.id}?v=${shareToken}`
+    : `/api/share/car/${car.id}?v=${shareToken}`;
 
   const title = `${car.year || ''} ${car.make || ''} ${car.model || ''}`.trim() || 'سيارة في AutoPro';
   const price = Number(car.currentBid || car.startingBid || car.buyItNow || 0);
