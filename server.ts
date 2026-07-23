@@ -29,6 +29,7 @@ import { bootstrapKeys } from './lib/agentcollab-bootstrap.ts';
 import { scheduleHourlyStatsPush } from './lib/agentcollab-stats.ts';
 import { scheduleEntitySync } from './lib/agentcollab-sync.ts';
 import { registerAgentCollabInboundRoutes } from './routes/agentcollab-inbound.ts';
+import { registerAiAssistantRoutes } from './routes/ai-assistant.ts';
 import { registerSupportRoutes } from './routes/support.ts';
 import { initWebPush } from './lib/webpush.ts';
 import { registerSocketHandlers } from './sockets/index.ts';
@@ -5012,6 +5013,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   try { registerPushRoutes(ctx as any); console.log('[BOOT] ✓ push routes'); } catch (e: any) { console.error('[BOOT] push routes failed:', e?.message); }
   try { registerLibyaProRoutes(ctx as any); console.log('[BOOT] ✓ libyapro routes'); } catch (e: any) { console.error('[BOOT] libyapro routes failed:', e?.message); }
   try { registerBannerRoutes(ctx as any); } catch (e: any) { console.error('[BOOT] banner routes failed:', e?.message); }
+  try { registerAiAssistantRoutes(ctx as any); console.log('[BOOT] ✓ ai assistant routes'); } catch (e: any) { console.error('[BOOT] ai assistant routes failed:', e?.message); }
   try { registerAdminExtrasRoutes(ctx as any); console.log('[BOOT] ✓ admin-extras routes'); } catch (e: any) { console.error('[BOOT] admin-extras routes failed:', e?.message); }
   try { registerReferralRoutes(ctx as any); console.log('[BOOT] ✓ referrals routes'); } catch (e: any) { console.error('[BOOT] referrals routes failed:', e?.message); }
   try { registerPublicStatsRoutes(ctx as any); console.log('[BOOT] ✓ public-stats routes'); } catch (e: any) { console.error('[BOOT] public-stats routes failed:', e?.message); }
