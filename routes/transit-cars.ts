@@ -124,6 +124,7 @@ export function registerTransitRoutes(ctx: AppContext) {
       const rows: any[] = db.prepare(
         `SELECT id, lotNumber, vin, make, model, year, trim, odometer,
                 exteriorColor, fuelType, transmission, images, notes, status,
+                primaryDamage, runsDrives, titleType,
                 currentBid, buyItNow, winnerId, transitSoldAt,
                 transitEta, transitOrigin, transitDestination,
                 transitVessel, transitContainer, transitTrackingUrl
